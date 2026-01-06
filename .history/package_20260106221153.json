@@ -1,0 +1,8 @@
+{
+  "name": "password-manager-root",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
