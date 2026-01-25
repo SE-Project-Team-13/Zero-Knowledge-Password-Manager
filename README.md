@@ -29,13 +29,7 @@ This project **does not**.
 - Clean, modular, and well-tested code
 
 ## Architecture – High Level
-+----------------+       +---------------------+       +-------------------+
-|  Client UI     |       |  Crypto Engine      |       |  Blind Backend    |
-| (React / Ext)  | <---> | (Argon2id, AES-GCM, | <---> | (Node.js + Mongo) |
-|                |       |  SRP, X25519, etc.) |       | Encrypted blobs   |
-+----------------+       +---------------------+       |   only            |
-+-------------------+
-
+![Structured Architectural Layout](docs/architecture.png)
 
 **Key rule**: The backend is **completely blind**. It never sees:
 
