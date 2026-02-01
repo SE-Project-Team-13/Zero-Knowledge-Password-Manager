@@ -78,13 +78,6 @@ export default function DashboardPage() {
   const [decryptedEntries, setDecryptedEntries] = useState<DecryptedEntry[]>([])
   const [derivedKeys, setDerivedKeys] = useState<DerivedKey | null>(null)
   
-  // Save decrypted entries to sessionStorage whenever they change
-  useEffect(() => {
-    if (isUnlocked && decryptedEntries.length >= 0) {
-      sessionStorage.setItem('decrypted_entries', JSON.stringify(decryptedEntries))
-    }
-  }, [decryptedEntries, isUnlocked])
-  
   // Add Entry Form
   const [newEntry, setNewEntry] = useState({ 
     site: "", 
@@ -223,7 +216,6 @@ export default function DashboardPage() {
 
       if (response.ok) {
         setOtpVerified(true)
-        sessionStorage.setItem('otp_verified', 'true')
         toast.success("OTP verified successfully!")
         // Automatically proceed to unlock vault
         await unlockVault()
@@ -424,7 +416,6 @@ export default function DashboardPage() {
       
       
       setIsUnlocked(true)
-      sessionStorage.setItem('vault_unlocked', 'true')
       toast.success("Vault unlocked successfully")
     } catch (err) {
       console.error("Unlock error:", err)

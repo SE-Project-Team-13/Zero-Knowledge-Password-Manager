@@ -78,13 +78,6 @@ export default function DashboardPage() {
   const [decryptedEntries, setDecryptedEntries] = useState<DecryptedEntry[]>([])
   const [derivedKeys, setDerivedKeys] = useState<DerivedKey | null>(null)
   
-  // Save decrypted entries to sessionStorage whenever they change
-  useEffect(() => {
-    if (isUnlocked && decryptedEntries.length >= 0) {
-      sessionStorage.setItem('decrypted_entries', JSON.stringify(decryptedEntries))
-    }
-  }, [decryptedEntries, isUnlocked])
-  
   // Add Entry Form
   const [newEntry, setNewEntry] = useState({ 
     site: "", 
