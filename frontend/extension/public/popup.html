@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Password Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <!-- Unlock Screen -->
+    <div id="unlock-screen" class="screen">
+      <div class="header">
+        <h1>🔐 Password Manager</h1>
+        <p class="subtitle">Zero-Knowledge Security</p>
+      </div>
+
+      <form id="unlock-form" class="form">
+        <div class="form-group">
+          <label for="user-id">Email / User ID</label>
+          <input
+            type="email"
+            id="user-id"
+            placeholder="Enter your email"
+            autocomplete="username"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="master-password">Master Password</label>
+          <input
+            type="password"
+            id="master-password"
+            placeholder="Enter your master password"
+            autocomplete="current-password"
+            required
+          />
+        </div>
+
+        <div id="unlock-error" class="error hidden"></div>
+
+        <button type="submit" id="unlock-btn" class="btn btn-primary">
+          Unlock Vault
+        </button>
+
+        <div id="unlock-loading" class="loading hidden">
+          <div class="spinner"></div>
+          <p>Unlocking vault...</p>
+        </div>
+      </form>
+
+      <div class="form-footer">
+        <p>
+          Don't have an account?
+          <a href="#" id="go-to-register">Register here</a>
+        </p>
+      </div>
+
+      <div class="info">
+        <p>🔒 Your master password never leaves this device</p>
+        <p>⏱️ Auto-locks after 15 minutes of inactivity</p>
+      </div>
+    </div>
+
+    <!-- Register Screen -->
+    <div id="register-screen" class="screen hidden">
+      <div class="header">
+        <h1>🆕 Create Account</h1>
+        <p class="subtitle">Join the Zero-Knowledge Vault</p>
+      </div>
+
+      <form id="register-form" class="form">
+        <div class="form-group">
+          <label for="reg-email">Email Address</label>
+          <input
+            type="email"
+            id="reg-email"
+            placeholder="your@email.com"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="reg-password">Master Password</label>
+          <input
+            type="password"
+            id="reg-password"
+            placeholder="Create a strong master password"
+            required
+          />
+          <p class="field-info">This password cannot be recovered!</p>
+        </div>
+
+        <div class="form-group">
+          <label for="reg-password-confirm">Confirm Password</label>
+          <input
+            type="password"
+            id="reg-password-confirm"
+            placeholder="Re-enter master password"
+            required
+          />
+        </div>
+
+        <div id="register-error" class="error hidden"></div>
+
+        <button type="submit" id="register-btn" class="btn btn-primary">
+          Create Account
+        </button>
+
+        <div id="register-loading" class="loading hidden">
+          <div class="spinner"></div>
+          <p>Creating your vault...</p>
+        </div>
+      </form>
+
+      <div class="form-footer">
+        <p>Joined already? <a href="#" id="go-to-login">Log in here</a></p>
+      </div>
+    </div>
+
+    <!-- Vault Screen -->
+    <div id="vault-screen" class="screen hidden">
+      <div class="header">
+        <h1>🔓 Your Vault</h1>
+        <button id="lock-btn" class="btn btn-secondary btn-small">Lock</button>
+      </div>
+
+      <div id="user-display" class="user-info-bar hidden">
+        <span class="user-email-label">Account: </span>
+        <span id="display-user-email" class="user-email-value"></span>
+      </div>
+
+      <div class="search-bar">
+        <input
+          type="text"
+          id="search-input"
+          placeholder="Search passwords..."
+        />
+      </div>
+
+      <div id="vault-list" class="vault-list">
+        <!-- Vault entries will be inserted here -->
+      </div>
+
+      <div class="empty-state hidden" id="empty-state">
+        <p>No passwords saved yet</p>
+      </div>
+
+      <!-- Custom Confirmation Modal -->
+      <div id="confirm-modal" class="modal-overlay">
+        <div class="modal-content">
+          <div class="modal-icon">⚠️</div>
+          <h3 class="modal-title">Delete Password?</h3>
+          <p class="modal-message">
+            Are you sure you want to delete this password? This action cannot be undone.
+          </p>
+          <div class="modal-actions">
+            <button id="modal-cancel-btn" class="btn-modal btn-modal-cancel">Cancel</button>
+            <button id="modal-confirm-btn" class="btn-modal btn-modal-danger">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
