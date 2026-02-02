@@ -44,8 +44,8 @@ fs.mkdirSync(distDir, { recursive: true })
 
 await esbuild.build({
   ...buildConfig,
-  entryPoints: ['src/background/service-worker.ts'],
-  outfile: 'dist/background.js',
+  entryPoints: [path.join(__dirname, 'src/background/service-worker.ts')],
+  outfile: path.join(__dirname, 'dist/background.js'),
 })
 
 // ============================================================================
@@ -54,8 +54,8 @@ await esbuild.build({
 
 await esbuild.build({
   ...buildConfig,
-  entryPoints: ['src/popup/popup.ts'],
-  outfile: 'dist/popup.js',
+  entryPoints: [path.join(__dirname, 'src/popup/popup.ts')],
+  outfile: path.join(__dirname, 'dist/popup.js'),
 })
 
 // ============================================================================
@@ -64,8 +64,8 @@ await esbuild.build({
 
 await esbuild.build({
   ...buildConfig,
-  entryPoints: ['src/content/content-script.ts'],
-  outfile: 'dist/content.js',
+  entryPoints: [path.join(__dirname, 'src/content/content-script.ts')],
+  outfile: path.join(__dirname, 'dist/content.js'),
 })
 
 // ============================================================================

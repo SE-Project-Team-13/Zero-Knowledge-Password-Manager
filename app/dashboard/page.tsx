@@ -9,15 +9,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
-import { 
-  Shield, 
-  Lock, 
-  Unlock, 
-  Plus, 
-  Key, 
-  Eye, 
-  EyeOff, 
-  LogOut, 
+import {
+  Shield,
+  Lock,
+  Unlock,
+  Plus,
+  Key,
+  Eye,
+  EyeOff,
+  LogOut,
   RefreshCw,
   Clock,
   ShieldCheck,
@@ -47,7 +47,7 @@ interface DecryptedEntry {
 // --- Helpers ---
 const calculatePasswordStrength = (password: string) => {
   if (!password) return { score: 0, label: "None", color: "bg-gray-200" }
-  
+
   let score = 0
   if (password.length >= 8) score += 20
   if (password.length >= 12) score += 20
@@ -63,7 +63,7 @@ const calculatePasswordStrength = (password: string) => {
 
 export default function DashboardPage() {
   const [session, actions] = useVaultSync()
-  
+
   // UI State
   const [isUnlocked, setIsUnlocked] = useState(false)
   const [otpCode, setOtpCode] = useState("")
@@ -72,19 +72,21 @@ export default function DashboardPage() {
   const [otpVerified, setOtpVerified] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [timeLeft, setTimeLeft] = useState(600) // 10 minutes in seconds
-  
+
   // Vault Data (In-Memory Only)
   const [decryptedEntries, setDecryptedEntries] = useState<DecryptedEntry[]>([])
   const [derivedKeys, setDerivedKeys] = useState<DerivedKey | null>(null)
-  
+  const [masterPassword, setMasterPassword] = useState("")
+  const [showMasterPassword, setShowMasterPassword] = useState(false)
+
   // Add Entry Form
-  const [newEntry, setNewEntry] = useState({ 
-    site: "", 
-    username: "", 
-    password: "", 
-    url: "", 
-    notes: "", 
-    showPassword: false 
+  const [newEntry, setNewEntry] = useState({
+    site: "",
+    username: "",
+    password: "",
+    url: "",
+    notes: "",
+    showPassword: false
   })
   const [isAddingEntry, setIsAddingEntry] = useState(false)
   const strength = calculatePasswordStrength(newEntry.password)
@@ -172,9 +174,9 @@ export default function DashboardPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           email: session.email,
-          code: otpCode 
+          code: otpCode
         }),
       })
 
@@ -235,18 +237,21 @@ export default function DashboardPage() {
         throw new Error("No salt found for user. Please re-login.")
       }
 
-      // For now, we'll use the user's email as a temporary master password
-      // In a real implementation, you'd prompt for the master password after OTP verification
-      const tempPassword = session.email || ""
+      // Use the provided master password
+      const passwordToUse = masterPassword.trim() || session.email || ""
+      if (!masterPassword.trim()) {
+        console.warn("[Dashboard] Master password empty, falling back to email for compatibility")
+      }
+
       const saltBuffer = new Uint8Array(session.salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)))
-      const keys = await deriveKey(tempPassword, saltBuffer)
+      const keys = await deriveKey(passwordToUse, saltBuffer)
       setDerivedKeys(keys)
 
       // 2. Fetch and decrypt vault from backend
       try {
         console.log('[Dashboard] Fetching vault from backend...')
         console.log('[Dashboard] email:', session.email)
-        
+
         // Use the SimpleVault endpoint (extension compatibility)
         // SimpleVault uses email as userId
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || '')}`, {
@@ -255,19 +260,19 @@ export default function DashboardPage() {
             'Authorization': `Bearer ${localStorage.getItem("auth_token")}`
           }
         })
-        
+
         console.log('[Dashboard] Response status:', response.status)
-        
+
         if (response.ok) {
           const data = await response.json()
           console.log('[Dashboard] Response data:', data)
-          
+
           // SimpleVault returns the encrypted data directly
           if (data && data.ciphertext && data.iv && data.salt) {
             console.log('[Dashboard] Decrypting vault...')
             // Import the decrypt function from crypto-engine
             const { decrypt } = await import("@password-manager/crypto-engine")
-            
+
             // Create EncryptedVault object
             const encryptedVault = {
               ciphertext: data.ciphertext,
@@ -276,32 +281,44 @@ export default function DashboardPage() {
               algorithm: "AES-256-GCM" as const,
               derivationAlgorithm: "Argon2id" as const
             }
-            
+
             // Decrypt the vault
-            const decryptedEntry = await decrypt(encryptedVault, keys)
-            console.log('[Dashboard] Decrypted entry:', decryptedEntry)
+            let decryptedEntry: any
+            try {
+              decryptedEntry = await decrypt(encryptedVault, keys)
+              console.log('[Dashboard] Decrypted entry with master password')
+            } catch (decryptErr) {
+              console.warn('[Dashboard] Decryption with master password failed, trying email-key fallback (compatibility)')
+              // Fallback to email as password (compatibility with old prototype state)
+              const fallbackKeys = await deriveKey(session.email || "", saltBuffer)
+              decryptedEntry = await decrypt(encryptedVault, fallbackKeys)
+              console.log('[Dashboard] Decrypted entry with email fallback')
+              // Use fallback keys for this session
+              setDerivedKeys(fallbackKeys)
+            }
+
             console.log('[Dashboard] Decrypted entry type:', typeof decryptedEntry)
             console.log('[Dashboard] Decrypted entry keys:', Object.keys(decryptedEntry))
             console.log('[Dashboard] Decrypted entry JSON:', JSON.stringify(decryptedEntry, null, 2))
-            
+
             // The extension stores credentials as an array
             // The decrypt function returns a VaultEntry, but the actual data might be in a property
             let entries: any[] = []
-            
+
             // Check if decryptedEntry is already an array
             if (Array.isArray(decryptedEntry)) {
               console.log('[Dashboard] Decrypted entry is an array')
               entries = decryptedEntry
-            } 
+            }
             // Check if it's a VaultEntry with the data in a property
             else if (decryptedEntry && typeof decryptedEntry === 'object') {
               console.log('[Dashboard] Decrypted entry is an object, inspecting properties...')
-              
+
               // Log all properties
               for (const [key, value] of Object.entries(decryptedEntry)) {
                 console.log(`[Dashboard] Property "${key}":`, value, 'Type:', typeof value)
               }
-              
+
               // Try to find an array property
               const possibleArrays = Object.values(decryptedEntry).filter(val => Array.isArray(val))
               if (possibleArrays.length > 0) {
@@ -323,7 +340,7 @@ export default function DashboardPage() {
                     }
                   }
                 }
-                
+
                 // If still no entries, treat as single entry
                 if (entries.length === 0) {
                   console.log('[Dashboard] Treating as single entry')
@@ -331,10 +348,10 @@ export default function DashboardPage() {
                 }
               }
             }
-            
+
             console.log('[Dashboard] Parsed entries:', entries)
             console.log('[Dashboard] Number of entries:', entries.length)
-            
+
             // Add visibility flag to each entry
             // Handle both 'site' and 'siteName' fields (extension uses 'siteName')
             // Filter out system entries (VAULT_ROOT)
@@ -360,7 +377,7 @@ export default function DashboardPage() {
                   isPasswordVisible: false
                 }
               })
-            
+
             console.log('[Dashboard] Setting entries:', entriesWithVisibility)
             setDecryptedEntries(entriesWithVisibility)
             toast.success(`Loaded ${entriesWithVisibility.length} credential(s)`)
@@ -377,8 +394,8 @@ export default function DashboardPage() {
         console.error('[Dashboard] Fetch/decrypt error:', fetchErr)
         // Continue with empty vault - this is fine for new users
       }
-      
-      
+
+
       setIsUnlocked(true)
       toast.success("Vault unlocked successfully")
     } catch (err) {
@@ -397,7 +414,7 @@ export default function DashboardPage() {
     for (let i = 0; i < length; i++) {
       password += charset[array[i] % charset.length]
     }
-    setNewEntry({...newEntry, password})
+    setNewEntry({ ...newEntry, password })
     toast.success("Strong password generated")
   }
 
@@ -408,7 +425,7 @@ export default function DashboardPage() {
     setIsAddingEntry(true)
     try {
       console.log('[Dashboard] Adding new credential...')
-      
+
       // Create the new entry
       const entryId = Math.random().toString(36).substring(7)
       const newCredential = {
@@ -421,7 +438,7 @@ export default function DashboardPage() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }
-      
+
       // Add to existing entries
       const updatedEntries = [...decryptedEntries.map(e => ({
         id: e.id,
@@ -433,41 +450,41 @@ export default function DashboardPage() {
         createdAt: (e as any).createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       })), newCredential]
-      
+
       console.log('[Dashboard] Encrypting', updatedEntries.length, 'credentials...')
-      
+
       // Get the derived keys from the unlock process
       if (!derivedKeys) {
         toast.error("Encryption key not available. Please unlock vault first.")
         return
       }
-      
+
       // Get salt
       const salt = localStorage.getItem("user_salt")
       if (!salt) {
         toast.error("Salt not found. Please re-login.")
         return
       }
-      
+
       // IMPORTANT: Match the extension's format
       // The extension wraps the array in a VaultEntry object with VAULT_ROOT/SYSTEM
       const { encrypt } = await import("@password-manager/crypto-engine")
-      
+
       // Wrap the credentials array in a VaultEntry object (matching extension format)
       const vaultEntry = {
         site: 'VAULT_ROOT',
         username: 'SYSTEM',
         password: JSON.stringify(updatedEntries)
       }
-      
+
       // Encrypt using the crypto engine's encrypt function with the full DerivedKey
       const encryptedVault = await encrypt(vaultEntry, derivedKeys)
-      
+
       console.log('[Dashboard] Saving to MongoDB...')
-      
+
       // Extract site names for labels
       const labels = updatedEntries.map(e => e.siteName.toLowerCase())
-      
+
       // Save to MongoDB
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || '')}`, {
         method: "PUT",
@@ -480,13 +497,13 @@ export default function DashboardPage() {
           labels
         })
       })
-      
+
       if (!response.ok) {
         throw new Error(`Failed to save: ${response.status}`)
       }
-      
+
       console.log('[Dashboard] Saved successfully!')
-      
+
       // Update local state
       const displayEntry: DecryptedEntry = {
         id: entryId,
@@ -496,188 +513,188 @@ export default function DashboardPage() {
         lastUpdated: new Date().toLocaleDateString(),
         isPasswordVisible: false
       }
-      
+
       setDecryptedEntries([...decryptedEntries, displayEntry])
       setNewEntry({ site: "", username: "", password: "", url: "", notes: "", showPassword: false })
       toast.success("Credential saved and synced to vault!")
-  } catch (err) {
-    console.error('[Dashboard] Add entry error:', err)
-    toast.error("Failed to save credential: " + (err instanceof Error ? err.message : "Unknown error"))
-  } finally {
-    setIsAddingEntry(false)
+    } catch (err) {
+      console.error('[Dashboard] Add entry error:', err)
+      toast.error("Failed to save credential: " + (err instanceof Error ? err.message : "Unknown error"))
+    } finally {
+      setIsAddingEntry(false)
+    }
   }
-}
 
-// Edit entry
-const handleEditEntry = (entry: DecryptedEntry) => {
-  setEditingEntry(entry)
-  setIsEditModalOpen(true)
-}
+  // Edit entry
+  const handleEditEntry = (entry: DecryptedEntry) => {
+    setEditingEntry(entry)
+    setIsEditModalOpen(true)
+  }
 
-const handleSaveEdit = async () => {
-  if (!editingEntry) return
+  const handleSaveEdit = async () => {
+    if (!editingEntry) return
 
-  setIsSavingEdit(true)
-  try {
-    console.log('[Dashboard] Updating credential...')
-    
-    // Update the entry in the list
-    const updatedEntries = decryptedEntries.map(e => 
-      e.id === editingEntry.id ? {
-        ...editingEntry,
-        lastUpdated: new Date().toLocaleDateString(),
+    setIsSavingEdit(true)
+    try {
+      console.log('[Dashboard] Updating credential...')
+
+      // Update the entry in the list
+      const updatedEntries = decryptedEntries.map(e =>
+        e.id === editingEntry.id ? {
+          ...editingEntry,
+          lastUpdated: new Date().toLocaleDateString(),
+          updatedAt: new Date().toISOString()
+        } : e
+      )
+
+      // Get the derived keys
+      if (!derivedKeys) {
+        toast.error("Encryption key not available. Please unlock vault first.")
+        return
+      }
+
+      // Get salt
+      const salt = localStorage.getItem("user_salt")
+      if (!salt) {
+        toast.error("Salt not found. Please re-login.")
+        return
+      }
+
+      // Prepare credentials for encryption
+      const credentialsForEncryption = updatedEntries.map(e => ({
+        id: e.id,
+        siteName: (e as any).siteName || e.site,
+        siteUrl: (e as any).siteUrl || '',
+        username: e.username,
+        password: e.password,
+        notes: (e as any).notes || '',
+        createdAt: (e as any).createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      } : e
-    )
-    
-    // Get the derived keys
-    if (!derivedKeys) {
-      toast.error("Encryption key not available. Please unlock vault first.")
-      return
-    }
-    
-    // Get salt
-    const salt = localStorage.getItem("user_salt")
-    if (!salt) {
-      toast.error("Salt not found. Please re-login.")
-      return
-    }
-    
-    // Prepare credentials for encryption
-    const credentialsForEncryption = updatedEntries.map(e => ({
-      id: e.id,
-      siteName: (e as any).siteName || e.site,
-      siteUrl: (e as any).siteUrl || '',
-      username: e.username,
-      password: e.password,
-      notes: (e as any).notes || '',
-      createdAt: (e as any).createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }))
-    
-    console.log('[Dashboard] Encrypting', credentialsForEncryption.length, 'credentials...')
-    
-    const { encrypt } = await import("@password-manager/crypto-engine")
-    
-    // Wrap in VaultEntry object
-    const vaultEntry = {
-      site: 'VAULT_ROOT',
-      username: 'SYSTEM',
-      password: JSON.stringify(credentialsForEncryption)
-    }
-    
-    const encryptedVault = await encrypt(vaultEntry, derivedKeys)
-    
-    console.log('[Dashboard] Saving to MongoDB...')
-    
-    const labels = credentialsForEncryption.map(e => e.siteName.toLowerCase())
-    
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || '')}`, {
-      method: "PUT",
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem("auth_token")}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        encryptedVault,
-        labels
-      })
-    })
-    
-    if (!response.ok) {
-      throw new Error(`Failed to save: ${response.status}`)
-    }
-    
-    console.log('[Dashboard] Updated successfully!')
-    
-    // Update local state
-    setDecryptedEntries(updatedEntries)
-    setIsEditModalOpen(false)
-    setEditingEntry(null)
-    toast.success("Credential updated successfully!")
-  } catch (err) {
-    console.error('[Dashboard] Edit entry error:', err)
-    toast.error("Failed to update credential: " + (err instanceof Error ? err.message : "Unknown error"))
-  } finally {
-    setIsSavingEdit(false)
-  }
-}
+      }))
 
-// Delete entry
-const handleDeleteEntry = async (entryId: string) => {
-  if (!confirm("Are you sure you want to delete this credential? This action cannot be undone.")) {
-    return
+      console.log('[Dashboard] Encrypting', credentialsForEncryption.length, 'credentials...')
+
+      const { encrypt } = await import("@password-manager/crypto-engine")
+
+      // Wrap in VaultEntry object
+      const vaultEntry = {
+        site: 'VAULT_ROOT',
+        username: 'SYSTEM',
+        password: JSON.stringify(credentialsForEncryption)
+      }
+
+      const encryptedVault = await encrypt(vaultEntry, derivedKeys)
+
+      console.log('[Dashboard] Saving to MongoDB...')
+
+      const labels = credentialsForEncryption.map(e => e.siteName.toLowerCase())
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || '')}`, {
+        method: "PUT",
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem("auth_token")}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          encryptedVault,
+          labels
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to save: ${response.status}`)
+      }
+
+      console.log('[Dashboard] Updated successfully!')
+
+      // Update local state
+      setDecryptedEntries(updatedEntries)
+      setIsEditModalOpen(false)
+      setEditingEntry(null)
+      toast.success("Credential updated successfully!")
+    } catch (err) {
+      console.error('[Dashboard] Edit entry error:', err)
+      toast.error("Failed to update credential: " + (err instanceof Error ? err.message : "Unknown error"))
+    } finally {
+      setIsSavingEdit(false)
+    }
   }
 
-  try {
-    console.log('[Dashboard] Deleting credential...')
-    
-    // Remove from list
-    const updatedEntries = decryptedEntries.filter(e => e.id !== entryId)
-    
-    // Get the derived keys
-    if (!derivedKeys) {
-      toast.error("Encryption key not available. Please unlock vault first.")
+  // Delete entry
+  const handleDeleteEntry = async (entryId: string) => {
+    if (!confirm("Are you sure you want to delete this credential? This action cannot be undone.")) {
       return
     }
-    
-    // Get salt
-    const salt = localStorage.getItem("user_salt")
-    if (!salt) {
-      toast.error("Salt not found. Please re-login.")
-      return
-    }
-    
-    // Prepare credentials for encryption
-    const credentialsForEncryption = updatedEntries.map(e => ({
-      id: e.id,
-      siteName: (e as any).siteName || e.site,
-      siteUrl: (e as any).siteUrl || '',
-      username: e.username,
-      password: e.password,
-      notes: (e as any).notes || '',
-      createdAt: (e as any).createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }))
-    
-    console.log('[Dashboard] Encrypting', credentialsForEncryption.length, 'credentials...')
-    
-    const { encrypt } = await import("@password-manager/crypto-engine")
-    
-    // Wrap in VaultEntry object
-    const vaultEntry = {
-      site: 'VAULT_ROOT',
-      username: 'SYSTEM',
-      password: JSON.stringify(credentialsForEncryption)
-    }
-    
-    const encryptedVault = await encrypt(vaultEntry, derivedKeys)
-    
-    console.log('[Dashboard] Saving to MongoDB...')
-    
-    const labels = credentialsForEncryption.map(e => e.siteName.toLowerCase())
-    
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || '')}`, {
-      method: "PUT",
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem("auth_token")}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        encryptedVault,
-        labels
+
+    try {
+      console.log('[Dashboard] Deleting credential...')
+
+      // Remove from list
+      const updatedEntries = decryptedEntries.filter(e => e.id !== entryId)
+
+      // Get the derived keys
+      if (!derivedKeys) {
+        toast.error("Encryption key not available. Please unlock vault first.")
+        return
+      }
+
+      // Get salt
+      const salt = localStorage.getItem("user_salt")
+      if (!salt) {
+        toast.error("Salt not found. Please re-login.")
+        return
+      }
+
+      // Prepare credentials for encryption
+      const credentialsForEncryption = updatedEntries.map(e => ({
+        id: e.id,
+        siteName: (e as any).siteName || e.site,
+        siteUrl: (e as any).siteUrl || '',
+        username: e.username,
+        password: e.password,
+        notes: (e as any).notes || '',
+        createdAt: (e as any).createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }))
+
+      console.log('[Dashboard] Encrypting', credentialsForEncryption.length, 'credentials...')
+
+      const { encrypt } = await import("@password-manager/crypto-engine")
+
+      // Wrap in VaultEntry object
+      const vaultEntry = {
+        site: 'VAULT_ROOT',
+        username: 'SYSTEM',
+        password: JSON.stringify(credentialsForEncryption)
+      }
+
+      const encryptedVault = await encrypt(vaultEntry, derivedKeys)
+
+      console.log('[Dashboard] Saving to MongoDB...')
+
+      const labels = credentialsForEncryption.map(e => e.siteName.toLowerCase())
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || '')}`, {
+        method: "PUT",
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem("auth_token")}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          encryptedVault,
+          labels
+        })
       })
-    })
-    
-    if (!response.ok) {
-      throw new Error(`Failed to save: ${response.status}`)
-    }
-    
-    console.log('[Dashboard] Deleted successfully!')
-    
-    // Update local state
-    setDecryptedEntries(updatedEntries)
-    toast.success("Credential deleted successfully!")
+
+      if (!response.ok) {
+        throw new Error(`Failed to save: ${response.status}`)
+      }
+
+      console.log('[Dashboard] Deleted successfully!')
+
+      // Update local state
+      setDecryptedEntries(updatedEntries)
+      toast.success("Credential deleted successfully!")
     } catch (err) {
       console.error('[Dashboard] Add entry error:', err)
       toast.error("Failed to save credential: " + (err instanceof Error ? err.message : "Unknown error"))
@@ -687,7 +704,7 @@ const handleDeleteEntry = async (entryId: string) => {
   }
 
   const togglePasswordVisibility = (id: string) => {
-    setDecryptedEntries(entries => 
+    setDecryptedEntries(entries =>
       entries.map(e => e.id === id ? { ...e, isPasswordVisible: !e.isPasswordVisible } : e)
     )
   }
@@ -710,12 +727,12 @@ const handleDeleteEntry = async (entryId: string) => {
             <CardDescription>Authentication required to access your passwords</CardDescription>
           </CardHeader>
           <CardContent>
-             <div className="text-center p-6 bg-slate-50 rounded-lg border border-dashed border-slate-300">
-               <p className="text-sm text-slate-600 mb-4">You are not signed in. Please log in to your account.</p>
-               <Button onClick={() => window.location.href = "/"} className="w-full">
-                 Go to Login / Register
-               </Button>
-             </div>
+            <div className="text-center p-6 bg-slate-50 rounded-lg border border-dashed border-slate-300">
+              <p className="text-sm text-slate-600 mb-4">You are not signed in. Please log in to your account.</p>
+              <Button onClick={() => window.location.href = "/"} className="w-full">
+                Go to Login / Register
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -738,8 +755,8 @@ const handleDeleteEntry = async (entryId: string) => {
               Enter the 6-digit OTP sent to your registered email
             </CardDescription>
           </CardHeader>
-          
-          <form onSubmit={handleVerifyOTP}>
+
+          <form onSubmit={handleVerifyOTP} style={{ position: "relative" }} suppressHydrationWarning>
             <CardContent className="space-y-6">
               <div className="space-y-3">
                 <Label htmlFor="otp-input" className="text-sm font-semibold text-slate-700">
@@ -769,10 +786,10 @@ const handleDeleteEntry = async (entryId: string) => {
                     <Clock className="h-3 w-3 mr-1" />
                     {timeLeft > 0 ? `Code expires in ${formatTime(timeLeft)}` : 'Code expired'}
                   </p>
-                  <Button 
-                    type="button" 
-                    variant="link" 
-                    size="sm" 
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
                     className="text-primary hover:text-primary/80 p-0 h-auto"
                     onClick={sendOTPToUser}
                     disabled={timeLeft > 540} // Disable if less than 1 minute has passed
@@ -780,6 +797,35 @@ const handleDeleteEntry = async (entryId: string) => {
                     Resend Code
                   </Button>
                 </div>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <Label htmlFor="password-input" className="text-sm font-semibold text-slate-700">
+                  Master Password
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="password-input"
+                    type={showMasterPassword ? "text" : "password"}
+                    className="pr-10 border-2 border-slate-200 focus:border-primary transition-all"
+                    placeholder="Enter your master password"
+                    value={masterPassword}
+                    onChange={(e) => setMasterPassword(e.target.value)}
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-slate-400 hover:text-slate-600"
+                    onClick={() => setShowMasterPassword(!showMasterPassword)}
+                  >
+                    {showMasterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-slate-400 italic">
+                  Note: This is the password you used during registration.
+                </p>
               </div>
 
               {!otpSent && (
@@ -800,11 +846,11 @@ const handleDeleteEntry = async (entryId: string) => {
                 </Alert>
               )}
             </CardContent>
-            
+
             <CardFooter className="flex flex-col gap-3">
-              <Button 
-                type="submit" 
-                className="w-full h-12 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-600/90 text-white font-semibold shadow-lg" 
+              <Button
+                type="submit"
+                className="w-full h-12 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-600/90 text-white font-semibold shadow-lg"
                 disabled={isVerifyingOtp || otpCode.length !== 6 || timeLeft === 0}
               >
                 {isVerifyingOtp ? (
@@ -819,12 +865,12 @@ const handleDeleteEntry = async (entryId: string) => {
                   </>
                 )}
               </Button>
-              
-              <Button 
+
+              <Button
                 type="button"
-                variant="ghost" 
-                size="sm" 
-                onClick={actions.logout} 
+                variant="ghost"
+                size="sm"
+                onClick={actions.logout}
                 className="text-slate-500 hover:text-red-500 hover:bg-red-50"
               >
                 <LogOut className="mr-2 h-4 w-4" />
@@ -838,8 +884,8 @@ const handleDeleteEntry = async (entryId: string) => {
   }
 
   // --- Render Unlocked Dashboard ---
-  const filteredEntries = decryptedEntries.filter(e => 
-    e.site.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const filteredEntries = decryptedEntries.filter(e =>
+    e.site.toLowerCase().includes(searchQuery.toLowerCase()) ||
     e.username.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -857,12 +903,12 @@ const handleDeleteEntry = async (entryId: string) => {
             Unlocked
           </div>
         </div>
-        
+
         <div className="flex items-center gap-4">
           <div className="relative hidden sm:block">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <Input 
-              placeholder="Search vault..." 
+            <Input
+              placeholder="Search vault..."
               className="pl-9 h-9 w-64 bg-slate-50 border-slate-200"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -893,7 +939,7 @@ const handleDeleteEntry = async (entryId: string) => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card className="border-slate-200">
             <CardHeader className="pb-2">
               <CardDescription>Security Status</CardDescription>
@@ -906,7 +952,7 @@ const handleDeleteEntry = async (entryId: string) => {
               Keys are never stored in browser memory across sessions.
             </CardContent>
           </Card>
-          
+
           <Card className="border-slate-200">
             <CardHeader className="pb-2">
               <CardDescription>Inactivity Lock</CardDescription>
@@ -936,37 +982,37 @@ const handleDeleteEntry = async (entryId: string) => {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="site">Website/Service</Label>
-                    <Input 
-                      id="site" 
-                      placeholder="e.g., GitHub, Gmail" 
+                    <Input
+                      id="site"
+                      placeholder="e.g., GitHub, Gmail"
                       value={newEntry.site}
-                      onChange={(e) => setNewEntry({...newEntry, site: e.target.value})}
+                      onChange={(e) => setNewEntry({ ...newEntry, site: e.target.value })}
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="url">URL</Label>
-                    <Input 
-                      id="url" 
+                    <Input
+                      id="url"
                       type="url"
-                      placeholder="https://example.com" 
+                      placeholder="https://example.com"
                       value={newEntry.url || ''}
-                      onChange={(e) => setNewEntry({...newEntry, url: e.target.value})}
+                      onChange={(e) => setNewEntry({ ...newEntry, url: e.target.value })}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="username">Username/Email</Label>
-                    <Input 
-                      id="username" 
-                      placeholder="your@email.com" 
+                    <Input
+                      id="username"
+                      placeholder="your@email.com"
                       value={newEntry.username}
-                      onChange={(e) => setNewEntry({...newEntry, username: e.target.value})}
+                      onChange={(e) => setNewEntry({ ...newEntry, username: e.target.value })}
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <Label htmlFor="new-password">Password</Label>
@@ -975,12 +1021,12 @@ const handleDeleteEntry = async (entryId: string) => {
                       </span>
                     </div>
                     <div className="relative">
-                      <Input 
-                        id="new-password" 
+                      <Input
+                        id="new-password"
                         type={newEntry.showPassword ? "text" : "password"}
-                        placeholder="Enter password" 
+                        placeholder="Enter password"
                         value={newEntry.password}
-                        onChange={(e) => setNewEntry({...newEntry, password: e.target.value})}
+                        onChange={(e) => setNewEntry({ ...newEntry, password: e.target.value })}
                         className="pr-20"
                         required
                       />
@@ -990,7 +1036,7 @@ const handleDeleteEntry = async (entryId: string) => {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-slate-400 hover:text-primary"
-                          onClick={() => setNewEntry({...newEntry, showPassword: !newEntry.showPassword})}
+                          onClick={() => setNewEntry({ ...newEntry, showPassword: !newEntry.showPassword })}
                         >
                           {newEntry.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </Button>
@@ -1013,7 +1059,7 @@ const handleDeleteEntry = async (entryId: string) => {
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="notes">Notes (optional)</Label>
                     <textarea
@@ -1021,7 +1067,7 @@ const handleDeleteEntry = async (entryId: string) => {
                       placeholder="Additional information"
                       rows={3}
                       value={newEntry.notes || ''}
-                      onChange={(e) => setNewEntry({...newEntry, notes: e.target.value})}
+                      onChange={(e) => setNewEntry({ ...newEntry, notes: e.target.value })}
                       className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
                     />
                   </div>
@@ -1075,16 +1121,15 @@ const handleDeleteEntry = async (entryId: string) => {
                             return (
                               <div className="flex items-center gap-2 mt-1">
                                 <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden w-20">
-                                  <div 
+                                  <div
                                     className={`h-full ${strength.color} transition-all duration-300`}
                                     style={{ width: `${strength.score}%` }}
                                   />
                                 </div>
-                                <span className={`text-[10px] font-semibold ${
-                                  strength.label === 'Strong' ? 'text-green-600' :
+                                <span className={`text-[10px] font-semibold ${strength.label === 'Strong' ? 'text-green-600' :
                                   strength.label === 'Moderate' ? 'text-yellow-600' :
-                                  'text-red-600'
-                                }`}>
+                                    'text-red-600'
+                                  }`}>
                                   {strength.label}
                                 </span>
                               </div>
@@ -1092,24 +1137,24 @@ const handleDeleteEntry = async (entryId: string) => {
                           })()}
                         </div>
                       </div>
-                      
+
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-6 w-full sm:w-auto">
                         <div className="flex-1 sm:w-48 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 flex items-center justify-between">
                           <code className="text-sm font-mono text-slate-700">
                             {entry.isPasswordVisible ? entry.password : "••••••••••••"}
                           </code>
                           <div className="flex items-center gap-1">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               className="h-7 w-7 text-slate-400 hover:text-primary"
                               onClick={() => togglePasswordVisibility(entry.id)}
                             >
                               {entry.isPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               className="h-7 w-7 text-slate-400 hover:text-primary"
                               onClick={() => copyToClipboard(entry.password)}
                             >
@@ -1117,30 +1162,30 @@ const handleDeleteEntry = async (entryId: string) => {
                             </Button>
                           </div>
                         </div>
-                        
+
                         <div className="flex items-center gap-4">
-                           <div className="text-[10px] text-slate-400 flex flex-col items-end">
-                             <span className="uppercase font-bold">Updated</span>
-                             <span>{entry.lastUpdated}</span>
-                           </div>
-                           <Button 
-                             variant="ghost" 
-                             size="icon" 
-                             className="h-9 w-9 text-slate-300 hover:text-blue-500 hover:bg-blue-50"
-                             onClick={() => handleEditEntry(entry)}
-                             title="Edit credential"
-                           >
-                             <Edit className="h-5 w-5" />
-                           </Button>
-                           <Button 
-                             variant="ghost" 
-                             size="icon" 
-                             className="h-9 w-9 text-slate-300 hover:text-red-500 hover:bg-red-50"
-                             onClick={() => handleDeleteEntry(entry.id)}
-                             title="Delete credential"
-                           >
-                             <Trash2 className="h-5 w-5" />
-                           </Button>
+                          <div className="text-[10px] text-slate-400 flex flex-col items-end">
+                            <span className="uppercase font-bold">Updated</span>
+                            <span>{entry.lastUpdated}</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-slate-300 hover:text-blue-500 hover:bg-blue-50"
+                            onClick={() => handleEditEntry(entry)}
+                            title="Edit credential"
+                          >
+                            <Edit className="h-5 w-5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-slate-300 hover:text-red-500 hover:bg-red-50"
+                            onClick={() => handleDeleteEntry(entry.id)}
+                            title="Delete credential"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </Button>
                         </div>
                       </div>
                     </CardContent>
@@ -1148,7 +1193,7 @@ const handleDeleteEntry = async (entryId: string) => {
                 ))}
               </div>
             )}
-            
+
             <Alert className="bg-blue-50 border-blue-100 text-blue-800">
               <AlertCircle className="h-4 w-4 text-blue-600" />
               <AlertDescription className="text-xs">
@@ -1158,7 +1203,7 @@ const handleDeleteEntry = async (entryId: string) => {
           </div>
         </div>
       </main>
-      
+
       {/* Edit Modal */}
       {isEditModalOpen && editingEntry && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1185,7 +1230,7 @@ const handleDeleteEntry = async (entryId: string) => {
                 </Button>
               </div>
             </CardHeader>
-            
+
             <CardContent className="space-y-4 pt-6">
               <div className="space-y-2">
                 <Label htmlFor="edit-site">Website/Service</Label>
@@ -1193,11 +1238,11 @@ const handleDeleteEntry = async (entryId: string) => {
                   id="edit-site"
                   placeholder="e.g., GitHub, Gmail"
                   value={editingEntry.site}
-                  onChange={(e) => setEditingEntry({...editingEntry, site: e.target.value})}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, site: e.target.value })}
                   required
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="edit-url">URL</Label>
                 <Input
@@ -1205,21 +1250,21 @@ const handleDeleteEntry = async (entryId: string) => {
                   type="url"
                   placeholder="https://example.com"
                   value={(editingEntry as any).siteUrl || ''}
-                  onChange={(e) => setEditingEntry({...editingEntry, siteUrl: e.target.value} as any)}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, siteUrl: e.target.value } as any)}
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="edit-username">Username/Email</Label>
                 <Input
                   id="edit-username"
                   placeholder="your@email.com"
                   value={editingEntry.username}
-                  onChange={(e) => setEditingEntry({...editingEntry, username: e.target.value})}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, username: e.target.value })}
                   required
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <Label htmlFor="edit-password">Password</Label>
@@ -1238,7 +1283,7 @@ const handleDeleteEntry = async (entryId: string) => {
                     type={editingEntry.isPasswordVisible ? "text" : "password"}
                     placeholder="Enter password"
                     value={editingEntry.password}
-                    onChange={(e) => setEditingEntry({...editingEntry, password: e.target.value})}
+                    onChange={(e) => setEditingEntry({ ...editingEntry, password: e.target.value })}
                     className="pr-10"
                     required
                   />
@@ -1247,7 +1292,7 @@ const handleDeleteEntry = async (entryId: string) => {
                     variant="ghost"
                     size="icon"
                     className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-slate-400 hover:text-primary"
-                    onClick={() => setEditingEntry({...editingEntry, isPasswordVisible: !editingEntry.isPasswordVisible})}
+                    onClick={() => setEditingEntry({ ...editingEntry, isPasswordVisible: !editingEntry.isPasswordVisible })}
                   >
                     {editingEntry.isPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
@@ -1259,7 +1304,7 @@ const handleDeleteEntry = async (entryId: string) => {
                   })()}
                 </div>
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="edit-notes">Notes (optional)</Label>
                 <textarea
@@ -1267,12 +1312,12 @@ const handleDeleteEntry = async (entryId: string) => {
                   placeholder="Additional information"
                   rows={3}
                   value={(editingEntry as any).notes || ''}
-                  onChange={(e) => setEditingEntry({...editingEntry, notes: e.target.value} as any)}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, notes: e.target.value } as any)}
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
                 />
               </div>
             </CardContent>
-            
+
             <CardFooter className="border-t border-slate-200 flex gap-3">
               <Button
                 variant="outline"
@@ -1306,7 +1351,7 @@ const handleDeleteEntry = async (entryId: string) => {
           </Card>
         </div>
       )}
-      
+
       <footer className="bg-white border-t border-slate-200 py-6 px-8 mt-auto">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-400">
           <p>© 2026 ZeroKnowledge Password Manager. Phase 1–3 Implementation.</p>

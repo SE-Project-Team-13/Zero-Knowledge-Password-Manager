@@ -55,45 +55,58 @@ let sessionState: SessionState = {
 // Configuration
 // ============================================================================
 
-const AUTO_LOCK_TIMEOUT = 15 * 60 * 1000 // 15 minutes in milliseconds
-const BACKEND_URL = 'http://localhost:3001' // Phase 2 backend
+const AUTO_LOCK_TIMEOUT = 15 * 60 * 1000 // 15 minutes
+const BACKEND_URL = 'http://localhost:3001'
+const EXTENSION_DEVICE_ID = 'extension-browser'
 
 // ============================================================================
 // Auto-Lock Timer
 // ============================================================================
 
-let autoLockTimer: number | null = null
+let autoLockTimer: any = null
 
 function resetAutoLockTimer(): void {
-  sessionState.lastActivity = Date.now()
-  
   if (autoLockTimer !== null) {
     clearTimeout(autoLockTimer)
   }
-  
+
   autoLockTimer = setTimeout(() => {
     lockVault()
-  }, AUTO_LOCK_TIMEOUT) as unknown as number
+  }, AUTO_LOCK_TIMEOUT)
 }
 
-function lockVault(): void {
-  console.log('[Background] Locking vault and clearing sensitive data')
-  
-  // SECURITY: Explicitly clear all references to sensitive data
-  sessionState.userId = null
-  sessionState.derivedKey = null
-  sessionState.decryptedVault = null
-  sessionState.isLocked = true
-  
-  if (autoLockTimer !== null) {
-    clearTimeout(autoLockTimer)
-    autoLockTimer = null
+// ============================================================================
+// Session Management
+// ============================================================================
+
+let sessionToken: string | null = null
+
+// ============================================================================
+// API Client Helpers
+// ============================================================================
+
+async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const headers: any = {
+    'Content-Type': 'application/json',
+    ...options.headers
   }
-  
-  // Notify popup that vault is locked
-  chrome.runtime.sendMessage({ type: 'VAULT_LOCKED' }).catch(() => {
-    // Popup might not be open, ignore error
-  })
+
+  if (sessionToken) {
+    headers['Authorization'] = `Bearer ${sessionToken}`
+  }
+
+  const response = await fetch(`${BACKEND_URL}${endpoint}`, { ...options, headers })
+
+  if (!response.ok) {
+    let errorMessage = `Request failed: ${response.statusText}`
+    try {
+      const errorData = await response.json()
+      errorMessage = errorData.message || errorData.error || errorMessage
+    } catch (e) { }
+    throw new Error(errorMessage)
+  }
+
+  return response.json()
 }
 
 // ============================================================================
@@ -110,7 +123,6 @@ interface AddPasswordMessage {
   type: 'ADD_PASSWORD'
   entry: PasswordEntry
 }
-
 
 interface GetVaultMessage {
   type: 'GET_VAULT'
@@ -144,11 +156,10 @@ interface RegisterUserMessage {
   masterPassword: string
 }
 
-
-type BackgroundMessage = 
-  | UnlockVaultMessage 
-  | AddPasswordMessage 
-  | GetVaultMessage 
+type BackgroundMessage =
+  | UnlockVaultMessage
+  | AddPasswordMessage
+  | GetVaultMessage
   | LockVaultMessage
   | GetStatusMessage
   | HeartbeatMessage
@@ -156,20 +167,16 @@ type BackgroundMessage =
   | UpdatePasswordMessage
   | RegisterUserMessage
 
-
-
 chrome.runtime.onMessage.addListener((message: BackgroundMessage, sender, sendResponse) => {
   console.log('[Background] Received message:', message.type)
-  
-  // Handle messages asynchronously
+
   handleMessage(message, sender)
     .then(sendResponse)
     .catch((error) => {
       console.error('[Background] Error handling message:', error)
       sendResponse({ success: false, error: error.message })
     })
-  
-  // Return true to indicate async response
+
   return true
 })
 
@@ -177,35 +184,31 @@ async function handleMessage(message: BackgroundMessage, sender: chrome.runtime.
   switch (message.type) {
     case 'UNLOCK_VAULT':
       return await handleUnlockVault(message)
-    
     case 'ADD_PASSWORD':
       return await handleAddPassword(message)
-    
     case 'DELETE_PASSWORD':
       return await handleDeletePassword(message)
-
     case 'UPDATE_PASSWORD':
       return await handleUpdatePassword(message)
-    
     case 'GET_VAULT':
       return handleGetVault()
-    
     case 'LOCK_VAULT':
       return handleLockVault()
-    
     case 'GET_STATUS':
       return handleGetStatus()
-    
     case 'HEARTBEAT':
-      resetAutoLockTimer() // Keep session alive
+      updateLastActivity()
       return { success: true }
-    
     case 'REGISTER_USER':
       return await handleRegisterUser(message)
-
     default:
-      return Promise.resolve({ success: false, error: 'Unknown message type' })
+      return { success: false, error: 'Unknown message type' }
   }
+}
+
+function updateLastActivity() {
+  sessionState.lastActivity = Date.now()
+  resetAutoLockTimer()
 }
 
 // ============================================================================
@@ -215,79 +218,84 @@ async function handleMessage(message: BackgroundMessage, sender: chrome.runtime.
 async function handleUnlockVault(message: UnlockVaultMessage): Promise<{ success: boolean; error?: string }> {
   try {
     console.log('[Background] Unlocking vault for user:', message.userId)
-    
-    // Step 1: Fetch encrypted vault from backend
-    const response = await fetch(`${BACKEND_URL}/api/vault/${message.userId}`)
-    
-    if (!response.ok) {
-      if (response.status === 404) {
-        // New user - create empty vault
-        console.log('[Background] No vault found, creating new vault')
-        
-        // Derive key from master password
-        const derivedKey = await deriveKey(message.masterPassword)
-        
-        // Create empty vault
-        const emptyVault: PasswordEntry[] = []
-        // SECURITY: We use JSON.stringify(emptyVault) to treat the whole list as the secret payload
-        const encryptedVault = await encrypt({ site: 'VAULT_ROOT', username: 'SYSTEM', password: JSON.stringify(emptyVault) }, derivedKey)
-        
-        // Save to backend
-        await saveVault(message.userId, encryptedVault, [])
-        
-        // Store in session
-        sessionState.userId = message.userId
-        sessionState.derivedKey = derivedKey
-        sessionState.decryptedVault = emptyVault
-        sessionState.isLocked = false
-        
-        resetAutoLockTimer()
-        
-        return { success: true }
+    const email = message.userId
 
+    // Step 1: Get user salt from backend
+    const { salt: saltHex } = await apiRequest<{ salt: string }>(`/auth/salt/${encodeURIComponent(email)}`)
+    const saltBuffer = new Uint8Array(saltHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)))
+
+    // Step 2: Derive keys
+    // SECURITY NOTE: Dashboard currently uses email as salt for vault encryption in prototype
+    // For compatibility, we'll try to decrypt with the real password first, then fallback to email
+    // if decryption fails, as the dashboard currently has this "feature".
+    let derivedKeys = await deriveKey(message.masterPassword, saltBuffer)
+
+    // Step 3: Login to get session token
+    // Match dashboard's SHA-256(verifier + challenge) logic
+    const encoder = new TextEncoder()
+    const proofData = encoder.encode("auth-proof")
+    const verifierBuffer = await crypto.subtle.sign("HMAC", derivedKeys.authKey, proofData)
+    const verifierHex = Array.from(new Uint8Array(verifierBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+
+    const challengeBuffer = crypto.getRandomValues(new Uint8Array(16))
+    const challengeHex = Array.from(challengeBuffer).map(b => b.toString(16).padStart(2, '0')).join('')
+
+    const combined = encoder.encode(verifierHex + challengeHex)
+    const clientProofBuffer = await crypto.subtle.digest("SHA-256", combined)
+    const clientProof = Array.from(new Uint8Array(clientProofBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+
+    const authResponse = await apiRequest<{ sessionToken: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        challenge: challengeHex,
+        clientProof
+      })
+    })
+
+    sessionToken = authResponse.sessionToken
+
+    // Step 4: Pull vault
+    // Using simple vault endpoint for broad compatibility
+    const data = await apiRequest<any>(`/api/vault/${encodeURIComponent(email)}`)
+
+    let decryptedVault: PasswordEntry[] = []
+
+    if (data && data.ciphertext) {
+      const encryptedVault: EncryptedVault = {
+        ciphertext: data.ciphertext,
+        iv: data.iv,
+        salt: data.salt,
+        algorithm: 'AES-256-GCM',
+        derivationAlgorithm: 'Argon2id'
       }
-      
-      throw new Error(`Backend error: ${response.statusText}`)
+
+      try {
+        const decryptedRoot = await decrypt(encryptedVault, derivedKeys)
+        decryptedVault = JSON.parse(decryptedRoot.password)
+      } catch (e) {
+        console.warn('[Background] Decryption with master password failed, trying email-key fallback (Dashboard compatibility)')
+        // Fallback to email as password (compatibility with Dashboard's current prototype state)
+        const fallbackKeys = await deriveKey(email, saltBuffer)
+        const decryptedRoot = await decrypt(encryptedVault, fallbackKeys)
+        decryptedVault = JSON.parse(decryptedRoot.password)
+        // Switch to fallback keys for this session
+        derivedKeys = fallbackKeys
+      }
     }
-    
-    const encryptedVault: EncryptedVault = await response.json()
-    
-    // Step 2: Derive key from master password
-    // SECURITY: Use the salt from the encrypted vault
-    const salt = base64ToBuffer(encryptedVault.salt)
-    const derivedKey = await deriveKey(message.masterPassword, salt)
-    
-    // Step 3: Decrypt vault
-    // This will throw if the password is incorrect
-    const rootEntry = await decrypt(encryptedVault, derivedKey)
-    const decryptedVault: PasswordEntry[] = JSON.parse(rootEntry.password) 
-    // Step 4: Store in memory (NEVER persist to disk)
-    sessionState.userId = message.userId
-    sessionState.derivedKey = derivedKey
+
+    sessionState.userId = email
+    sessionState.derivedKey = derivedKeys
     sessionState.decryptedVault = decryptedVault
     sessionState.isLocked = false
 
-    
-    // Step 5: Start auto-lock timer
-    resetAutoLockTimer()
-    
-    console.log('[Background] Vault unlocked successfully')
-    
+    updateLastActivity()
     return { success: true }
-    
+
   } catch (error: any) {
     console.error('[Background] Failed to unlock vault:', error)
-    
-    // Clear any partial state
-    sessionState.userId = null
-    sessionState.derivedKey = null
-    sessionState.decryptedVault = null
-    sessionState.isLocked = true
-    
-    return { 
-      success: false, 
-      error: error.message || 'Failed to unlock vault. Check your master password.' 
-    }
+    lockVault()
+    return { success: false, error: error.message || 'Failed to unlock vault' }
   }
 }
 
@@ -297,232 +305,138 @@ async function handleUnlockVault(message: UnlockVaultMessage): Promise<{ success
 
 async function handleRegisterUser(message: RegisterUserMessage): Promise<{ success: boolean; error?: string }> {
   try {
-    console.log('[Background] Registering new user:', message.email)
-    
-    // Step 1: Generate salt and derive keys
-    const salt = crypto.getRandomValues(new Uint8Array(16))
-    const derivedKey = await deriveKey(message.masterPassword, salt)
-    
-    // Step 2: Create auth proof (verifier)
+    const saltBuffer = crypto.getRandomValues(new Uint8Array(16))
+    const derivedKeys = await deriveKey(message.masterPassword, saltBuffer)
+    const saltHex = Array.from(saltBuffer).map(b => b.toString(16).padStart(2, '0')).join('')
+
     const encoder = new TextEncoder()
-    const proofData = encoder.encode("auth-proof")
-    const proofBuffer = await crypto.subtle.sign("HMAC", derivedKey.authKey, proofData)
-    const verifier = Array.from(new Uint8Array(proofBuffer))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("")
+    const verifierBuffer = await crypto.subtle.sign("HMAC", derivedKeys.authKey, encoder.encode("auth-proof"))
+    const verifierHex = Array.from(new Uint8Array(verifierBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
 
-    const saltHex = Array.from(salt)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("")
-
-    // Step 3: Register with backend
-    const regResponse = await fetch(`${BACKEND_URL}/auth/register`, {
+    await apiRequest('/auth/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: message.email,
         salt: saltHex,
-        verifier: verifier
+        verifier: verifierHex
       })
     })
 
-    if (!regResponse.ok) {
-      const errorData = await regResponse.json()
-      throw new Error(errorData.message || errorData.error || 'Registration failed')
-    }
-
-    const regData = await regResponse.json()
-    console.log('[Background] User registered successfully, ID:', regData.userId)
-
-    // Step 4: Initialize an empty vault for the new user
-    const emptyVault: PasswordEntry[] = []
-    const encryptedVault = await encrypt({ 
-      site: 'VAULT_ROOT', 
-      username: 'SYSTEM', 
-      password: JSON.stringify(emptyVault) 
-    }, derivedKey)
-    
-    // Save to backend
-    await saveVault(message.email, encryptedVault, [])
-    
-    // Step 5: Store in memory to "log in" the user immediately
-    sessionState.userId = message.email
-    sessionState.derivedKey = derivedKey
-    sessionState.decryptedVault = emptyVault
-    sessionState.isLocked = false
-    
-    resetAutoLockTimer()
-    
-    return { success: true }
-
+    return await handleUnlockVault({
+      type: 'UNLOCK_VAULT',
+      masterPassword: message.masterPassword,
+      userId: message.email
+    })
   } catch (error: any) {
-    console.error('[Background] Registration failed:', error)
     return { success: false, error: error.message }
   }
 }
 
 // ============================================================================
-// Add Password Handler
+// Handlers
 // ============================================================================
 
 async function handleAddPassword(message: AddPasswordMessage): Promise<{ success: boolean; error?: string }> {
-  if (sessionState.isLocked || !sessionState.derivedKey || !sessionState.decryptedVault) {
-    return { success: false, error: 'Vault is locked' }
-  }
-  
+  if (sessionState.isLocked || !sessionState.decryptedVault) return { success: false, error: 'Locked' }
   try {
-    // Add entry to decrypted vault
     sessionState.decryptedVault.push(message.entry)
-    
-    // Re-encrypt and save to backend
-    const encryptedVault = await encrypt({ site: 'VAULT_ROOT', username: 'SYSTEM', password: JSON.stringify(sessionState.decryptedVault) }, sessionState.derivedKey) 
-    
-    // Extract plaintext labels for server identification
-    const labels = sessionState.decryptedVault.map(e => e.siteName)
-    
-    await saveVault(sessionState.userId!, encryptedVault, labels)
-    
-    resetAutoLockTimer()
-    
+    await syncVaultToBackend()
+    updateLastActivity()
     return { success: true }
-    
   } catch (error: any) {
-    console.error('[Background] Failed to add password:', error)
     return { success: false, error: error.message }
   }
 }
-
-// ============================================================================
-// Get Vault Handler
-// ============================================================================
-
-function handleGetVault(): { success: boolean; vault?: PasswordEntry[]; error?: string } {
-  if (sessionState.isLocked || !sessionState.decryptedVault) {
-    return { success: false, error: 'Vault is locked' }
-  }
-  
-  resetAutoLockTimer()
-  
-  return { 
-    success: true, 
-    vault: sessionState.decryptedVault 
-  }
-}
-
-
-// ============================================================================
-// Delete Password Handler
-// ============================================================================
 
 async function handleDeletePassword(message: DeletePasswordMessage): Promise<{ success: boolean; error?: string }> {
-  if (sessionState.isLocked || !sessionState.derivedKey || !sessionState.decryptedVault) {
-    return { success: false, error: 'Vault is locked' }
-  }
-
+  if (sessionState.isLocked || !sessionState.decryptedVault) return { success: false, error: 'Locked' }
   try {
-    // Remove entry from decrypted vault
     sessionState.decryptedVault = sessionState.decryptedVault.filter(e => e.id !== message.entryId)
-
-    // Re-encrypt and save to backend
-    const encryptedVault = await encrypt({ site: 'VAULT_ROOT', username: 'SYSTEM', password: JSON.stringify(sessionState.decryptedVault) }, sessionState.derivedKey)
-    
-    const labels = sessionState.decryptedVault.map(e => e.siteName)
-    await saveVault(sessionState.userId!, encryptedVault, labels)
-
-    resetAutoLockTimer()
+    await syncVaultToBackend()
+    updateLastActivity()
     return { success: true }
-
   } catch (error: any) {
-    console.error('[Background] Failed to delete password:', error)
     return { success: false, error: error.message }
   }
 }
-
-// ============================================================================
-// Update Password Handler
-// ============================================================================
 
 async function handleUpdatePassword(message: UpdatePasswordMessage): Promise<{ success: boolean; error?: string }> {
-  if (sessionState.isLocked || !sessionState.derivedKey || !sessionState.decryptedVault) {
-    return { success: false, error: 'Vault is locked' }
-  }
-
+  if (sessionState.isLocked || !sessionState.decryptedVault) return { success: false, error: 'Locked' }
   try {
-    // Update entry in decrypted vault
-    const index = sessionState.decryptedVault.findIndex(e => e.id === message.entry.id)
-    if (index === -1) {
-      return { success: false, error: 'Entry not found' }
+    const idx = sessionState.decryptedVault.findIndex(e => e.id === message.entry.id)
+    if (idx !== -1) {
+      sessionState.decryptedVault[idx] = { ...message.entry, updatedAt: new Date().toISOString() }
+      await syncVaultToBackend()
+      updateLastActivity()
+      return { success: true }
     }
-
-    sessionState.decryptedVault[index] = {
-      ...message.entry,
-      updatedAt: new Date().toISOString()
-    }
-
-    // Re-encrypt and save to backend
-    const encryptedVault = await encrypt({ site: 'VAULT_ROOT', username: 'SYSTEM', password: JSON.stringify(sessionState.decryptedVault) }, sessionState.derivedKey)
-    
-    const labels = sessionState.decryptedVault.map(e => e.siteName)
-    await saveVault(sessionState.userId!, encryptedVault, labels)
-
-    resetAutoLockTimer()
-    return { success: true }
-
+    return { success: false, error: 'Not found' }
   } catch (error: any) {
-    console.error('[Background] Failed to update password:', error)
     return { success: false, error: error.message }
   }
 }
 
+function handleGetVault() {
+  if (sessionState.isLocked || !sessionState.decryptedVault) return { success: false, error: 'Locked' }
+  updateLastActivity()
+  return { success: true, vault: sessionState.decryptedVault }
+}
 
-// ============================================================================
-// Lock Vault Handler
-// ============================================================================
-
-function handleLockVault(): { success: boolean } {
+function handleLockVault() {
   lockVault()
   return { success: true }
 }
 
-// ============================================================================
-// Get Status Handler
-// ============================================================================
-
-function handleGetStatus(): { isLocked: boolean } {
+function handleGetStatus() {
   return { isLocked: sessionState.isLocked }
 }
 
-async function saveVault(userId: string, encryptedVault: EncryptedVault, labels: string[]): Promise<void> {
-  const response = await fetch(`${BACKEND_URL}/api/vault/${userId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+async function syncVaultToBackend(): Promise<void> {
+  if (!sessionState.userId || !sessionState.derivedKey || !sessionState.decryptedVault) throw new Error('State error')
+
+  const encryptedVault = await encrypt({
+    site: 'VAULT_ROOT',
+    username: 'SYSTEM',
+    password: JSON.stringify(sessionState.decryptedVault)
+  }, sessionState.derivedKey)
+
+  const metadata = await apiRequest<{ metadata: any }>(`/sync/metadata/${encodeURIComponent(sessionState.userId)}/${EXTENSION_DEVICE_ID}`).catch(() => ({ metadata: null }))
+  const version = (metadata.metadata?.vaultVersion || 0) + 1
+
+  await apiRequest('/sync/push', {
+    method: 'POST',
     body: JSON.stringify({
-      encryptedVault,
-      labels
+      userId: sessionState.userId,
+      deviceId: EXTENSION_DEVICE_ID,
+      vault: {
+        ciphertext: encryptedVault.ciphertext,
+        iv: encryptedVault.iv,
+        salt: encryptedVault.salt,
+        authTag: 'AES-GCM',
+        version,
+        timestamp: Date.now(),
+        nonce: crypto.randomUUID()
+      }
     })
   })
-
-  if (!response.ok) {
-    throw new Error(`Failed to save vault: ${response.statusText}`)
-  }
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
+function lockVault(): void {
+  sessionState.userId = null
+  sessionState.derivedKey = null
+  sessionState.decryptedVault = null
+  sessionState.isLocked = true
+  sessionToken = null
+  if (autoLockTimer) clearTimeout(autoLockTimer)
+  autoLockTimer = null
+  chrome.runtime.sendMessage({ type: 'VAULT_LOCKED' }).catch(() => { })
+}
 
 function base64ToBuffer(base64: string): Uint8Array {
-  try {
-    const binary = atob(base64)
-    const buffer = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) {
-        buffer[i] = binary.charCodeAt(i)
-    }
-    return buffer
-  } catch (error) {
-    console.error('[Background] Failed to decode base64:', error)
-    return new Uint8Array(0)
-  }
+  const binary = atob(base64)
+  const buffer = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i)
+  return buffer
 }
 
 // ============================================================================

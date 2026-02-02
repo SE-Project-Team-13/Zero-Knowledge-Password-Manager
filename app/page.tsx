@@ -9,13 +9,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { 
-  Shield, 
-  Lock, 
-  Key, 
-  Mail, 
-  Eye, 
-  EyeOff, 
+import {
+  Shield,
+  Lock,
+  Key,
+  Mail,
+  Eye,
+  EyeOff,
   LogIn,
   UserPlus,
   ShieldCheck,
@@ -27,7 +27,7 @@ import { toast } from "sonner"
 export default function AuthPage() {
   const router = useRouter()
   const [session, actions] = useVaultSync()
-  
+
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -37,7 +37,7 @@ export default function AuthPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!email || !password) {
       toast.error("Please fill in all fields")
       return
@@ -102,13 +102,13 @@ export default function AuthPage() {
               {isLogin ? "Welcome Back" : "Create Account"}
             </CardTitle>
             <CardDescription>
-              {isLogin 
-                ? "Enter your credentials to unlock your vault" 
+              {isLogin
+                ? "Enter your credentials to unlock your vault"
                 : "Start securing your passwords with zero-knowledge encryption"}
             </CardDescription>
           </CardHeader>
-          
-          <form onSubmit={handleSubmit}>
+
+          <form onSubmit={handleSubmit} style={{ position: "relative" }} suppressHydrationWarning>
             <CardContent className="space-y-4">
               {/* Email Field */}
               <div className="space-y-2">
@@ -200,8 +200,8 @@ export default function AuthPage() {
 
             <CardFooter className="flex flex-col gap-4">
               {/* Submit Button */}
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full h-11 text-base font-semibold"
                 disabled={isSubmitting}
               >
