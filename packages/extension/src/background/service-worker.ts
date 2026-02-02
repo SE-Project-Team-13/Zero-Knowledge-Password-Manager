@@ -394,29 +394,25 @@ function handleGetStatus() {
 async function syncVaultToBackend(): Promise<void> {
   if (!sessionState.userId || !sessionState.derivedKey || !sessionState.decryptedVault) throw new Error('State error')
 
-  const encryptedVault = await encrypt({
+  // Prepare the vault entry wrapper exactly like the dashboard
+  const vaultEntry = {
     site: 'VAULT_ROOT',
     username: 'SYSTEM',
     password: JSON.stringify(sessionState.decryptedVault)
-  }, sessionState.derivedKey)
+  }
 
-  const metadata = await apiRequest<{ metadata: any }>(`/sync/metadata/${encodeURIComponent(sessionState.userId)}/${EXTENSION_DEVICE_ID}`).catch(() => ({ metadata: null }))
-  const version = (metadata.metadata?.vaultVersion || 0) + 1
+  // Encrypt the vault data
+  const encryptedVault = await encrypt(vaultEntry, sessionState.derivedKey)
 
-  await apiRequest('/sync/push', {
-    method: 'POST',
+  // Generate labels for search (matching dashboard logic)
+  const labels = sessionState.decryptedVault.map(e => e.siteName.toLowerCase())
+
+  // Send to the simple vault endpoint (same as dashboard)
+  await apiRequest(`/api/vault/${encodeURIComponent(sessionState.userId)}`, {
+    method: 'PUT',
     body: JSON.stringify({
-      userId: sessionState.userId,
-      deviceId: EXTENSION_DEVICE_ID,
-      vault: {
-        ciphertext: encryptedVault.ciphertext,
-        iv: encryptedVault.iv,
-        salt: encryptedVault.salt,
-        authTag: 'AES-GCM',
-        version,
-        timestamp: Date.now(),
-        nonce: crypto.randomUUID()
-      }
+      encryptedVault,
+      labels
     })
   })
 }

@@ -38,8 +38,12 @@ import { toast } from "sonner"
 interface DecryptedEntry {
   id: string
   site: string
+  siteUrl: string
   username: string
   password: string
+  notes: string
+  createdAt: string
+  updatedAt: string
   lastUpdated: string
   isPasswordVisible: boolean
 }
@@ -420,7 +424,10 @@ export default function DashboardPage() {
 
   const handleAddEntry = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newEntry.site || !newEntry.username || !newEntry.password) return
+    if (!newEntry.site || !newEntry.username || !newEntry.password || !newEntry.url) {
+      toast.error("Please fill in all required fields (Site, URL, Username, Password)")
+      return
+    }
 
     setIsAddingEntry(true)
     try {
@@ -442,12 +449,12 @@ export default function DashboardPage() {
       // Add to existing entries
       const updatedEntries = [...decryptedEntries.map(e => ({
         id: e.id,
-        siteName: (e as any).siteName || e.site,
-        siteUrl: (e as any).siteUrl || '',
+        siteName: e.site,
+        siteUrl: e.siteUrl,
         username: e.username,
         password: e.password,
-        notes: (e as any).notes || '',
-        createdAt: (e as any).createdAt || new Date().toISOString(),
+        notes: e.notes,
+        createdAt: e.createdAt,
         updatedAt: new Date().toISOString()
       })), newCredential]
 
@@ -508,8 +515,12 @@ export default function DashboardPage() {
       const displayEntry: DecryptedEntry = {
         id: entryId,
         site: newEntry.site,
+        siteUrl: newEntry.url,
         username: newEntry.username,
         password: newEntry.password,
+        notes: newEntry.notes,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         lastUpdated: new Date().toLocaleDateString(),
         isPasswordVisible: false
       }
@@ -533,6 +544,10 @@ export default function DashboardPage() {
 
   const handleSaveEdit = async () => {
     if (!editingEntry) return
+    if (!editingEntry.site || !editingEntry.username || !editingEntry.password || !editingEntry.siteUrl) {
+      toast.error("Please fill in all required fields")
+      return
+    }
 
     setIsSavingEdit(true)
     try {
@@ -561,14 +576,15 @@ export default function DashboardPage() {
       }
 
       // Prepare credentials for encryption
+      // Prepare credentials for encryption
       const credentialsForEncryption = updatedEntries.map(e => ({
         id: e.id,
-        siteName: (e as any).siteName || e.site,
-        siteUrl: (e as any).siteUrl || '',
+        siteName: e.site,
+        siteUrl: e.siteUrl,
         username: e.username,
         password: e.password,
-        notes: (e as any).notes || '',
-        createdAt: (e as any).createdAt || new Date().toISOString(),
+        notes: e.notes,
+        createdAt: e.createdAt,
         updatedAt: new Date().toISOString()
       }))
 
@@ -646,14 +662,15 @@ export default function DashboardPage() {
       }
 
       // Prepare credentials for encryption
+      // Prepare credentials for encryption
       const credentialsForEncryption = updatedEntries.map(e => ({
         id: e.id,
-        siteName: (e as any).siteName || e.site,
-        siteUrl: (e as any).siteUrl || '',
+        siteName: e.site,
+        siteUrl: e.siteUrl,
         username: e.username,
         password: e.password,
-        notes: (e as any).notes || '',
-        createdAt: (e as any).createdAt || new Date().toISOString(),
+        notes: e.notes,
+        createdAt: e.createdAt,
         updatedAt: new Date().toISOString()
       }))
 
@@ -999,6 +1016,7 @@ export default function DashboardPage() {
                       placeholder="https://example.com"
                       value={newEntry.url || ''}
                       onChange={(e) => setNewEntry({ ...newEntry, url: e.target.value })}
+                      required
                     />
                   </div>
 
@@ -1249,8 +1267,9 @@ export default function DashboardPage() {
                   id="edit-url"
                   type="url"
                   placeholder="https://example.com"
-                  value={(editingEntry as any).siteUrl || ''}
-                  onChange={(e) => setEditingEntry({ ...editingEntry, siteUrl: e.target.value } as any)}
+                  value={editingEntry.siteUrl || ''}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, siteUrl: e.target.value })}
+                  required
                 />
               </div>
 
@@ -1311,8 +1330,8 @@ export default function DashboardPage() {
                   id="edit-notes"
                   placeholder="Additional information"
                   rows={3}
-                  value={(editingEntry as any).notes || ''}
-                  onChange={(e) => setEditingEntry({ ...editingEntry, notes: e.target.value } as any)}
+                  value={editingEntry.notes || ''}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, notes: e.target.value })}
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
                 />
               </div>
