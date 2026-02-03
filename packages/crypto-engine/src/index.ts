@@ -7,19 +7,19 @@
 export {
   deriveKey,
   verifyPassword,
-} from "./argon2.js"
+} from "./argon2"
 
 export {
   encrypt,
   decrypt,
-} from "./aes.js"
+} from "./aes"
 
 export {
   encryptVault,
   decryptVault,
   validateVaultEntry,
   createVaultEntry,
-} from "./vault.js"
+} from "./vault"
 
 export type {
   DerivedKey,
@@ -27,4 +27,4 @@ export type {
   EncryptedVault,
   Argon2idOptions,
   DecryptResult,
-} from "./types.js"
+} from "./types"

@@ -8,9 +8,9 @@
  * - Server cannot derive keys from ciphertext alone
  */
 
-import { deriveKey } from "./argon2.js"
-import { encrypt, decrypt } from "./aes.js"
-import type { VaultEntry, EncryptedVault, Argon2idOptions, DecryptResult } from "./types.js"
+import { deriveKey } from "./argon2"
+import { encrypt, decrypt } from "./aes"
+import type { VaultEntry, EncryptedVault, Argon2idOptions, DecryptResult } from "./types"
 
 /**
  * Complete encryption workflow: password → key → encrypted vault entry

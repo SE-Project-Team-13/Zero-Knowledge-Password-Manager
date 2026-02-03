@@ -10,7 +10,7 @@
  */
 
 import { argon2id } from "@noble/hashes/argon2"
-import type { Argon2idOptions, DerivedKey } from "./types.js"
+import type { Argon2idOptions, DerivedKey } from "./types"
 
 /**
  * Default Argon2id parameters optimized for password hashing in browsers.

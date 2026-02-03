@@ -26,6 +26,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@password-manager/crypto-engine": [
+        "./packages/crypto-engine/src/index.ts"
       ]
     }
   },

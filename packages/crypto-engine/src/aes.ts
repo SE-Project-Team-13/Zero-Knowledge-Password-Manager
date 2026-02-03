@@ -11,7 +11,7 @@
  * - No plaintext is ever logged or stored
  */
 
-import type { DerivedKey, EncryptedVault, VaultEntry } from "./types.js"
+import type { DerivedKey, EncryptedVault, VaultEntry } from "./types"
 
 const ALGORITHM = "AES-GCM"
 const IV_LENGTH = 12 // 96 bits - recommended for GCM
