@@ -18,7 +18,7 @@ const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/vault"
 
 async function start() {
   try {
-    console.log("[v0] Starting blind synchronization backend with MongoDB...")
+    console.log("[VaultSync] Starting blind synchronization backend with MongoDB...")
 
     // Initialize database
     await connectToDatabase(MONGODB_URI)
@@ -43,7 +43,7 @@ async function start() {
 
     // Request logging
     app.use((req, res, next) => {
-      console.log(`[v0] ${req.method} ${req.path}`)
+      console.log(`[VaultSync] ${req.method} ${req.path}`)
       next()
     })
 
@@ -67,7 +67,7 @@ async function start() {
     app.put("/api/vault/:userId", async (req, res) => {
       const { userId } = req.params
       try {
-        console.log(`[v0] Extension saving vault for ${userId}...`)
+        console.log(`[VaultSync] Extension saving vault for ${userId}...`)
         
         // Extract data and labels (if provided)
         const { encryptedVault, labels } = req.body
@@ -82,10 +82,10 @@ async function start() {
           { upsert: true }
         )
         
-        console.log(`[v0] Vault saved to MongoDB for ${userId} with ${labels?.length || 0} labels`)
+        console.log(`[VaultSync] Vault saved to MongoDB for ${userId} with ${labels?.length || 0} labels`)
         res.json({ success: true })
       } catch (error) {
-        console.error(`[v0] Failed to save vault for ${userId}:`, error)
+        console.error(`[VaultSync] Failed to save vault for ${userId}:`, error)
         res.status(500).json({ error: "Failed to save vault" })
       }
     })
@@ -97,10 +97,10 @@ async function start() {
       try {
         const { userId } = req.params
         await SimpleVault.deleteOne({ userId })
-        console.log(`[v0] Vault deleted for ${userId}`)
+        console.log(`[VaultSync] Vault deleted for ${userId}`)
         res.json({ success: true, message: "Vault deleted" })
       } catch (error) {
-        console.error(`[v0] Failed to delete vault:`, error)
+        console.error(`[VaultSync] Failed to delete vault:`, error)
         res.status(500).json({ error: "Failed to delete vault" })
       }
     })
@@ -125,7 +125,7 @@ async function start() {
 
     // Error handler
     app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      console.error("[v0] Server error:", err)
+      console.error("[VaultSync] Server error:", err)
       res.status(500).json({
         error: "Internal server error",
         code: "INTERNAL_ERROR",
@@ -134,12 +134,12 @@ async function start() {
 
     // Start server
     const server = app.listen(PORT, () => {
-      console.log(`[v0] Blind sync backend listening on port ${PORT}`)
+      console.log(`[VaultSync] Blind sync backend listening on port ${PORT}`)
     })
 
     // Graceful shutdown
     const shutdown = async () => {
-      console.log("[v0] Shutting down gracefully...")
+      console.log("[VaultSync] Shutting down gracefully...")
       server.close(async () => {
         await closeDatabase()
         process.exit(0)
@@ -149,7 +149,7 @@ async function start() {
     process.on("SIGTERM", shutdown)
     process.on("SIGINT", shutdown)
   } catch (error) {
-    console.error("[v0] Failed to start server:", error)
+    console.error("[VaultSync] Failed to start server:", error)
     process.exit(1)
   }
 }

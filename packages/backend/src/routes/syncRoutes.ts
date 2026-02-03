@@ -31,7 +31,7 @@ async function authMiddleware(req: Request, res: Response, next: Function) {
     ;(req as any).userId = validation.userId
     next()
   } catch (error) {
-    console.error("[v0] Auth middleware error:", error)
+    console.error("[VaultSync] Auth middleware error:", error)
     return res.status(500).json({
       error: "Auth validation failed",
       code: "INTERNAL_ERROR",
@@ -74,7 +74,7 @@ export function createSyncRouter(): Router {
         vaultId: result.vaultId,
       })
     } catch (error) {
-      console.error("[v0] Push error:", error)
+      console.error("[VaultSync] Push error:", error)
       return res.status(500).json({
         error: "Push failed",
         code: "INTERNAL_ERROR",
@@ -122,7 +122,7 @@ export function createSyncRouter(): Router {
 
       return res.status(200).json(response)
     } catch (error) {
-      console.error("[v0] Pull error:", error)
+      console.error("[VaultSync] Pull error:", error)
       return res.status(500).json({
         error: "Pull failed",
         code: "INTERNAL_ERROR",

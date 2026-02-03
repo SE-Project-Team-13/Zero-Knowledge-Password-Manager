@@ -55,7 +55,7 @@ export function createAuthRouter(): Router {
         throw dbError
       }
     } catch (error) {
-      console.error("[v0] Register error:", error)
+      console.error("[VaultSync] Register error:", error)
       return res.status(500).json({
         error: "Registration failed",
         code: "INTERNAL_ERROR",
@@ -106,7 +106,7 @@ export function createAuthRouter(): Router {
 
       return res.status(200).json(response)
     } catch (error) {
-      console.error("[v0] Login error:", error)
+      console.error("[VaultSync] Login error:", error)
       return res.status(500).json({
         error: "Login failed",
         code: "INTERNAL_ERROR",
@@ -134,7 +134,7 @@ export function createAuthRouter(): Router {
 
       return res.status(200).json({ salt })
     } catch (error) {
-      console.error("[v0] Salt fetch error:", error)
+      console.error("[VaultSync] Salt fetch error:", error)
       return res.status(500).json({
         error: "Failed to fetch salt",
         code: "INTERNAL_ERROR",
