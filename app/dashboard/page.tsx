@@ -40,8 +40,7 @@ import {
   X,
   Sun,
   Moon,
-  Laptop,
-  Loader2,
+  Loader2
 } from "lucide-react";
 import {
   deriveKey,

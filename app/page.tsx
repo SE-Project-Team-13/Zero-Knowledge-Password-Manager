@@ -23,8 +23,7 @@ import {
   AlertCircle,
   Loader2,
   Sun,
-  Moon,
-  Laptop
+  Moon
 } from "lucide-react"
 import { toast } from "sonner"
 
