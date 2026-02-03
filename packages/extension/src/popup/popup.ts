@@ -327,16 +327,15 @@ function createVaultItem(entry: PasswordEntry, index: number) {
   div.className = "vault-item";
 
   div.innerHTML = `
-    <div class="vault-item-header">
+    <div class="vault-item-content">
       <div class="vault-item-title">${escapeHtml(entry.siteName)}</div>
-      <div class="vault-item-actions">
-
-        <button class="action-btn delete-btn delete">Delete</button>
-        <button class="copy-btn">Copy</button>
-      </div>
+      <div class="vault-item-url">${escapeHtml(entry.siteUrl)}</div>
+      <div class="vault-item-username">${escapeHtml(entry.username)}</div>
     </div>
-    <div class="vault-item-url">${escapeHtml(entry.siteUrl)}</div>
-    <div class="vault-item-username">${escapeHtml(entry.username)}</div>
+    <div class="vault-item-actions">
+      <button class="action-btn delete-btn delete">Delete</button>
+      <button class="copy-btn">Copy</button>
+    </div>
   `;
 
   // Add copy functionality

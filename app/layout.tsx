@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Outfit, Plus_Jakarta_Sans } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+const outfit = Outfit({ subsets: ["latin"], variable: '--font-outfit' });
+const plusJakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: '--font-jakarta' });
 
 export const metadata: Metadata = {
   title: 'Secure Vault',
@@ -29,6 +29,7 @@ export const metadata: Metadata = {
 }
 
 import { Toaster } from "sonner"
+import { ThemeProvider } from "@/components/theme-provider"
 
 export default function RootLayout({
   children,
@@ -37,10 +38,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`font-sans antialiased`}>
-        {children}
-        <Toaster position="top-right" richColors />
-        <Analytics />
+      <body className={`${outfit.variable} ${plusJakarta.variable} font-sans antialiased`}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <Toaster position="top-right" richColors closeButton duration={1000} />
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   )

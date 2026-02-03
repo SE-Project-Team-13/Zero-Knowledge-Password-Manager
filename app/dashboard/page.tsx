@@ -3,6 +3,8 @@
 import type React from "react"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useVaultSync } from "@/hooks/useVaultSync"
+import { useTheme } from "next-themes"
+import { formatDistanceToNow } from "date-fns"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,7 +30,10 @@ import {
   Trash2,
   Sparkles,
   Edit,
-  X
+  X,
+  Sun,
+  Moon,
+  Laptop
 } from "lucide-react"
 import { deriveKey, encryptVault, decryptVault } from "@password-manager/crypto-engine"
 import type { DerivedKey } from "@password-manager/crypto-engine"
@@ -67,6 +72,12 @@ const calculatePasswordStrength = (password: string) => {
 
 export default function DashboardPage() {
   const [session, actions] = useVaultSync()
+  const { setTheme, resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // UI State
   const [isUnlocked, setIsUnlocked] = useState(false)
@@ -759,24 +770,24 @@ export default function DashboardPage() {
   // --- Render OTP Verification State ---
   if (!isUnlocked) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4">
-        <Card className="w-full max-w-md border-2 border-primary/20 shadow-2xl bg-white/80 backdrop-blur-sm">
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-md border border-primary/20 shadow-2xl bg-card/50 backdrop-blur-sm">
           <CardHeader className="text-center space-y-3">
-            <div className="mx-auto bg-gradient-to-br from-primary/20 to-indigo-500/20 p-4 rounded-2xl w-fit mb-2">
-              <ShieldCheck className="h-14 w-14 text-primary" />
+            <div className="mx-auto bg-primary/10 p-4 rounded-2xl w-fit mb-2 border border-primary/20">
+              <ShieldCheck className="h-14 w-14 text-primary animate-pulse" />
             </div>
-            <CardTitle className="text-2xl font-bold bg-gradient-to-r from-primary to-indigo-600 bg-clip-text text-transparent">
-              Verify Your Identity
+            <CardTitle className="text-2xl font-bold text-foreground font-heading tracking-tight">
+              Verify Identity
             </CardTitle>
-            <CardDescription className="text-base">
-              Enter the 6-digit OTP sent to your registered email
+            <CardDescription className="text-muted-foreground">
+              Enter the 6-digit code sent to your email
             </CardDescription>
           </CardHeader>
 
           <form onSubmit={handleVerifyOTP} style={{ position: "relative" }} suppressHydrationWarning>
             <CardContent className="space-y-6">
               <div className="space-y-3">
-                <Label htmlFor="otp-input" className="text-sm font-semibold text-slate-700">
+                <Label htmlFor="otp-input" className="text-sm font-semibold text-foreground/80">
                   One-Time Password
                 </Label>
                 <div className="relative">
@@ -786,7 +797,7 @@ export default function DashboardPage() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={6}
-                    className="text-center text-2xl font-bold tracking-[0.5em] h-14 border-2 border-slate-200 focus:border-primary transition-all"
+                    className="text-center text-2xl font-bold tracking-[0.5em] h-14 bg-secondary/50 border-input focus:border-primary transition-all font-mono"
                     placeholder="000000"
                     value={otpCode}
                     onChange={(e) => {
@@ -799,7 +810,7 @@ export default function DashboardPage() {
                   />
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <p className="text-slate-500 flex items-center">
+                  <p className="text-muted-foreground flex items-center">
                     <Clock className="h-3 w-3 mr-1" />
                     {timeLeft > 0 ? `Code expires in ${formatTime(timeLeft)}` : 'Code expired'}
                   </p>
@@ -817,14 +828,14 @@ export default function DashboardPage() {
               </div>
 
               <div className="space-y-3 pt-2">
-                <Label htmlFor="password-input" className="text-sm font-semibold text-slate-700">
+                <Label htmlFor="password-input" className="text-sm font-semibold text-foreground/80">
                   Master Password
                 </Label>
                 <div className="relative">
                   <Input
                     id="password-input"
                     type={showMasterPassword ? "text" : "password"}
-                    className="pr-10 border-2 border-slate-200 focus:border-primary transition-all"
+                    className="pr-10 bg-secondary/50 border-input focus:border-primary transition-all"
                     placeholder="Enter your master password"
                     value={masterPassword}
                     onChange={(e) => setMasterPassword(e.target.value)}
@@ -834,30 +845,30 @@ export default function DashboardPage() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-slate-400 hover:text-slate-600"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-muted-foreground hover:text-foreground"
                     onClick={() => setShowMasterPassword(!showMasterPassword)}
                   >
                     {showMasterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
-                <p className="text-[10px] text-slate-400 italic">
+                <p className="text-[10px] text-muted-foreground italic">
                   Note: This is the password you used during registration.
                 </p>
               </div>
 
               {!otpSent && (
-                <Alert className="bg-yellow-50 border-yellow-200">
-                  <AlertCircle className="h-4 w-4 text-yellow-600" />
-                  <AlertDescription className="text-xs text-yellow-800">
+                <Alert className="bg-yellow-500/10 border-yellow-500/20 text-yellow-500">
+                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                  <AlertDescription className="text-xs">
                     <strong>Sending OTP...</strong> Please wait while we send the verification code to your email.
                   </AlertDescription>
                 </Alert>
               )}
 
               {otpSent && !process.env.NEXT_PUBLIC_SMTP_CONFIGURED && (
-                <Alert className="bg-blue-50 border-blue-200">
-                  <AlertCircle className="h-4 w-4 text-blue-600" />
-                  <AlertDescription className="text-xs text-blue-800">
+                <Alert className="bg-primary/10 border-primary/20 text-primary">
+                  <AlertCircle className="h-4 w-4 text-primary" />
+                  <AlertDescription className="text-xs text-primary">
                     <strong>Development Mode:</strong> Check the backend console for your OTP code.
                   </AlertDescription>
                 </Alert>
@@ -867,7 +878,7 @@ export default function DashboardPage() {
             <CardFooter className="flex flex-col gap-3">
               <Button
                 type="submit"
-                className="w-full h-12 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-600/90 text-white font-semibold shadow-lg"
+                className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-lg shadow-primary/20 transition-all font-heading tracking-wide"
                 disabled={isVerifyingOtp || otpCode.length !== 6 || timeLeft === 0}
               >
                 {isVerifyingOtp ? (
@@ -888,7 +899,7 @@ export default function DashboardPage() {
                 variant="ghost"
                 size="sm"
                 onClick={actions.logout}
-                className="text-slate-500 hover:text-red-500 hover:bg-red-50"
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               >
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout and clear session
@@ -907,78 +918,103 @@ export default function DashboardPage() {
   )
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col font-sans">
       {/* Top Navbar */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <div className="bg-primary/10 p-2 rounded-lg">
-            <ShieldCheck className="h-6 w-6 text-primary" />
+      <header className="bg-background/80 backdrop-blur-md border-b border-border sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
+              <ShieldCheck className="h-6 w-6 text-primary" />
+            </div>
+            <h1 className="text-xl font-bold text-foreground tracking-tight font-heading hidden md:block">
+              ZeroKnowledge <span className="text-primary">Vault</span>
+            </h1>
+            <div className="flex items-center bg-green-500/10 text-green-500 px-3 py-1 rounded-full text-xs font-medium border border-green-500/20 ml-2">
+              <Unlock className="h-3 w-3 mr-1" />
+              Unlocked
+            </div>
           </div>
-          <h1 className="text-xl font-bold text-slate-800 hidden md:block">ZeroKnowledge Vault</h1>
-          <div className="flex items-center bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium border border-green-200 ml-2">
-            <Unlock className="h-3 w-3 mr-1" />
-            Unlocked
-          </div>
-        </div>
 
-        <div className="flex items-center gap-4">
-          <div className="relative hidden sm:block">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <Input
-              placeholder="Search vault..."
-              className="pl-9 h-9 w-64 bg-slate-50 border-slate-200"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div className="flex items-center gap-4">
+            <div className="relative hidden sm:block">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search vault..."
+                className="pl-9 h-9 w-64 bg-secondary/50 border-input focus:border-primary text-sm"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              className="text-foreground border-border hover:bg-secondary"
+              title={mounted ? `Switch to ${resolvedTheme === "dark" ? "light" : "dark"} mode` : "Toggle theme"}
+            >
+              {!mounted ? (
+                <Sun className="h-[1.2rem] w-[1.2rem] opacity-0" />
+              ) : (
+                <>
+                  {resolvedTheme === "dark" ? (
+                    <Sun className="h-[1.2rem] w-[1.2rem] transition-all" />
+                  ) : (
+                    <Moon className="h-[1.2rem] w-[1.2rem] transition-all" />
+                  )}
+                </>
+              )}
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={lockVault} className="text-foreground hover:bg-secondary border-border">
+              <Lock className="mr-2 h-4 w-4" />
+              Lock
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => { lockVault(); actions.logout(); }} className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+              <LogOut className="h-5 w-5" />
+            </Button>
           </div>
-          <Button variant="outline" size="sm" onClick={lockVault} className="text-slate-600">
-            <Lock className="mr-2 h-4 w-4" />
-            Lock
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => { lockVault(); actions.logout(); }} className="text-red-500 hover:bg-red-50">
-            <LogOut className="h-5 w-5" />
-          </Button>
         </div>
       </header>
 
       <main className="flex-1 max-w-6xl mx-auto w-full p-6 space-y-8">
         {/* Statistics & Info Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="bg-gradient-to-br from-indigo-500 to-primary text-white border-none shadow-lg">
+          <Card className="bg-gradient-to-br from-primary/80 to-blue-900 border-none shadow-lg text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/20 rounded-full blur-3xl -mr-10 -mt-10"></div>
             <CardHeader className="pb-2">
-              <CardDescription className="text-white/80">Stored Credentials</CardDescription>
-              <CardTitle className="text-3xl font-bold">{decryptedEntries.length}</CardTitle>
+              <CardDescription className="text-white/70">Stored Credentials</CardDescription>
+              <CardTitle className="text-4xl font-bold tracking-tighter">{decryptedEntries.length}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center text-xs text-white/70">
+              <div className="flex items-center text-xs text-white/60">
                 <Clock className="h-3 w-3 mr-1" />
                 Updated just now
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200">
+          <Card className="border-border bg-card">
             <CardHeader className="pb-2">
-              <CardDescription>Security Status</CardDescription>
-              <CardTitle className="text-lg flex items-center gap-2">
+              <CardDescription className="text-muted-foreground">Security Status</CardDescription>
+              <CardTitle className="text-lg flex items-center gap-2 text-foreground font-heading">
                 <ShieldCheck className="h-5 w-5 text-green-500" />
                 AES-256-GCM
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-slate-500">
+            <CardContent className="text-xs text-muted-foreground/80">
               Keys are never stored in browser memory across sessions.
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200">
+          <Card className="border-border bg-card">
             <CardHeader className="pb-2">
-              <CardDescription>Inactivity Lock</CardDescription>
-              <CardTitle className="text-lg flex items-center gap-2">
+              <CardDescription className="text-muted-foreground">Inactivity Lock</CardDescription>
+              <CardTitle className="text-lg flex items-center gap-2 text-foreground font-heading">
                 <Clock className="h-5 w-5 text-amber-500" />
                 5 Minutes
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-slate-500">
+            <CardContent className="text-xs text-muted-foreground/80">
               Vault will auto-lock if no activity is detected.
             </CardContent>
           </Card>
@@ -987,29 +1023,30 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Add New Credential Form */}
           <div className="lg:col-span-1">
-            <Card className="border-2 border-slate-200 sticky top-24">
+            <Card className="border border-border sticky top-24 bg-card/50 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
+                <CardTitle className="flex items-center gap-2 text-lg text-foreground font-heading">
                   <Plus className="h-5 w-5 text-primary" />
                   Add New Credential
                 </CardTitle>
-                <CardDescription>New entries are encrypted before syncing.</CardDescription>
+                <CardDescription className="text-muted-foreground">New entries are encrypted before syncing.</CardDescription>
               </CardHeader>
               <form onSubmit={handleAddEntry}>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="site">Website/Service</Label>
+                    <Label htmlFor="site" className="text-foreground/80">Website/Service</Label>
                     <Input
                       id="site"
                       placeholder="e.g., GitHub, Gmail"
                       value={newEntry.site}
                       onChange={(e) => setNewEntry({ ...newEntry, site: e.target.value })}
                       required
+                      className="bg-secondary/50 border-input focus:border-primary"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="url">URL</Label>
+                    <Label htmlFor="url" className="text-foreground/80">URL</Label>
                     <Input
                       id="url"
                       type="url"
@@ -1017,23 +1054,25 @@ export default function DashboardPage() {
                       value={newEntry.url || ''}
                       onChange={(e) => setNewEntry({ ...newEntry, url: e.target.value })}
                       required
+                      className="bg-secondary/50 border-input focus:border-primary"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="username">Username/Email</Label>
+                    <Label htmlFor="username" className="text-foreground/80">Username/Email</Label>
                     <Input
                       id="username"
                       placeholder="your@email.com"
                       value={newEntry.username}
                       onChange={(e) => setNewEntry({ ...newEntry, username: e.target.value })}
                       required
+                      className="bg-secondary/50 border-input focus:border-primary"
                     />
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <Label htmlFor="new-password">Password</Label>
+                      <Label htmlFor="new-password" className="text-foreground/80">Password</Label>
                       <span className={`text-[10px] uppercase tracking-wider font-bold ${strength.color.replace('bg-', 'text-')}`}>
                         {strength.label}
                       </span>
@@ -1045,7 +1084,7 @@ export default function DashboardPage() {
                         placeholder="Enter password"
                         value={newEntry.password}
                         onChange={(e) => setNewEntry({ ...newEntry, password: e.target.value })}
-                        className="pr-20"
+                        className="pr-20 bg-secondary/50 border-input focus:border-primary font-mono"
                         required
                       />
                       <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
@@ -1053,7 +1092,7 @@ export default function DashboardPage() {
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-slate-400 hover:text-primary"
+                          className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
                           onClick={() => setNewEntry({ ...newEntry, showPassword: !newEntry.showPassword })}
                         >
                           {newEntry.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1062,7 +1101,7 @@ export default function DashboardPage() {
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-slate-400 hover:text-primary"
+                          className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
                           onClick={generatePassword}
                           title="Generate strong password"
                         >
@@ -1071,27 +1110,27 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <Progress value={strength.score} className={`h-1.5 ${strength.color}`} />
-                      <p className="text-[10px] text-slate-400 italic">
+                      <Progress value={strength.score} className={`h-1.5 bg-secondary ${strength.color}`} />
+                      <p className="text-[10px] text-muted-foreground italic">
                         Strength is calculated locally based on entropy rules.
                       </p>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="notes">Notes (optional)</Label>
+                    <Label htmlFor="notes" className="text-foreground/80">Notes (optional)</Label>
                     <textarea
                       id="notes"
                       placeholder="Additional information"
                       rows={3}
                       value={newEntry.notes || ''}
                       onChange={(e) => setNewEntry({ ...newEntry, notes: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                      className="w-full px-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-secondary/50 text-foreground placeholder-muted-foreground"
                     />
                   </div>
                 </CardContent>
                 <CardFooter>
-                  <Button type="submit" className="w-full" disabled={isAddingEntry}>
+                  <Button type="submit" className="w-full font-heading tracking-wide" disabled={isAddingEntry}>
                     {isAddingEntry ? "Encrypting..." : "Save Password"}
                   </Button>
                 </CardFooter>
@@ -1102,9 +1141,9 @@ export default function DashboardPage() {
           {/* Vault Listing */}
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-slate-800">Stored Credentials</h2>
+              <h2 className="text-xl font-bold text-foreground font-heading">Stored Credentials</h2>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => toast.info("Syncing with backend...")}>
+                <Button variant="outline" size="sm" onClick={() => toast.info("Syncing with backend...")} className="border-border hover:bg-secondary">
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Force Sync
                 </Button>
@@ -1112,27 +1151,27 @@ export default function DashboardPage() {
             </div>
 
             {filteredEntries.length === 0 ? (
-              <div className="text-center py-20 px-6 bg-white border-2 border-dashed border-slate-200 rounded-3xl">
-                <div className="bg-slate-50 p-4 rounded-full w-fit mx-auto mb-4">
-                  <ShieldAlert className="h-10 w-10 text-slate-300" />
+              <div className="text-center py-20 px-6 bg-card border border-dashed border-border rounded-3xl">
+                <div className="bg-secondary p-4 rounded-full w-fit mx-auto mb-4">
+                  <ShieldAlert className="h-10 w-10 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-semibold text-slate-700">No credentials found</h3>
-                <p className="text-slate-500 max-w-xs mx-auto mt-2">
+                <h3 className="text-lg font-semibold text-foreground">No credentials found</h3>
+                <p className="text-muted-foreground max-w-xs mx-auto mt-2">
                   {searchQuery ? "No entries match your search." : "Start by adding your first secure credential using the form."}
                 </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
                 {filteredEntries.map((entry) => (
-                  <Card key={entry.id} className="group hover:border-primary/50 transition-all duration-200">
+                  <Card key={entry.id} className="group hover:border-primary/50 transition-all duration-200 bg-card border-border">
                     <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
-                        <div className="bg-slate-100 p-2.5 rounded-xl text-slate-600 font-bold uppercase text-xs w-10 h-10 flex items-center justify-center">
+                        <div className="bg-secondary p-2.5 rounded-xl text-foreground font-bold uppercase text-xs w-10 h-10 flex items-center justify-center border border-border group-hover:border-primary/30 transition-colors">
                           {entry.site[0]}
                         </div>
                         <div>
-                          <h4 className="font-bold text-slate-800">{entry.site}</h4>
-                          <p className="text-sm text-slate-500">{entry.username}</p>
+                          <h4 className="font-bold text-foreground text-lg">{entry.site}</h4>
+                          <p className="text-sm text-muted-foreground">{entry.username}</p>
                           {/* Password Strength Indicator */}
                           {(() => {
                             const strength = calculatePasswordStrength(entry.password)
@@ -1157,15 +1196,15 @@ export default function DashboardPage() {
                       </div>
 
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-6 w-full sm:w-auto">
-                        <div className="flex-1 sm:w-48 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 flex items-center justify-between">
-                          <code className="text-sm font-mono text-slate-700">
+                        <div className="flex-1 sm:w-48 bg-secondary/30 px-3 py-2 rounded-lg border border-border flex items-center justify-between">
+                          <code className="text-sm font-mono text-foreground/90">
                             {entry.isPasswordVisible ? entry.password : "••••••••••••"}
                           </code>
                           <div className="flex items-center gap-1">
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 text-slate-400 hover:text-primary"
+                              className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
                               onClick={() => togglePasswordVisibility(entry.id)}
                             >
                               {entry.isPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1173,7 +1212,7 @@ export default function DashboardPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 text-slate-400 hover:text-primary"
+                              className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
                               onClick={() => copyToClipboard(entry.password)}
                             >
                               <Copy className="h-4 w-4" />
@@ -1182,14 +1221,14 @@ export default function DashboardPage() {
                         </div>
 
                         <div className="flex items-center gap-4">
-                          <div className="text-[10px] text-slate-400 flex flex-col items-end">
-                            <span className="uppercase font-bold">Updated</span>
-                            <span>{entry.lastUpdated}</span>
+                          <div className="text-[10px] text-muted-foreground flex flex-col items-end">
+                            <span className="uppercase font-bold tracking-wider">Updated</span>
+                            <span>{formatDistanceToNow(new Date(entry.lastUpdated), { addSuffix: true })}</span>
                           </div>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-9 w-9 text-slate-300 hover:text-blue-500 hover:bg-blue-50"
+                            className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10"
                             onClick={() => handleEditEntry(entry)}
                             title="Edit credential"
                           >
@@ -1198,7 +1237,7 @@ export default function DashboardPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-9 w-9 text-slate-300 hover:text-red-500 hover:bg-red-50"
+                            className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             onClick={() => handleDeleteEntry(entry.id)}
                             title="Delete credential"
                           >
@@ -1212,9 +1251,9 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <Alert className="bg-blue-50 border-blue-100 text-blue-800">
-              <AlertCircle className="h-4 w-4 text-blue-600" />
-              <AlertDescription className="text-xs">
+            <Alert className="bg-primary/10 border-primary/20 text-primary backdrop-blur-sm">
+              <AlertCircle className="h-4 w-4 text-primary animate-pulse" />
+              <AlertDescription className="text-xs text-primary/90">
                 Metadata like <strong>Site Name</strong> and <strong>Username</strong> are also encrypted in the actual vault blob. The server only sees anonymous encrypted packets.
               </AlertDescription>
             </Alert>
@@ -1224,9 +1263,9 @@ export default function DashboardPage() {
 
       {/* Edit Modal */}
       {isEditModalOpen && editingEntry && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border-2 border-primary/20 shadow-2xl">
-            <CardHeader className="border-b border-slate-200">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-border shadow-2xl bg-card">
+            <CardHeader className="border-b border-border">
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-xl flex items-center gap-2">
@@ -1242,7 +1281,7 @@ export default function DashboardPage() {
                     setIsEditModalOpen(false)
                     setEditingEntry(null)
                   }}
-                  className="text-slate-400 hover:text-slate-600"
+                  className="text-muted-foreground hover:text-foreground hover:bg-secondary"
                 >
                   <X className="h-5 w-5" />
                 </Button>
@@ -1251,42 +1290,45 @@ export default function DashboardPage() {
 
             <CardContent className="space-y-4 pt-6">
               <div className="space-y-2">
-                <Label htmlFor="edit-site">Website/Service</Label>
+                <Label htmlFor="edit-site" className="text-foreground/80">Website/Service</Label>
                 <Input
                   id="edit-site"
                   placeholder="e.g., GitHub, Gmail"
                   value={editingEntry.site}
-                  onChange={(e) => setEditingEntry({ ...editingEntry, site: e.target.value })}
+                  onChange={(e) => editingEntry && setEditingEntry({ ...editingEntry, site: e.target.value })}
                   required
+                  className="bg-secondary/50 border-input focus:border-primary"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-url">URL</Label>
+                <Label htmlFor="edit-url" className="text-foreground/80">URL</Label>
                 <Input
                   id="edit-url"
                   type="url"
                   placeholder="https://example.com"
                   value={editingEntry.siteUrl || ''}
-                  onChange={(e) => setEditingEntry({ ...editingEntry, siteUrl: e.target.value })}
+                  onChange={(e) => editingEntry && setEditingEntry({ ...editingEntry, siteUrl: e.target.value })}
                   required
+                  className="bg-secondary/50 border-input focus:border-primary"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-username">Username/Email</Label>
+                <Label htmlFor="edit-username" className="text-foreground/80">Username/Email</Label>
                 <Input
                   id="edit-username"
                   placeholder="your@email.com"
                   value={editingEntry.username}
-                  onChange={(e) => setEditingEntry({ ...editingEntry, username: e.target.value })}
+                  onChange={(e) => editingEntry && setEditingEntry({ ...editingEntry, username: e.target.value })}
                   required
+                  className="bg-secondary/50 border-input focus:border-primary"
                 />
               </div>
 
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <Label htmlFor="edit-password">Password</Label>
+                  <Label htmlFor="edit-password" className="text-foreground/80">Password</Label>
                   {(() => {
                     const strength = calculatePasswordStrength(editingEntry.password)
                     return (
@@ -1302,16 +1344,16 @@ export default function DashboardPage() {
                     type={editingEntry.isPasswordVisible ? "text" : "password"}
                     placeholder="Enter password"
                     value={editingEntry.password}
-                    onChange={(e) => setEditingEntry({ ...editingEntry, password: e.target.value })}
-                    className="pr-10"
+                    onChange={(e) => editingEntry && setEditingEntry({ ...editingEntry, password: e.target.value })}
+                    className="pr-10 bg-secondary/50 border-input focus:border-primary font-mono"
                     required
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-slate-400 hover:text-primary"
-                    onClick={() => setEditingEntry({ ...editingEntry, isPasswordVisible: !editingEntry.isPasswordVisible })}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
+                    onClick={() => editingEntry && setEditingEntry({ ...editingEntry, isPasswordVisible: !editingEntry.isPasswordVisible })}
                   >
                     {editingEntry.isPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
@@ -1319,25 +1361,25 @@ export default function DashboardPage() {
                 <div className="space-y-1">
                   {(() => {
                     const strength = calculatePasswordStrength(editingEntry.password)
-                    return <Progress value={strength.score} className={`h-1.5 ${strength.color}`} />
+                    return <Progress value={strength.score} className={`h-1.5 bg-secondary ${strength.color}`} />
                   })()}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-notes">Notes (optional)</Label>
+                <Label htmlFor="edit-notes" className="text-foreground/80">Notes (optional)</Label>
                 <textarea
                   id="edit-notes"
                   placeholder="Additional information"
                   rows={3}
                   value={editingEntry.notes || ''}
-                  onChange={(e) => setEditingEntry({ ...editingEntry, notes: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                  onChange={(e) => editingEntry && setEditingEntry({ ...editingEntry, notes: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-secondary/50 text-foreground placeholder-muted-foreground"
                 />
               </div>
             </CardContent>
 
-            <CardFooter className="border-t border-slate-200 flex gap-3">
+            <CardFooter className="border-t border-border flex gap-3 pt-4">
               <Button
                 variant="outline"
                 onClick={() => {
@@ -1371,10 +1413,10 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <footer className="bg-white border-t border-slate-200 py-6 px-8 mt-auto">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-400">
+      <footer className="bg-background/80 backdrop-blur border-t border-border py-6 px-8 mt-auto">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <p>© 2026 ZeroKnowledge Password Manager. Phase 1–3 Implementation.</p>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-6 opacity-80">
             <span className="flex items-center">
               <ShieldCheck className="h-3 w-3 mr-1 text-green-500" />
               End-to-end Encrypted

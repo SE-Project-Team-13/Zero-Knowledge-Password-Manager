@@ -1,8 +1,9 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useTheme } from "next-themes"
 import { useVaultSync } from "@/hooks/useVaultSync"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -20,12 +21,23 @@ import {
   UserPlus,
   ShieldCheck,
   AlertCircle,
-  Loader2
+  Loader2,
+  Sun,
+  Moon,
+  Laptop
 } from "lucide-react"
 import { toast } from "sonner"
 
 export default function AuthPage() {
   const router = useRouter()
+  const { setTheme, resolvedTheme } = useTheme()
+  // mounted state is still useful for initial render
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const [session, actions] = useVaultSync()
 
   const [isLogin, setIsLogin] = useState(true)
@@ -80,28 +92,54 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Theme Toggle */}
+      <div className="absolute top-4 right-4 z-50">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+          className="text-foreground border-border hover:bg-secondary bg-background/50 backdrop-blur-sm"
+          title={mounted ? `Switch to ${resolvedTheme === "dark" ? "light" : "dark"} mode` : "Toggle theme"}
+        >
+          {!mounted ? (
+            <Sun className="h-[1.2rem] w-[1.2rem] opacity-0" />
+          ) : (
+            <>
+              {resolvedTheme === "dark" ? (
+                <Sun className="h-[1.2rem] w-[1.2rem] transition-all" />
+              ) : (
+                <Moon className="h-[1.2rem] w-[1.2rem] transition-all" />
+              )}
+            </>
+          )}
+          <span className="sr-only">Toggle theme</span>
+        </Button>
+      </div>
+      {/* Background Ambience */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background pointer-events-none"></div>
+      
+      <div className="w-full max-w-md relative z-10">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="mx-auto bg-gradient-to-br from-indigo-500 to-purple-600 p-4 rounded-2xl w-fit mb-4 shadow-lg">
-            <Shield className="h-12 w-12 text-white" />
+          <div className="mx-auto bg-primary/10 p-4 rounded-2xl w-fit mb-4 shadow-lg shadow-primary/20 border border-primary/20">
+            <Shield className="h-12 w-12 text-primary animate-pulse" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">
-            ZeroKnowledge Vault
+          <h1 className="text-3xl font-bold text-foreground mb-2 font-heading tracking-tight">
+            ZeroKnowledge <span className="text-primary">Vault</span>
           </h1>
-          <p className="text-slate-600">
+          <p className="text-muted-foreground">
             Your passwords, encrypted end-to-end
           </p>
         </div>
 
         {/* Auth Card */}
-        <Card className="border-2 border-slate-200 shadow-2xl">
+        <Card className="border border-border shadow-2xl bg-card/60 backdrop-blur-md">
           <CardHeader className="text-center space-y-1 pb-4">
-            <CardTitle className="text-2xl font-bold">
+            <CardTitle className="text-2xl font-bold text-foreground font-heading">
               {isLogin ? "Welcome Back" : "Create Account"}
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-muted-foreground">
               {isLogin
                 ? "Enter your credentials to unlock your vault"
                 : "Start securing your passwords with zero-knowledge encryption"}
@@ -112,13 +150,13 @@ export default function AuthPage() {
             <CardContent className="space-y-4">
               {/* Email Field */}
               <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
+                <Label htmlFor="email" className="text-foreground/80">Email Address</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="email"
                     type="email"
-                    className="pl-10"
+                    className="pl-10 bg-secondary/50 border-input focus:border-primary transition-colors"
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -130,13 +168,13 @@ export default function AuthPage() {
 
               {/* Password Field */}
               <div className="space-y-2">
-                <Label htmlFor="password">Master Password</Label>
+                <Label htmlFor="password" className="text-foreground/80">Master Password</Label>
                 <div className="relative">
-                  <Key className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                  <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    className="pl-10 pr-10"
+                    className="pl-10 pr-10 bg-secondary/50 border-input focus:border-primary transition-colors font-mono"
                     placeholder="••••••••••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -145,7 +183,7 @@ export default function AuthPage() {
                   />
                   <button
                     type="button"
-                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -162,13 +200,13 @@ export default function AuthPage() {
               {/* Confirm Password (Register only) */}
               {!isLogin && (
                 <div className="space-y-2">
-                  <Label htmlFor="confirm-password">Confirm Password</Label>
+                  <Label htmlFor="confirm-password" className="text-foreground/80">Confirm Password</Label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="confirm-password"
                       type={showPassword ? "text" : "password"}
-                      className="pl-10"
+                      className="pl-10 bg-secondary/50 border-input focus:border-primary transition-colors font-mono"
                       placeholder="••••••••••••••••"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
@@ -181,18 +219,18 @@ export default function AuthPage() {
 
               {/* Error Display */}
               {session.error && (
-                <Alert variant="destructive" className="border-red-200 bg-red-50">
-                  <AlertCircle className="h-4 w-4 text-red-600" />
-                  <AlertDescription className="text-red-800 text-sm">
+                <Alert variant="destructive" className="border-destructive/30 bg-destructive/10 text-destructive">
+                  <AlertCircle className="h-4 w-4 text-destructive" />
+                  <AlertDescription className="text-sm font-medium">
                     {session.error}
                   </AlertDescription>
                 </Alert>
               )}
 
               {/* Security Notice */}
-              <Alert className="bg-blue-50 border-blue-200">
-                <ShieldCheck className="h-4 w-4 text-blue-600" />
-                <AlertDescription className="text-xs text-blue-800">
+              <Alert className="bg-primary/5 border-primary/20">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                <AlertDescription className="text-xs text-primary/80">
                   <strong>Zero-Knowledge Architecture:</strong> Your master password is used to derive encryption keys locally via Argon2id. The server never sees your plaintext password or decrypted data.
                 </AlertDescription>
               </Alert>
@@ -202,7 +240,7 @@ export default function AuthPage() {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full h-11 text-base font-semibold"
+                className="w-full h-11 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all font-heading tracking-wide"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
@@ -228,13 +266,13 @@ export default function AuthPage() {
               </Button>
 
               {/* Toggle Mode */}
-              <div className="text-center text-sm text-slate-600">
+              <div className="text-center text-sm text-muted-foreground">
                 {isLogin ? "Don't have an account?" : "Already have an account?"}
                 {" "}
                 <button
                   type="button"
                   onClick={toggleMode}
-                  className="text-primary font-semibold hover:underline"
+                  className="text-primary font-semibold hover:underline hover:text-primary/80 transition-colors"
                   disabled={isSubmitting}
                 >
                   {isLogin ? "Sign up" : "Sign in"}
@@ -245,7 +283,7 @@ export default function AuthPage() {
         </Card>
 
         {/* Footer */}
-        <div className="mt-8 text-center text-xs text-slate-500 space-y-2">
+        <div className="mt-8 text-center text-xs text-muted-foreground/60 space-y-2">
           <div className="flex items-center justify-center gap-4">
             <span className="flex items-center gap-1">
               <ShieldCheck className="h-3 w-3 text-green-500" />
