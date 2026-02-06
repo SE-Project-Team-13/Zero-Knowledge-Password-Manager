@@ -100,6 +100,7 @@ export default function DashboardPage() {
   const [otpVerified, setOtpVerified] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes in seconds
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Vault Data (In-Memory Only)
   const [decryptedEntries, setDecryptedEntries] = useState<DecryptedEntry[]>(
@@ -129,18 +130,13 @@ export default function DashboardPage() {
   // Inactivity Lock Timer
   const lastActivityRef = useRef<number>(Date.now());
   const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-
   const lockVault = useCallback(() => {
     // Phase 4: Zero out sensitive memory
     setDerivedKeys(null);
     setDecryptedEntries([]);
     setOtpCode("");
     setIsUnlocked(false);
-    setOtpVerified(false);
-    sessionStorage.removeItem("otp_verified"); // Clear persistent state
     toast.info("Vault locked for security");
-    // Redirect to login page
-    window.location.href = "/";
   }, []);
 
   // Send OTP on component mount and handle initialization
@@ -307,6 +303,7 @@ export default function DashboardPage() {
 
   // Unlock vault after OTP verification
   const unlockVault = async () => {
+    setIsVerifyingOtp(true);
     try {
       // 1. Derive encryption key locally using Phase-1 crypto engine
       // The salt is retrieved from the session state (fetched during login/register)
@@ -522,6 +519,8 @@ export default function DashboardPage() {
     } catch (err) {
       console.error("Unlock error:", err);
       toast.error("Failed to unlock vault");
+    } finally {
+      setIsVerifyingOtp(false);
     }
   };
 
@@ -914,6 +913,13 @@ export default function DashboardPage() {
   };
 
   // --- Render Loading State ---
+  if (isLoggingOut || !mounted || isInitializing) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+      </div>
+    );
+  }
   if (isInitializing) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background relative">
@@ -963,7 +969,7 @@ export default function DashboardPage() {
     );
   }
 
-  // --- Render OTP Verification State ---
+  // --- Render OTP Verification & Lock State ---
   if (!isUnlocked) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4 relative">
@@ -976,66 +982,70 @@ export default function DashboardPage() {
               <ShieldCheck className="h-14 w-14 text-primary animate-pulse" />
             </div>
             <CardTitle className="text-2xl font-bold text-foreground font-heading tracking-tight">
-              Verify Identity
+              {otpVerified ? "Unlock Vault" : "Verify Identity"}
             </CardTitle>
             <CardDescription className="text-muted-foreground">
-              Enter the 6-digit code sent to your email
+              {otpVerified 
+                ? "Enter your master password to decrypt your vault"
+                : "Enter the 6-digit code sent to your email"}
             </CardDescription>
           </CardHeader>
 
           <form
-            onSubmit={handleVerifyOTP}
+            onSubmit={otpVerified ? (e) => { e.preventDefault(); unlockVault(); } : handleVerifyOTP}
             style={{ position: "relative" }}
             suppressHydrationWarning
           >
             <CardContent className="space-y-6">
-              <div className="space-y-3">
-                <Label
-                  htmlFor="otp-input"
-                  className="text-sm font-semibold text-foreground/80"
-                >
-                  One-Time Password
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="otp-input"
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={6}
-                    className="text-center text-2xl font-bold tracking-[0.5em] h-14 bg-secondary/50 border-input focus:border-primary transition-all font-mono"
-                    placeholder="000000"
-                    value={otpCode}
-                    onChange={(e) => {
-                      const value = e.target.value
-                        .replace(/\D/g, "")
-                        .slice(0, 6);
-                      setOtpCode(value);
-                    }}
-                    autoFocus
-                    required
-                    disabled={!otpSent || timeLeft === 0}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <p className="text-muted-foreground flex items-center">
-                    <Clock className="h-3 w-3 mr-1" />
-                    {timeLeft > 0
-                      ? `Code expires in ${formatTime(timeLeft)}`
-                      : "Code expired"}
-                  </p>
-                  <Button
-                    type="button"
-                    variant="link"
-                    size="sm"
-                    className="text-primary hover:text-primary/80 p-0 h-auto"
-                    onClick={sendOTPToUser}
-                    disabled={timeLeft > 540} // Disable if less than 1 minute has passed
+              {!otpVerified && (
+                <div className="space-y-3">
+                  <Label
+                    htmlFor="otp-input"
+                    className="text-sm font-semibold text-foreground/80"
                   >
-                    Resend Code
-                  </Button>
+                    One-Time Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="otp-input"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      className="text-center text-2xl font-bold tracking-[0.5em] h-14 bg-secondary/50 border-input focus:border-primary transition-all font-mono"
+                      placeholder="000000"
+                      value={otpCode}
+                      onChange={(e) => {
+                        const value = e.target.value
+                          .replace(/\D/g, "")
+                          .slice(0, 6);
+                        setOtpCode(value);
+                      }}
+                      autoFocus
+                      required
+                      disabled={!otpSent || timeLeft === 0}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <p className="text-muted-foreground flex items-center">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {timeLeft > 0
+                        ? `Code expires in ${formatTime(timeLeft)}`
+                        : "Code expired"}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="text-primary hover:text-primary/80 p-0 h-auto"
+                      onClick={sendOTPToUser}
+                      disabled={timeLeft > 540} // Disable if less than 1 minute has passed
+                    >
+                      Resend Code
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="space-y-3 pt-2">
                 <Label
@@ -1053,6 +1063,7 @@ export default function DashboardPage() {
                     value={masterPassword}
                     onChange={(e) => setMasterPassword(e.target.value)}
                     required
+                    autoFocus={otpVerified}
                   />
                   <Button
                     type="button"
@@ -1073,7 +1084,7 @@ export default function DashboardPage() {
                 </p>
               </div>
 
-              {!otpSent && (
+              {!otpVerified && !otpSent && (
                 <Alert className="bg-yellow-500/10 border-yellow-500/20 text-yellow-500">
                   <AlertCircle className="h-4 w-4 text-yellow-500" />
                   <AlertDescription className="text-xs">
@@ -1083,7 +1094,7 @@ export default function DashboardPage() {
                 </Alert>
               )}
 
-              {otpSent && !process.env.NEXT_PUBLIC_SMTP_CONFIGURED && (
+              {!otpVerified && otpSent && !process.env.NEXT_PUBLIC_SMTP_CONFIGURED && (
                 <Alert className="bg-primary/10 border-primary/20 text-primary">
                   <AlertCircle className="h-4 w-4 text-primary" />
                   <AlertDescription className="text-xs text-primary">
@@ -1099,18 +1110,18 @@ export default function DashboardPage() {
                 type="submit"
                 className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-lg shadow-primary/20 transition-all font-heading tracking-wide"
                 disabled={
-                  isVerifyingOtp || otpCode.length !== 6 || timeLeft === 0
+                  isVerifyingOtp || (!otpVerified && (otpCode.length !== 6 || timeLeft === 0))
                 }
               >
                 {isVerifyingOtp ? (
                   <>
                     <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-                    Verifying OTP...
+                    {otpVerified ? "Unlocking Vault..." : "Verifying OTP..."}
                   </>
                 ) : (
                   <>
                     <ShieldCheck className="mr-2 h-5 w-5" />
-                    Verify & Unlock
+                    {otpVerified ? "Unlock Vault" : "Verify & Unlock"}
                   </>
                 )}
               </Button>
@@ -1119,7 +1130,11 @@ export default function DashboardPage() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={actions.logout}
+                onClick={() => {
+                  setIsLoggingOut(true);
+                  actions.logout();
+                  window.location.href = "/";
+                }}
                 className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               >
                 <LogOut className="mr-2 h-4 w-4" />
@@ -1181,8 +1196,10 @@ export default function DashboardPage() {
               variant="ghost"
               size="icon"
               onClick={() => {
+                setIsLoggingOut(true);
                 lockVault();
                 actions.logout();
+                window.location.href = "/";
               }}
               className="text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
