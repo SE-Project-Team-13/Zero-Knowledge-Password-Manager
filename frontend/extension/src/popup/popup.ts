@@ -62,8 +62,12 @@ const registerBtn = document.getElementById(
 
 // Vault Elements
 const confirmModal = document.getElementById("confirm-modal") as HTMLElement;
-const modalCancelBtn = document.getElementById("modal-cancel-btn") as HTMLElement;
-const modalConfirmBtn = document.getElementById("modal-confirm-btn") as HTMLElement;
+const modalCancelBtn = document.getElementById(
+  "modal-cancel-btn",
+) as HTMLElement;
+const modalConfirmBtn = document.getElementById(
+  "modal-confirm-btn",
+) as HTMLElement;
 const registerLoading = document.getElementById(
   "register-loading",
 ) as HTMLElement;
@@ -93,6 +97,9 @@ let currentUserId = "";
 // ============================================================================
 
 async function init() {
+  // Clear any previously saved User ID for privacy
+  chrome.storage.local.remove(["userId"]).catch(() => {});
+
   // Check if vault is already unlocked
   const status = await sendMessage({ type: "GET_STATUS" });
 
@@ -107,13 +114,6 @@ async function init() {
   setInterval(() => {
     chrome.runtime.sendMessage({ type: "HEARTBEAT" }).catch(() => {});
   }, 10000);
-
-  // Load saved user ID
-  const saved = await chrome.storage.local.get(["userId"]);
-  if (saved.userId) {
-    if (userIdInput) userIdInput.value = saved.userId;
-    currentUserId = saved.userId;
-  }
 }
 
 // ============================================================================
@@ -126,20 +126,20 @@ function showScreen(screenName: string) {
   if (vaultScreen) vaultScreen.classList.add("hidden");
 
   switch (screenName) {
-    case 'unlock':
-      if (unlockScreen) unlockScreen.classList.remove('hidden')
-      if (masterPasswordInput) masterPasswordInput.focus()
-      break
-    case 'register':
-      if (registerScreen) registerScreen.classList.remove('hidden')
-      if (regEmailInput) regEmailInput.focus()
-      break
-    case 'vault':
-      if (vaultScreen) vaultScreen.classList.remove('hidden')
-      if (userDisplay) userDisplay.classList.remove('hidden')
-      if (displayUserEmail) displayUserEmail.textContent = currentUserId
-      if (searchInput) searchInput.focus()
-      break
+    case "unlock":
+      if (unlockScreen) unlockScreen.classList.remove("hidden");
+      if (userIdInput) userIdInput.focus();
+      break;
+    case "register":
+      if (registerScreen) registerScreen.classList.remove("hidden");
+      if (regEmailInput) regEmailInput.focus();
+      break;
+    case "vault":
+      if (vaultScreen) vaultScreen.classList.remove("hidden");
+      if (userDisplay) userDisplay.classList.remove("hidden");
+      if (displayUserEmail) displayUserEmail.textContent = currentUserId;
+      if (searchInput) searchInput.focus();
+      break;
   }
 }
 
@@ -176,9 +176,8 @@ if (unlockForm) {
         // SECURITY: Clear master password immediately
         if (masterPasswordInput) masterPasswordInput.value = "";
 
-        // Save user ID for convenience
+        // Set current user ID session
         currentUserId = userId;
-        await chrome.storage.local.set({ userId });
 
         // Load and display vault
         await loadVault();
@@ -255,7 +254,6 @@ if (registerForm) {
       if (response && response.success) {
         // Registration successful
         currentUserId = email;
-        await chrome.storage.local.set({ userId: email });
 
         // Clear inputs
         if (regPasswordInput) regPasswordInput.value = "";
@@ -362,36 +360,40 @@ function createVaultItem(entry: PasswordEntry, index: number) {
 function showConfirmationModal(): Promise<boolean> {
   return new Promise((resolve) => {
     if (!confirmModal) {
-      resolve(confirm('Are you sure you want to delete this password? (Modal not found)'))
-      return
+      resolve(
+        confirm(
+          "Are you sure you want to delete this password? (Modal not found)",
+        ),
+      );
+      return;
     }
 
-    confirmModal.classList.add('active')
+    confirmModal.classList.add("active");
 
     const handleConfirm = () => {
-      cleanup()
-      resolve(true)
-    }
+      cleanup();
+      resolve(true);
+    };
 
     const handleCancel = () => {
-      cleanup()
-      resolve(false)
-    }
+      cleanup();
+      resolve(false);
+    };
 
     const cleanup = () => {
-      confirmModal.classList.remove('active')
-      modalConfirmBtn?.removeEventListener('click', handleConfirm)
-      modalCancelBtn?.removeEventListener('click', handleCancel)
-    }
+      confirmModal.classList.remove("active");
+      modalConfirmBtn?.removeEventListener("click", handleConfirm);
+      modalCancelBtn?.removeEventListener("click", handleCancel);
+    };
 
-    modalConfirmBtn?.addEventListener('click', handleConfirm)
-    modalCancelBtn?.addEventListener('click', handleCancel)
-  })
+    modalConfirmBtn?.addEventListener("click", handleConfirm);
+    modalCancelBtn?.addEventListener("click", handleCancel);
+  });
 }
 
 async function handleDelete(entryId: string) {
-  const confirmed = await showConfirmationModal()
-  if (!confirmed) return
+  const confirmed = await showConfirmationModal();
+  if (!confirmed) return;
 
   try {
     const response = await sendMessage({
