@@ -127,17 +127,9 @@ export default function DashboardPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  // Inactivity Lock Timer
+  // Auto-logout after inactivity
   const lastActivityRef = useRef<number>(Date.now());
   const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-  const lockVault = useCallback(() => {
-    // Phase 4: Zero out sensitive memory
-    setDerivedKeys(null);
-    setDecryptedEntries([]);
-    setOtpCode("");
-    setIsUnlocked(false);
-    toast.info("Vault locked for security");
-  }, []);
 
   // Send OTP on component mount and handle initialization
   useEffect(() => {
@@ -158,7 +150,13 @@ export default function DashboardPage() {
         return
     }
 
-    // 3. User is authenticated. Check OTP status.
+    // 3. Check if there's a temp password from login (first-time login flow)
+    const tempPassword = sessionStorage.getItem("temp_master_password")
+    if (tempPassword && !masterPassword) {
+        setMasterPassword(tempPassword)
+    }
+
+    // 4. User is authenticated. Check OTP status.
     if (!otpSent) { 
         // Only run if we haven't processed OTP yet in this component lifecycle
         const isVerified = sessionStorage.getItem("otp_verified") === "true"
@@ -166,11 +164,20 @@ export default function DashboardPage() {
              setOtpVerified(true)
              setOtpSent(true)
              
-             // Perform unlock (async) - Keep loading while this happens
-             // unlockVault handles error toasts
-             unlockVault().finally(() => {
+             // Check if we have master password in session
+             const sessionPassword = sessionStorage.getItem("session_master_password")
+             if (sessionPassword) {
+                 // Have password - fetch and decrypt vault (works for both first login and refresh)
+                 setMasterPassword(sessionPassword)
+                 unlockVault().finally(() => {
+                     setIsInitializing(false)
+                 })
+             } else {
+                 // No password - show empty dashboard
+                 console.log('[Dashboard] No session password - showing empty dashboard')
+                 setIsUnlocked(true)
                  setIsInitializing(false)
-             })
+             }
         } else {
              // Not verified
              sendOTPToUser()
@@ -277,7 +284,7 @@ export default function DashboardPage() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Handle Activity for Auto-lock
+  // Auto-logout on inactivity
   useEffect(() => {
     if (!isUnlocked) return;
 
@@ -287,9 +294,11 @@ export default function DashboardPage() {
 
     const checkInactivity = setInterval(() => {
       if (Date.now() - lastActivityRef.current > INACTIVITY_TIMEOUT) {
-        lockVault();
+        toast.info("Logged out due to inactivity");
+        actions.logout();
+        window.location.href = "/";
       }
-    }, 10000);
+    }, 60000); // Check every minute
 
     window.addEventListener("mousemove", handleActivity);
     window.addEventListener("keydown", handleActivity);
@@ -299,25 +308,36 @@ export default function DashboardPage() {
       window.removeEventListener("keydown", handleActivity);
       clearInterval(checkInactivity);
     };
-  }, [isUnlocked, lockVault]);
+  }, [isUnlocked, actions]);
 
   // Unlock vault after OTP verification
   const unlockVault = async () => {
     setIsVerifyingOtp(true);
     try {
-      // 1. Derive encryption key locally using Phase-1 crypto engine
+      // 1. Ensure we have the master password (from temp storage or state)
+      let passwordToUse = masterPassword.trim();
+      
+      if (!passwordToUse) {
+        // Try to get from sessionStorage
+        const sessionPassword = sessionStorage.getItem("session_master_password");
+        if (sessionPassword) {
+          passwordToUse = sessionPassword;
+          setMasterPassword(sessionPassword);
+          console.log('[Dashboard] Loaded master password from sessionStorage');
+        } else {
+          console.error('[Dashboard] No master password available');
+          throw new Error("Master password not found. Please log in again.");
+        }
+      }
+
+      // 2. Derive encryption key locally using Phase-1 crypto engine
       // The salt is retrieved from the session state (fetched during login/register)
       if (!session.salt) {
         throw new Error("No salt found for user. Please re-login.");
       }
 
-      // Use the provided master password
-      const passwordToUse = masterPassword.trim() || session.email || "";
-      if (!masterPassword.trim()) {
-        console.warn(
-          "[Dashboard] Master password empty, falling back to email for compatibility",
-        );
-      }
+      console.log('[Dashboard] Using password for decryption, length:', passwordToUse.length);
+
 
       const saltBuffer = new Uint8Array(
         session.salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
@@ -373,17 +393,11 @@ export default function DashboardPage() {
               decryptedEntry = await decrypt(encryptedVault, keys);
               console.log("[Dashboard] Decrypted entry with master password");
             } catch (decryptErr) {
-              console.warn(
-                "[Dashboard] Decryption with master password failed, trying email-key fallback (compatibility)",
-              );
-              // Fallback to email as password (compatibility with old prototype state)
-              const fallbackKeys = await deriveKey(
-                session.email || "",
-                saltBuffer,
-              );
+              // Try email fallback for accounts created with old system
+              console.warn("[Dashboard] Master password failed, trying email fallback");
+              const fallbackKeys = await deriveKey(session.email || "", saltBuffer);
               decryptedEntry = await decrypt(encryptedVault, fallbackKeys);
               console.log("[Dashboard] Decrypted entry with email fallback");
-              // Use fallback keys for this session
               setDerivedKeys(fallbackKeys);
             }
 
@@ -472,21 +486,25 @@ export default function DashboardPage() {
               })
               .map((entry: any, index: number) => {
                 console.log(`[Dashboard] Processing entry ${index}:`, entry);
+                const site = entry.siteName || entry.site || "Unknown";
+                const username = entry.username || "";
+                const password = entry.password || "";
+                const siteUrl = entry.siteUrl || entry.url || "";
+                const notes = entry.notes || "";
+                const createdAt = entry.createdAt || entry.created_at || new Date().toISOString();
+                const updatedAt = entry.updatedAt || entry.lastUpdated || entry.updated_at || createdAt;
+
                 return {
                   id: entry.id || Math.random().toString(36).substring(7),
-                  site: entry.siteName || entry.site || "Unknown",
-                  username: entry.username || "",
-                  password: entry.password || "",
-                  // Preserve all extension fields for re-encryption
-                  siteUrl: entry.siteUrl || entry.url || "",
-                  siteName: entry.siteName || entry.site || "Unknown",
-                  notes: entry.notes || "",
-                  createdAt: entry.createdAt || new Date().toISOString(),
-                  updatedAt: entry.updatedAt || new Date().toISOString(),
-                  lastUpdated:
-                    entry.updatedAt ||
-                    entry.lastUpdated ||
-                    new Date().toLocaleDateString(),
+                  site,
+                  username,
+                  password,
+                  siteUrl,
+                  siteName: site,
+                  notes,
+                  createdAt,
+                  updatedAt,
+                  lastUpdated: updatedAt,
                   isPasswordVisible: false,
                 };
               });
@@ -498,9 +516,13 @@ export default function DashboardPage() {
             );
           } else {
             console.log("[Dashboard] No encrypted data found in response");
+            // No vault data, but password was successfully derived with the salt
+            // This is OK for new users or empty vaults
           }
         } else if (response.status === 404) {
           console.log("[Dashboard] No vault found for user (new user)");
+          // No vault exists yet, but password was successfully derived with the salt
+          // This is OK for new users
         } else {
           const errorText = await response.text();
           console.error(
@@ -508,13 +530,19 @@ export default function DashboardPage() {
             response.status,
             errorText,
           );
+          throw new Error("Failed to fetch vault data");
         }
       } catch (fetchErr) {
         console.error("[Dashboard] Fetch/decrypt error:", fetchErr);
-        // Continue with empty vault - this is fine for new users
+        // If decryption failed, it means wrong password
+        // Re-throw to prevent unlocking
+        throw fetchErr;
       }
 
       setIsUnlocked(true);
+      // Clear temp password after successful unlock
+      sessionStorage.removeItem("temp_master_password");
+
       toast.success("Vault unlocked successfully");
     } catch (err) {
       console.error("Unlock error:", err);
@@ -580,7 +608,7 @@ export default function DashboardPage() {
           password: e.password,
           notes: e.notes,
           createdAt: e.createdAt,
-          updatedAt: new Date().toISOString(),
+          updatedAt: e.updatedAt || e.lastUpdated || new Date().toISOString(),
         })),
         newCredential,
       ];
@@ -644,6 +672,8 @@ export default function DashboardPage() {
       }
 
       console.log("[Dashboard] Saved successfully!");
+      const data = await response.json();
+      const dbTimestamp = data.updatedAt || new Date().toISOString();
 
       // Update local state
       const displayEntry: DecryptedEntry = {
@@ -654,8 +684,8 @@ export default function DashboardPage() {
         password: newEntry.password,
         notes: newEntry.notes,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        lastUpdated: new Date().toLocaleDateString(),
+        updatedAt: dbTimestamp,
+        lastUpdated: dbTimestamp,
         isPasswordVisible: false,
       };
 
@@ -707,7 +737,7 @@ export default function DashboardPage() {
         e.id === editingEntry.id
           ? {
               ...editingEntry,
-              lastUpdated: new Date().toLocaleDateString(),
+              lastUpdated: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             }
           : e,
@@ -736,7 +766,7 @@ export default function DashboardPage() {
         password: e.password,
         notes: e.notes,
         createdAt: e.createdAt,
-        updatedAt: new Date().toISOString(),
+        updatedAt: e.updatedAt || new Date().toISOString(),
       }));
 
       console.log(
@@ -782,9 +812,21 @@ export default function DashboardPage() {
       }
 
       console.log("[Dashboard] Updated successfully!");
+      const data = await response.json();
+      const dbTimestamp = data.updatedAt || new Date().toISOString();
 
-      // Update local state
-      setDecryptedEntries(updatedEntries);
+      // Update local state with the actual DB timestamp
+      const finalEntries = decryptedEntries.map((e) =>
+        e.id === editingEntry.id
+          ? {
+              ...editingEntry,
+              lastUpdated: dbTimestamp,
+              updatedAt: dbTimestamp,
+            }
+          : e,
+      );
+
+      setDecryptedEntries(finalEntries);
       setIsEditModalOpen(false);
       setEditingEntry(null);
       toast.success("Credential updated successfully!");
@@ -920,7 +962,8 @@ export default function DashboardPage() {
       </div>
     );
   }
-  if (isInitializing) {
+  // Show loading screen during initialization OR during automatic unlock
+  if (isInitializing || (isVerifyingOtp && otpVerified)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background relative">
          <div className="absolute top-4 right-4 z-50">
@@ -928,7 +971,9 @@ export default function DashboardPage() {
          </div>
          <div className="flex flex-col items-center gap-4">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-muted-foreground font-medium">Securing Dashboard...</p>
+            <p className="text-muted-foreground font-medium">
+              {isVerifyingOtp ? "Unlocking your vault..." : "Securing Dashboard..."}
+            </p>
          </div>
       </div>
     )
@@ -1047,42 +1092,7 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              <div className="space-y-3 pt-2">
-                <Label
-                  htmlFor="password-input"
-                  className="text-sm font-semibold text-foreground/80"
-                >
-                  Master Password
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="password-input"
-                    type={showMasterPassword ? "text" : "password"}
-                    className="pr-10 bg-secondary/50 border-input focus:border-primary transition-all"
-                    placeholder="Enter your master password"
-                    value={masterPassword}
-                    onChange={(e) => setMasterPassword(e.target.value)}
-                    required
-                    autoFocus={otpVerified}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowMasterPassword(!showMasterPassword)}
-                  >
-                    {showMasterPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-                <p className="text-[10px] text-muted-foreground italic">
-                  Note: This is the password you used during registration.
-                </p>
-              </div>
+
 
               {!otpVerified && !otpSent && (
                 <Alert className="bg-yellow-500/10 border-yellow-500/20 text-yellow-500">
@@ -1184,20 +1194,10 @@ export default function DashboardPage() {
             </div>
             <ThemeToggle />
             <Button
-              variant="outline"
-              size="sm"
-              onClick={lockVault}
-              className="text-foreground hover:bg-secondary border-border"
-            >
-              <Lock className="mr-2 h-4 w-4" />
-              Lock
-            </Button>
-            <Button
               variant="ghost"
               size="icon"
               onClick={() => {
                 setIsLoggingOut(true);
-                lockVault();
                 actions.logout();
                 window.location.href = "/";
               }}
@@ -1248,14 +1248,14 @@ export default function DashboardPage() {
           <Card className="border-border bg-card">
             <CardHeader className="pb-2">
               <CardDescription className="text-muted-foreground">
-                Inactivity Lock
+                Auto-Logout
               </CardDescription>
               <CardTitle className="text-lg flex items-center gap-2 text-foreground font-heading">
                 <Clock className="h-5 w-5 text-amber-500" />5 Minutes
               </CardTitle>
             </CardHeader>
             <CardContent className="text-xs text-muted-foreground/80">
-              Vault will auto-lock if no activity is detected.
+              You will be logged out automatically if no activity is detected.
             </CardContent>
           </Card>
         </div>
@@ -1796,7 +1796,7 @@ export default function DashboardPage() {
       <footer className="bg-background/80 backdrop-blur border-t border-border py-6 px-8 mt-auto">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <p>
-            © 2026 ZeroKnowledge Password Manager. Phase 1–3 Implementation.
+            © 2026 ZeroKnowledge Password Manager.
           </p>
           <div className="flex items-center gap-6 opacity-80">
             <span className="flex items-center">

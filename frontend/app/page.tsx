@@ -69,10 +69,14 @@ export default function AuthPage() {
     try {
       if (isLogin) {
         await actions.login(email, password)
+        // Store master password in session for vault decryption (persists until browser closes)
+        sessionStorage.setItem("session_master_password", password)
         toast.success("Login successful!")
         router.push("/dashboard")
       } else {
         await actions.register(email, password)
+        // Store master password in session for vault decryption (persists until browser closes)
+        sessionStorage.setItem("session_master_password", password)
         toast.success("Account created successfully!")
         router.push("/dashboard")
       }

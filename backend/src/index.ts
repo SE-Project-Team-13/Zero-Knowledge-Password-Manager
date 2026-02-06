@@ -72,18 +72,18 @@ async function start() {
         // Extract data and labels (if provided)
         const { encryptedVault, labels } = req.body
         
-        await SimpleVault.findOneAndUpdate(
+        const vault = await SimpleVault.findOneAndUpdate(
           { userId },
           { 
             data: encryptedVault || req.body, // Fallback for old extension version
             labels: labels || [],
             updatedAt: new Date() 
           },
-          { upsert: true }
+          { upsert: true, new: true }
         )
         
         console.log(`[VaultSync] Vault saved to MongoDB for ${userId} with ${labels?.length || 0} labels`)
-        res.json({ success: true })
+        res.json({ success: true, updatedAt: vault?.updatedAt })
       } catch (error) {
         console.error(`[VaultSync] Failed to save vault for ${userId}:`, error)
         res.status(500).json({ error: "Failed to save vault" })

@@ -176,6 +176,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     localStorage.removeItem("user_id")
     localStorage.removeItem("user_email")
     sessionStorage.removeItem("otp_verified")
+    sessionStorage.removeItem("session_master_password")
     setState({
       userId: null,
       email: null,
