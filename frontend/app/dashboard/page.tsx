@@ -5,7 +5,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useVaultSync } from "@/hooks/useVaultSync";
 import { useTheme } from "next-themes";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Sidebar } from "@/components/Sidebar";
 import { formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -101,6 +103,7 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes in seconds
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   // Vault Data (In-Memory Only)
   const [decryptedEntries, setDecryptedEntries] = useState<DecryptedEntry[]>(
@@ -1165,51 +1168,35 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background flex flex-col font-sans">
-      {/* Top Navbar */}
-      <header className="bg-background/80 backdrop-blur-md border-b border-border sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
-              <ShieldCheck className="h-6 w-6 text-primary" />
-            </div>
-            <h1 className="text-xl font-bold text-foreground tracking-tight font-heading hidden md:block">
-              ZeroKnowledge <span className="text-primary">Vault</span>
+    <div className="min-h-screen bg-background flex font-sans">
+      <Sidebar 
+        onLogout={() => {
+          setIsLoggingOut(true);
+          actions.logout();
+          window.location.href = "/";
+        }}
+        userEmail={session.email || ""}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        isCollapsed={isCollapsed}
+        setIsCollapsed={setIsCollapsed}
+      />
+      
+      <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>
+        {/* Top bar for mobile only / breadcrumbs? */}
+        <header className="lg:hidden bg-background/80 backdrop-blur-md border-b border-border sticky top-0 z-30 p-4 pl-16">
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-bold text-foreground font-heading">
+              Vault
             </h1>
-            <div className="flex items-center bg-green-500/10 text-green-500 px-3 py-1 rounded-full text-xs font-medium border border-green-500/20 ml-2">
+            <div className="flex items-center bg-green-500/10 text-green-500 px-3 py-1 rounded-full text-[10px] font-medium border border-green-500/20">
               <Unlock className="h-3 w-3 mr-1" />
               Unlocked
             </div>
           </div>
+        </header>
 
-          <div className="flex items-center gap-4">
-            <div className="relative hidden sm:block">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search vault..."
-                className="pl-9 h-9 w-64 bg-secondary/50 border-input focus:border-primary text-sm"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                setIsLoggingOut(true);
-                actions.logout();
-                window.location.href = "/";
-              }}
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <LogOut className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-6xl mx-auto w-full p-6 space-y-8">
+        <main className="flex-1 p-4 lg:p-8 space-y-8 max-w-7xl mx-auto w-full">
         {/* Statistics & Info Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="bg-gradient-to-br from-primary/80 to-blue-900 border-none shadow-lg text-white relative overflow-hidden">
@@ -1794,7 +1781,7 @@ export default function DashboardPage() {
       )}
 
       <footer className="bg-background/80 backdrop-blur border-t border-border py-6 px-8 mt-auto">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <p>
             © 2026 ZeroKnowledge Password Manager.
           </p>
@@ -1814,6 +1801,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </footer>
+      </div>
     </div>
   );
 }
