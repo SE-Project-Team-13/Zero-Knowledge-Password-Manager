@@ -179,6 +179,11 @@ export default function ResetPasswordPage() {
                 .join("")
 
             // 4. Send to backend (with optional new vault)
+            console.log("[ResetPassword] Sending to backend:", { 
+                hasNewVaultBlob: !!newVaultBlob,
+                vaultBlobKeys: newVaultBlob ? Object.keys(newVaultBlob) : []
+            })
+            
             const token = localStorage.getItem("auth_token")
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/auth/reset-password`, 

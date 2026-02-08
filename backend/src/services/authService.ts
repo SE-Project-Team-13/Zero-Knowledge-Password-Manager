@@ -174,7 +174,9 @@ export async function updateUserCredentials(
   await revokeAllRecoveryKeys(userId)
 
   // 3. If new vault data is provided, update it (Re-encryption)
+  console.log(`[AuthService] updateUserCredentials called for user ${userId}, hasEncryptedVault: ${!!encryptedVault}`)
   if (encryptedVault) {
+    console.log(`[AuthService] Saving re-encrypted vault with deviceId: ${encryptedVault.deviceId}, ciphertext length: ${encryptedVault.ciphertext?.length}`);
     // Update Sync Vault (VaultBlob)
     await VaultBlob.findOneAndUpdate(
       { userId, deviceId: encryptedVault.deviceId },

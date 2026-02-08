@@ -169,33 +169,55 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     const vaultData = {
                         ciphertext: data.ciphertext,
                         iv: data.iv,
-                        salt: data.salt,
+                        salt: data.salt,  // Important: vault has its own salt!
                         tag: data.authTag || data.tag,
-                        version: data.version
+                        algorithm: "AES-256-GCM" as const,
+                        derivationAlgorithm: "Argon2id" as const
                     };
 
+                    // First try using the vault's own salt with decryptVault
+                    // This handles the case where password was reset and vault re-encrypted with new salt
                     try {
-                        decryptedEntry = await cryptoEngine.decrypt(vaultData as any, keys);
-                    } catch (decryptErr) {
-                         console.warn("[VaultContext] Master password decryption failed, trying email fallback");
-                         // Re-derive using email as password
-                         const email = session.email || localStorage.getItem("user_email") || "";
-                         const fallbackKeys = await deriveKey(email, saltBuffer);
-                         
-                         try {
-                             decryptedEntry = await cryptoEngine.decrypt(vaultData as any, fallbackKeys);
-                             finalKeys = fallbackKeys;
-                         } catch (fallbackErr) {
-                             console.warn("[VaultContext] All vault decryption attempts failed. User may have changed password without re-encryption.");
-                             toast.error("Failed to decrypt vault. Your data is unreadable due to the password change. You can start fresh by adding new credentials.");
-                             
-                             // Allow starting fresh with empty vault
-                             setDecryptedEntries([]);
-                             setDerivedKeys(keys);
-                             setIsUnlocked(true);
-                             setIsLoadingVault(false);
-                             return;
-                         }
+                        console.log("[VaultContext] Attempting decryption with vault's own salt...");
+                        const decryptResult = await cryptoEngine.decryptVault(sessionPassword, vaultData);
+                        if (decryptResult.success && decryptResult.data) {
+                            decryptedEntry = decryptResult.data;
+                            console.log("[VaultContext] Decryption succeeded with vault's salt");
+                        } else {
+                            throw new Error("Decryption failed");
+                        }
+                    } catch (firstAttemptErr) {
+                        console.warn("[VaultContext] Vault salt decryption failed, trying with user salt...");
+                        
+                        // Fallback: Try with pre-derived keys (original approach)
+                        try {
+                            decryptedEntry = await cryptoEngine.decrypt(vaultData as any, keys);
+                            console.log("[VaultContext] Decryption succeeded with user salt");
+                        } catch (secondAttemptErr) {
+                            console.warn("[VaultContext] User salt decryption failed, trying email fallback...");
+                            
+                            // Last resort: Re-derive using email as password
+                            const email = session.email || localStorage.getItem("user_email") || "";
+                            try {
+                                const emailDecryptResult = await cryptoEngine.decryptVault(email, vaultData);
+                                if (emailDecryptResult.success && emailDecryptResult.data) {
+                                    decryptedEntry = emailDecryptResult.data;
+                                    console.log("[VaultContext] Decryption succeeded with email fallback");
+                                } else {
+                                    throw new Error("Email fallback failed");
+                                }
+                            } catch (finalErr) {
+                                console.warn("[VaultContext] All vault decryption attempts failed. User may have changed password without re-encryption.");
+                                toast.error("Failed to decrypt vault. Your data is unreadable due to the password change. You can start fresh by adding new credentials.");
+                                
+                                // Allow starting fresh with empty vault
+                                setDecryptedEntries([]);
+                                setDerivedKeys(keys);
+                                setIsUnlocked(true);
+                                setIsLoadingVault(false);
+                                return;
+                            }
+                        }
                     }
                     
                     setDerivedKeys(finalKeys);
