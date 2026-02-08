@@ -10,6 +10,15 @@ This repository contains the source code for the **Zero-Knowledge Password Manag
 
 ---
 
+## 🔗 Quick Links
+
+*   **[Installation](#installation)**
+*   **[Usage Guide](#usage-guide)**
+*   **[Architecture](#architecture-deep-dive)**
+*   **[Troubleshooting](#troubleshooting)**
+
+---
+
 ## Table of Contents
 
 - [Introduction](#introduction)
