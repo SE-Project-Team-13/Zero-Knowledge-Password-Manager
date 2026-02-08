@@ -1,168 +1,326 @@
-﻿# 🛡️ ZeroKnowledge Vault
+﻿# Zero-Knowledge Password Manager
+
+> **A state-of-the-art, high-security password management system built with a true zero-knowledge architecture.**
 
 [![Security](https://img.shields.io/badge/Security-AES--256--GCM-blueviolet?style=for-the-badge&logo=shield-security)](https://en.wikipedia.org/wiki/Galois/Counter_Mode)
 [![Backend](https://img.shields.io/badge/Backend-Node.js%20%7C%20MongoDB-green?style=for-the-badge&logo=node.js)](https://nodejs.org)
 [![Frontend](https://img.shields.io/badge/Frontend-Next.js%20%7C%20Tailwind-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
-**ZeroKnowledge Vault** is a state-of-the-art, high-security password management system built with a true zero-knowledge architecture. In this system, your master password and decrypted data never leave your device. The server acts only as a secure, encrypted storage medium for data it cannot read.
-
----
-
-## ✨ Key Features
-
-- 🔐 **Zero-Knowledge Architecture:** Decryption happens exclusively on the client side.
-- 🛠️ **Encryption Standards:** Uses industry-standard AES-256-GCM for robust data protection.
-- 🧬 **Advanced Key Derivation:** Argon2id hashing with randomized salts to thwart brute-force attacks.
-- 📡 **Multi-Platform Access:**
-  - **Web Dashboard:** A premium, Next.js-powered interface for managing your vault.
-  - **Browser Extension:** Manifest V3 extension for Chrome and Edge with auto-fill capabilities.
-- 📧 **Secure MFA:** Integrated Email-based OTP system for an additional layer of authentication.
-- 🔄 **Real-time Sync:** Automatic encryption and synchronization across all your devices.
-- 🛡️ **Security Controls:** Advanced features like **Master Key Rotation** and **Data Purging**.
+This repository contains the source code for the **Zero-Knowledge Password Manager**, a secure vault that ensures your data remains private even if the server is compromised.
 
 ---
 
-## 🏗️ Security Architecture
+## 🔗 Quick Links
 
-### 1. Cryptographic Principles
-
-The core of ZeroKnowledge Vault relies on the principle that the server should never have access to the user's plaintext secrets.
-
-- **Key Derivation:** We use **Argon2id** (the winner of the Password Hashing Competition) to derive a 256-bit encryption key from the user's master password. This process is compute-intensive and memory-hard, making it highly resistant to GPU/ASIC-based cracking.
-- **Encryption:** All data stored in the vault is encrypted using **AES-256-GCM** (Galois/Counter_Mode). This provides both confidentiality and authentication, ensuring that the data hasn't been tampered with while in transit or at rest.
-- **Authentication:** The server verifies identity using a secure hash of the master password, but never stores the password itself or the key used for encryption.
-
-### 2. The Verification Flow
-
-1.  **Client-Side Initialization:** User enters credentials.
-2.  **Key Generation:** Argon2id derives the encryption key locally.
-3.  **OTP Verification:** A secondary verification step sends a code to the user's verified email.
-4.  **Vault Retrieval:** Upon successful verification, the server returns a "Blob" – an encrypted chunk of data.
-5.  **Local Decryption:** The browser uses the locally-derived key to decrypt the blob into memory. **No decrypted data is ever written to disk.**
+*   **[Installation](#installation)**
+*   **[Usage Guide](#usage-guide)**
+*   **[Architecture](#architecture-deep-dive)**
+*   **[Troubleshooting](#troubleshooting)**
 
 ---
 
-## 📁 Project Structure
+## Table of Contents
 
-```text
-├── frontend/
-│   ├── app/                  # Next.js 15+ Web Dashboard
-│   ├── extension/            # Chrome & Edge Browser Extension (MV3)
-│   ├── crypto-engine/        # Core cryptographic implementation (Shared)
-│   ├── components/           # Premium UI Component Library (Shadcn/UI)
-│   ├── hooks/                # Specialized React hooks for Vault State
-│   └── lib/                  # Shared utilities and API interaction layer
-└── backend/                  # High-performance Node.js & MongoDB Sync Server
-    └── src/
-        ├── routes/           # API Endpoints (Auth, Vault, Security)
-        ├── services/         # Business logic (Encryption logic, Emailer)
-        └── database/         # MongoDB/Mongoose Schema & Configuration
-```
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- **Node.js:** v20.x or higher (LTS recommended)
-- **Package Manager:** npm (v9.x or higher)
-- **Database:** MongoDB (Local instance or [MongoDB Atlas](https://www.mongodb.com/cloud/atlas))
-- **Email:** An SMTP provider for OTP delivery (e.g., Gmail, SendGrid, or local development log)
-
-### Installation
-
-1.  **Clone the Repository:**
-    ```bash
-    git clone https://github.com/SE-Project-Team-13/Zero-Knowledge-Password-Manager.git
-    cd Zero-Knowledge-Password-Manager
-    ```
-
-2.  **Install Dependencies:**
-    This project uses a monorepo structure with npm workspaces. Install all dependencies from the root:
-    ```bash
-    npm install
-    ```
-
-3.  **Build Shared Components:**
-    The core cryptographic engine must be built before running the application:
-    ```bash
-    npm run crypto:build
-    ```
-
-### Configuration
-
-The backend requires several environment variables to function correctly.
-
-1.  **Backend Setup:**
-    ```bash
-    cp backend/.env.example backend/.env
-    ```
-2.  **Edit `backend/.env`:**
-    - `PORT`: Server port (default: 3001)
-    - `MONGODB_URI`: Your MongoDB connection string.
-    - `SMTP_*`: Credentials for your email provider (see the file for details).
-    > [!TIP]
-    > If SMTP credentials are omitted, the system will log OTPs directly to the terminal for development convenience.
+- [Introduction](#introduction)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Dependencies & Technologies](#dependencies--technologies)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Running the Project](#running-the-project)
+- [Usage Guide](#usage-guide)
+  - [Registering & Vault Creation](#registering--vault-creation)
+  - [Managing Passwords](#managing-passwords)
+  - [Emergency Kit](#emergency-kit)
+  - [Breach Detection](#breach-detection)
+- [Running Tests](#running-tests)
+- [Architecture Deep Dive](#architecture-deep-dive)
+  - [Zero-Knowledge Encryption](#zero-knowledge-encryption)
+  - [Breach Detection (k-Anonymity)](#breach-detection-k-anonymity-1)
+  - [Blind Sync Protocol](#blind-sync-protocol)
+  - [UML Diagrams](#uml-diagrams)
+- [Troubleshooting](#troubleshooting)
+- [Uninstalling](#uninstalling)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
-## 🛠️ Development Workflow
+## Introduction
 
-To run the full ecosystem, you'll need to start both the backend and frontend separately from the root directory.
+**ZeroKnowledge Vault** handles your secrets without ever knowing them. Your master password derives an encryption key locally on your device using **Argon2id**. This key is used to encrypt your vault data with **AES-256-GCM** before it ever leaves your browser. The server only sees encrypted blobs.
 
-### 1. Start the Backend Server
-The backend handles authentication, synchronization, and OTP management.
+## Features
+
+- **True Zero-Knowledge**: Server cannot decrypt your data.
+- **Privacy-Preserving Breach Detection**: Checks your credentials against breach databases without exposing your accounts (using k-Anonymity).
+- **Emergency Kit**: Generate a recovery PDF to regain access if you lose your master password.
+- **Secure Sharing**: Share credentials securely (Simulated).
+- **Multi-Platform**: Web Dashboard + Browser Extension.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+*   **Node.js**: v18.0.0 or higher (v20+ recommended).
+    *   *Verify:* `node -v`
+*   **npm**: v9.0.0 or higher.
+    *   *Verify:* `npm -v`
+*   **MongoDB**: A running instance (local or Atlas).
+    *   *Verify:* `mongod --version` or check Atlas dashboard.
+*   **Build Tools** (Required for `node-gyp` compilation):
+    *   **Windows**: Visual Studio Build Tools (C++) and Python 3.11+.
+    *   **macOS**: Xcode Command Line Tools (`xcode-select --install`).
+    *   **Linux**: `build-essential` and `python3`.
+
+## Dependencies & Technologies
+
+This project relies on the following core libraries and technologies:
+
+### Frontend (`/frontend`)
+*   **Next.js (v16.0.10)**: The React framework for production.
+*   **React (v19.2.0)**: Use of latest hooks and Server Components.
+*   **Tailwind CSS (v4.0+)**: Utility-first CSS framework for styling.
+*   **@noble/hashes**: High-security cryptographic primitives (Argon2, SHA-256).
+*   **Zod**: TypeScript-first schema validation.
+*   **React Hook Form**: Performant, flexible forms validation.
+*   **Shadcn/UI & Radix UI**: Accessible component primitives.
+*   **Lucide React**: Beautiful & consistent icons.
+*   **Sonner**: A toast notification library.
+*   **jsPDF**: Client-side PDF generation for Emergency Kits.
+
+### Backend (`/backend`)
+*   **Node.js & Express**: High-performance web server framework.
+*   **Mongoose**: MongoDB object modeling for asynchronous environment.
+*   **Node-Cron**: Task scheduler for periodic breach detection jobs.
+*   **Nodemailer**: Module for sending emails (OTP & Alerts).
+*   **UUID**: For generating unique identifiers.
+*   **Dotenv**: Zero-dependency module for loading environment variables.
+
+### Crypto Engine (`/frontend/crypto-engine`)
+*   **Web Crypto API**: Utilizing native browser capabilities for AES-GCM and random value generation.
+
+## Installation
+
+To install the project locally, run the following commands:
+
 ```bash
-npm run dev:backend
-```
-*Access point: `http://localhost:3001`*
+# 1. Clone the repository
+git clone https://github.com/SE-Project-Team-13/Zero-Knowledge-Password-Manager.git
 
-### 2. Start the Frontend Dashboard
-The dashboard is a Next.js application that provides the primary user interface.
-```bash
-npm run dev
-```
-*Access point: `http://localhost:3000`*
+# 2. Navigate to the directory
+cd Zero-Knowledge-Password-Manager
 
-### 3. Build & Load the Browser Extension
-The extension provides auto-fill and quick-access features.
-```bash
-npm run extension:build
-```
-**To Load in Browser:**
-1. Open Chrome or Edge and navigate to `chrome://extensions/`.
-2. Enable **Developer mode** (top right toggle).
-3. Click **Load unpacked** and select the `frontend/extension/dist` folder.
+# 3. Install dependencies (Workspaces)
+npm install
 
-### 4. Shared Crypto Engine
-If you make changes to the shared cryptographic logic in `frontend/crypto-engine`, rebuild it:
-```bash
+# 4. Build the core crypto library
 npm run crypto:build
 ```
 
----
+## Configuration
 
-## 🧰 Tech Stack
+You need to configure both the backend and frontend environment variables.
 
-### Frontend & UI
+### Backend Environment
+Create `backend/.env` with the following:
 
-- **Next.js 15:** For the high-performance dashboard.
-- **Tailwind CSS:** For professional, modern styling.
-- **Shadcn/UI & Radix:** accessible, premium UI components.
-- **Lucide Icons:** minimalist and consistent iconography.
+```properties
+PORT=3001
+MONGODB_URI=mongodb://localhost:27017/vault
+# Email Config (Required for OTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+# JWT Secret
+JWT_SECRET=your-super-secret-key-at-least-32-chars
+```
 
-### Backend Infrastructure
+> **Note:** If you don't have SMTP credentials, the system will log OTP codes to the terminal console (`npm run dev:backend`).
 
-- **Node.js / Express:** Robust API architecture.
-- **MongoDB / Mongoose:** Scalable document-based storage.
-- **Nodemailer:** Reliable transactional email delivery.
+### Frontend Environment
+Create `frontend/.env` (optional, defaults allow local dev):
 
-### Security Core
+```properties
+NEXT_PUBLIC_API_URL=http://localhost:3001
+```
 
-- **Web Crypto API:** Native, hardware-accelerated encryption.
-- **@noble/hashes:** High-security cryptographic primitives.
-- **Argon2id:** State-of-the-art key derivation.
+## Running the Project
 
----
+The project consists of a Backend API and a Frontend Dashboard. You must run both.
+
+### Development Mode
+
+**Terminal 1: Backend**
+```bash
+npm run dev:backend
+```
+_Output should show: `[VaultSync] Blind sync backend listening on port 3001`_
+
+**Terminal 2: Frontend**
+```bash
+npm run dev
+```
+_Output should show: `Ready in ...` and access via `http://localhost:3000`_
+
+### Production Build
+
+To build for production:
+
+```bash
+# Build Frontend
+npm run build -w frontend
+
+# Build Backend
+npm run build -w backend
+
+# Start Production
+npm start
+```
+
+## Usage Guide
+
+Once the servers are running, follow these steps to use the application:
+
+### Registering & Vault Creation
+1.  Navigate to `http://localhost:3000`.
+2.  Click **"Get Started"** or **"Register"**.
+3.  Enter your Email and a Strong Master Password.
+4.  **Important:** Your Master Password is *never* sent to the server. It generates your encryption keys locally.
+5.  Verification: Check your terminal (or email) for the OTP code.
+
+### Managing Passwords
+*   **Add Item**: Click the "+" button in the dashboard to add a new login.
+*   **View Password**: Click the eye icon to decrypt and view a password.
+*   **Copy**: Use the copy icon to copy username/password to clipboard.
+*   **Edit/Delete**: Use the context menu on any item card.
+
+### Emergency Kit
+1.  Go to **Settings** -> **Danger Zone**.
+2.  Click **"Generate Emergency Kit"**.
+3.  A PDF will be generated containing your **Recovery Key** and instructions.
+4.  **Save this PDF securely!** It is the *only* way to recover your account if you forget your Master Password.
+
+### Breach Detection
+The system automatically checks your email against a mock breach database.
+*   **Manual Check**: The scheduled job runs every minute (in dev).
+*   **Simulate Breach**: Use the email `breached@example.com` during registration to see the Red Alert Banner on the dashboard.
+
+## Running Tests
+
+The backend includes a suite of tests to verify functionality.
+
+### Backend Tests
+To run the backend tests, navigate to the `backend` directory or run from the root workspace:
+
+```bash
+# Run tests for backend
+npm run test -w backend
+```
+
+> **Note:** Ensure your MongoDB instance is running before starting the tests, as some integration tests may require a database connection.
+
+## Architecture Deep Dive
+
+### Zero-Knowledge Encryption
+
+1.  **User Input**: User types `Master Password`.
+2.  **Key Derivation**: `Argon2id` hashes the password with a random salt (100MB memory cost, 4 iterations). Result: `Derived Key`.
+3.  **Encryption**: `AES-256-GCM` uses `Derived Key` to encrypt vault data. Result: `Ciphertext`.
+4.  **Storage**: `Ciphertext` is sent to MongoDB. The server **never** sees the `Master Password` or `Derived Key`.
+
+### Breach Detection (k-Anonymity)
+
+1.  **Hashing**: The system hashes the user's email/username (SHA-1/SHA-256).
+2.  **Prefixing**: Only the **first 5 characters** of the hash are sent to the Breach API.
+3.  **Matching**: The API returns all breaches matching that prefix.
+4.  **Local Filtering**: The client checks the full hash against the returned list locally.
+    *   _Result:_ The API server never knows exactly which account you are checking along the k-anonymity set.
+
+### Blind Sync Protocol
+
+The server acts as a "dumb store". It handles versioning and conflict resolution based on `vaultVersion` numbers, but it cannot merge the _content_ because it is encrypted. Conflic resolution pushes the newer version or asks client to resolve.
+
+### UML Diagrams
+
+#### System Component Diagram
+
+![Use Case Diagram](UML%20diagrams/UseCaseDiagram(dark).png)
+
+![Sequence Diagram](UML%20diagrams/SequenceDiagram(dark).png)
+
+![Activity Diagram](UML%20diagrams/ActivityDiagram(dark).png)
+
+![Secure Sharing Sequence](UML%20diagrams/SecureSharingSequence(dark).jpeg)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as Client (Browser)
+    participant S as Server
+    participant D as Database
+
+    U->>C: Enter Master Password
+    C->>C: Derive Key (Argon2id)
+    C->>S: Request Salt
+    S-->>C: Return Salt
+    C->>C: Encrypt Data (AES-GCM)
+    C->>S: Send Encrypted Blob
+    S->>D: Store Blob
+    D-->>S: Confirm
+    S-->>C: Success
+```
+
+## Troubleshooting
+
+### Installation Issues
+
+#### 1. `node-gyp` or C++ Build Errors
+*   **Error**: `gyp ERR! find Python` or `Msbuild not found`
+*   **Cause**: Missing build tools required for compiling native modules like `argon2`.
+*   **Fix**: install the build tools for your OS (see [Prerequisites](#prerequisites)).
+    *   **Windows**: Run `npm install --global --production windows-build-tools` (Admin) or install Desktop development with C++ via Visual Studio Installer.
+    *   **macOS**: Run `xcode-select --install`.
+
+#### 2. `EADDRINUSE` (Port Already in Use)
+*   **Error**: `listen EADDRINUSE: address already in use :::3001`
+*   **Cause**: Another instance of the backend is running.
+*   **Fix**: Kill the process on port 3001 (backend) or 3000 (frontend).
+    *   **Mac/Linux**: `lsof -i :3001` then `kill -9 <PID>`
+    *   **Windows**: `netstat -ano | findstr :3001` then `taskkill /PID <PID> /F`
+
+### Common Runtime Errors
+
+#### "Vault not found (404)" on Login
+*   **Cause**: You are a new user and haven't saved any passwords yet.
+*   **Fix**: The dashboard should auto-initialize an empty vault. Extensions might throw this error until you save your first password via the Dashboard.
+
+#### "OTP not received"
+*   **Cause**: SMTP is not configured or configured incorrectly.
+*   **Fix**: Check the terminal where `npm run dev:backend` is running. The OTP code is logged there: `[OTP] 🔑 Security Code: 123456`.
+
+#### "MongoDB Connection Failed"
+*   **Cause**: Local MongoDB service is not running or URI is wrong.
+*   **Fix**: Ensure `mongod` is running or check your Atlas IP whitelist.
+
+## Uninstalling
+
+To completely remove the application and its data:
+
+1.  **Stop Servers**: `Ctrl+C` in your terminals.
+2.  **Remove Directory**: `rm -rf Zero-Knowledge-Password-Manager`.
+3.  **Drop Database** (MongoDB Shell):
+    ```bash
+    mongosh
+    use vault
+    db.dropDatabase()
+    ```
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
