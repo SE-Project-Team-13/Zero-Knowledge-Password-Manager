@@ -20,37 +20,38 @@ async function start() {
   try {
     console.log("[VaultSync] Starting blind synchronization backend with MongoDB...")
 
-    // Initialize database
+    // Initialize database connection
     await connectToDatabase(MONGODB_URI)
 
-    // Create Express app
+    // Create Express app instance
     const app = express()
 
-    // CORS for dashboard and extension
+    // CORS Middleware: Allow requests from dashboard and extension
+    // In production, these should be restricted to specific origins
     app.use((req, res, next) => {
       res.header("Access-Control-Allow-Origin", "*")
       res.header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS")
       res.header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-      
+
       if (req.method === "OPTIONS") {
         return res.sendStatus(200)
       }
       next()
     })
 
-    // Middleware
+    // JSON Body Parser middleware
     app.use(express.json())
 
-    // Request logging
+    // Simple request logging middleware
     app.use((req, res, next) => {
       console.log(`[VaultSync] ${req.method} ${req.path}`)
       next()
     })
 
-    // Routes
-    app.use("/auth", createAuthRouter())
-    app.use("/sync", createSyncRouter())
-    app.use("/otp", createOTPRouter())
+    // Standard API Routes
+    app.use("/auth", createAuthRouter()) // User registration and ZKP-based authentication
+    app.use("/sync", createSyncRouter()) // Blind vault synchronization (merging/versioning)
+    app.use("/otp", createOTPRouter())   // Email-based One-Time Passwords
 
     // Phase 3 compatibility routes for extension (Now using MongoDB)
     app.get("/api/vault/:userId", async (req, res) => {
@@ -68,20 +69,20 @@ async function start() {
       const { userId } = req.params
       try {
         console.log(`[VaultSync] Extension saving vault for ${userId}...`)
-        
+
         // Extract data and labels (if provided)
         const { encryptedVault, labels } = req.body
-        
+
         const vault = await SimpleVault.findOneAndUpdate(
           { userId },
-          { 
+          {
             data: encryptedVault || req.body, // Fallback for old extension version
             labels: labels || [],
-            updatedAt: new Date() 
+            updatedAt: new Date()
           },
           { upsert: true, new: true }
         )
-        
+
         console.log(`[VaultSync] Vault saved to MongoDB for ${userId} with ${labels?.length || 0} labels`)
         res.json({ success: true, updatedAt: vault?.updatedAt })
       } catch (error) {
@@ -107,8 +108,8 @@ async function start() {
 
     // Health check endpoint
     app.get("/health", (req, res) => {
-      res.json({ 
-        status: "ok", 
+      res.json({
+        status: "ok",
         db: "mongodb",
         timestamp: new Date().toISOString()
       })

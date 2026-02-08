@@ -1,6 +1,14 @@
 import { VaultBlob, SyncMetadata } from "../database/models.js"
 import type { VaultBlob as VaultBlobType } from "../types/index.js"
 
+/**
+ * Pushes a new encrypted vault blob to the server.
+ * Also updates the sync metadata for the device to track the latest version.
+ * @param userId - ID of the user pushing the vault.
+ * @param deviceId - Unique identifier for the device making the push.
+ * @param vault - The encrypted vault payload and associated metadata.
+ * @returns Success status and the ID of the created blob.
+ */
 export async function pushVault(
   userId: string,
   deviceId: string,
@@ -29,11 +37,12 @@ export async function pushVault(
 
     await blob.save()
 
-    // Update sync metadata
+    // Update sync metadata to reflect this device's latest state
     await updateSyncMetadata(userId, deviceId, vault.version, vault.nonce)
 
     return { success: true, vaultId: blob._id.toString() }
   } catch (error: any) {
+    // Detect potential replay attacks or duplicate submissions using the nonce
     if (error.code === 11000) {
       return { success: false, error: "Duplicate nonce - replay attack detected" }
     }
@@ -42,6 +51,14 @@ export async function pushVault(
   }
 }
 
+/**
+ * Pulls vault blobs for a user, optionally filtering by version.
+ * Used by clients to synchronize their local storage with the server.
+ * @param userId - ID of the user pulling vaults.
+ * @param deviceId - ID of the device requesting the pull.
+ * @param lastVersion - Optional version threshold to pull only newer changes.
+ * @returns List of vault blobs.
+ */
 export async function pullVaults(
   userId: string,
   deviceId: string,
@@ -53,6 +70,7 @@ export async function pullVaults(
       filter.version = { $gt: lastVersion }
     }
 
+    // Sort by version descending to get newest first
     const rows = await VaultBlob.find(filter).sort({ version: -1 })
 
     const vaults: VaultBlobType[] = rows.map((row) => ({
@@ -77,6 +95,13 @@ export async function pullVaults(
   }
 }
 
+/**
+ * Internal helper to update or create sync metadata for a user/device pair.
+ * @param userId - User identity.
+ * @param deviceId - Device identity.
+ * @param vaultVersion - Latest version seen by this device.
+ * @param nonce - Nonce associated with the latest update.
+ */
 async function updateSyncMetadata(
   userId: string,
   deviceId: string,
@@ -93,10 +118,17 @@ async function updateSyncMetadata(
       nonce,
       updatedAt: new Date(now),
     },
-    { upsert: true },
+    { upsert: true }, // Create record if it doesn't exist
   )
 }
 
+/**
+ * Retrieves sync metadata for a specific user device.
+ * Helps the client determine if it needs to pull new data.
+ * @param userId - User identity.
+ * @param deviceId - Device identity.
+ * @returns Sync metadata or null if no record exists.
+ */
 export async function getSyncMetadata(
   userId: string,
   deviceId: string,

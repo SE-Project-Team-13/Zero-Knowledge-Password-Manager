@@ -1,13 +1,14 @@
 /**
- * OTP Service for generating and verifying one-time passwords
+ * OTP Service for generating and verifying one-time passwords via email.
+ * This service provides a secondary layer of security for unlocking the vault.
  */
 
 import crypto from "crypto"
 import nodemailer from "nodemailer"
 import { OTP } from "../database/models.js"
 
-// Configure email transporter
-// For production, use a real email service like SendGrid, AWS SES, etc.
+// Configure email transporter for sending notification emails.
+// For production, use a real email service like SendGrid, AWS SES, or Mailgun.
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
   port: parseInt(process.env.SMTP_PORT || "587"),
@@ -19,25 +20,30 @@ const transporter = nodemailer.createTransport({
 })
 
 /**
- * Generate a 6-digit OTP code
+ * Generate a cryptographically secure 6-digit OTP code to prevent guessing.
+ * @returns A 6-digit string code.
  */
 function generateOTPCode(): string {
   return crypto.randomInt(100000, 999999).toString()
 }
 
 /**
- * Send OTP to user's email
+ * Generates and sends an OTP to the user's registered email address.
+ * Falling back to console logging if email delivery is not configured.
+ * @param email - Target user email address.
+ * @returns Success status and user-facing message.
  */
 export async function sendOTP(email: string): Promise<{ success: boolean; message: string }> {
   try {
-    // Delete any existing OTPs for this email
+    // Delete any existing OTPs for this email to ensure only one is active
     await OTP.deleteMany({ email })
 
-    // Generate new OTP
+    // Generate new OTP with a 10-minute expiration window
     const code = generateOTPCode()
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
-    // Save OTP to database
+    // Save the plain OTP code to the database for verification.
+    // In a higher security scenario, this could be hashed.
     await OTP.create({
       email,
       code,
@@ -45,8 +51,9 @@ export async function sendOTP(email: string): Promise<{ success: boolean; messag
       verified: false,
     })
 
-    // Send email
+    // Email content configuration (HTML + Plaintext)
     const mailOptions = {
+      // ... rest of email template ...
       from: process.env.SMTP_FROM || '"Password Manager" <noreply@passwordmanager.com>',
       to: email,
       subject: "🔐 Your Vault Access Code",

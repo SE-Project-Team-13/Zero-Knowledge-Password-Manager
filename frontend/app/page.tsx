@@ -28,18 +28,25 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
+/**
+ * AuthPage: The main entry point for user authentication (Login/Register).
+ * This page handles the ZKP-based authentication flow and local encryption of the master password.
+ */
 export default function AuthPage() {
   const router = useRouter()
   const { setTheme, resolvedTheme } = useTheme()
-  // mounted state is still useful for initial render
+
+  // Mounted state ensures client-side only components (like theme toggles) render correctly
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
+  // useVaultSync hook provides authentication actions and session state
   const [session, actions] = useVaultSync()
 
+  // Form State
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -47,9 +54,15 @@ export default function AuthPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  /**
+   * Handles form submission for both Login and Registration.
+   * - Derives keys and performs ZKP locally before communicating with the server.
+   * - Stores the master password in sessionStorage for session-long vault access.
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Validation
     if (!email || !password) {
       toast.error("Please fill in all fields")
       return
@@ -68,14 +81,18 @@ export default function AuthPage() {
     setIsSubmitting(true)
     try {
       if (isLogin) {
+        // Authenticate using Zero-Knowledge Proof
         await actions.login(email, password)
-        // Store master password in session for vault decryption (persists until browser closes)
+
+        // Master password is kept in volatile sessionStorage for decryption operations
+        // security: this never leaves the browser and is purged when the tab is closed
         sessionStorage.setItem("session_master_password", password)
         toast.success("Login successful!")
         router.push("/dashboard")
       } else {
+        // Register new user, deriving verifiers and salts locally first
         await actions.register(email, password)
-        // Store master password in session for vault decryption (persists until browser closes)
+
         sessionStorage.setItem("session_master_password", password)
         toast.success("Account created successfully!")
         router.push("/dashboard")
@@ -88,6 +105,9 @@ export default function AuthPage() {
     }
   }
 
+  /**
+   * Toggles between Login and Register modes and resets form state.
+   */
   const toggleMode = () => {
     setIsLogin(!isLogin)
     setPassword("")
@@ -103,7 +123,7 @@ export default function AuthPage() {
       </div>
       {/* Background Ambience */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background pointer-events-none"></div>
-      
+
       <div className="w-full max-w-md relative z-10">
         {/* Header */}
         <div className="text-center mb-8">
