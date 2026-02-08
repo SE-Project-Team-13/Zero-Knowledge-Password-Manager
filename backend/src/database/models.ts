@@ -137,6 +137,30 @@ const OTPSchema = new Schema<IOTP>({
 // Index for automatic deletion of expired OTPs (TTL Index)
 OTPSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
+/**
+ * RecoveryKey Schema: Stores hashed recovery keys for emergency access.
+ * Only the SHA-256 hash is stored - the raw key is never saved.
+ * Users can use this key to regain access if they forget their password.
+ */
+export interface IRecoveryKey extends Document {
+  userId: mongoose.Types.ObjectId
+  keyHash: string
+  createdAt: Date
+  usedAt?: Date
+  isRevoked: boolean
+}
+
+const RecoveryKeySchema = new Schema<IRecoveryKey>({
+  userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+  keyHash: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+  usedAt: { type: Date },
+  isRevoked: { type: Boolean, default: false },
+})
+
+// Index for fast lookup by userId
+RecoveryKeySchema.index({ userId: 1 })
+
 // Export Mongoose Models
 export const User = mongoose.model<IUser>("User", UserSchema)
 export const Session = mongoose.model<ISession>("Session", SessionSchema)
@@ -144,3 +168,5 @@ export const VaultBlob = mongoose.model<IVaultBlob>("VaultBlob", VaultBlobSchema
 export const SyncMetadata = mongoose.model<ISyncMetadata>("SyncMetadata", SyncMetadataSchema)
 export const SimpleVault = mongoose.model<ISimpleVault>("SimpleVault", SimpleVaultSchema)
 export const OTP = mongoose.model<IOTP>("OTP", OTPSchema)
+export const RecoveryKey = mongoose.model<IRecoveryKey>("RecoveryKey", RecoveryKeySchema)
+
