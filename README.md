@@ -11,6 +11,7 @@
 - [Introduction](#introduction)
 - [Features](#features)
 - [Prerequisites](#prerequisites)
+- [Dependencies & Technologies](#dependencies--technologies)
 - [Installation](#installation)
 - [Configuration](#configuration)
   - [Backend Environment](#backend-environment)
@@ -46,6 +47,35 @@ Before you begin, ensure you have the following installed:
 - **Node.js**: v18.0.0 or higher (v20+ recommended).
 - **npm**: v9.0.0 or higher.
 - **MongoDB**: A running instance (local or Atlas) for the backend.
+
+## Dependencies & Technologies
+
+This project relies on the following core libraries and technologies:
+
+### Frontend (`/frontend`)
+*   **Next.js (v16.0.10)**: The React framework for production.
+*   **React (v19.2.0)**: Use of latest hooks and Server Components.
+*   **Tailwind CSS (v4.0+)**: Utility-first CSS framework for styling.
+*   **@noble/hashes**: High-security cryptographic primitives (Argon2, SHA-256).
+*   **Zod**: TypeScript-first schema validation.
+*   **React Hook Form**: Performant, flexible forms validation.
+*   **Shadcn/UI & Radix UI**: Accessible component primitives.
+*   **Lucide React**: Beautiful & consistent icons.
+*   **Sonner**: A toast notification library.
+*   **jsPDF**: Client-side PDF generation for Emergency Kits.
+*   **Recharts**: Composable charting library for dashboard analytics.
+*   **Date-fns**: Modern date utility library.
+
+### Backend (`/backend`)
+*   **Node.js & Express**: High-performance web server framework.
+*   **Mongoose**: MongoDB object modeling for asynchronous environment.
+*   **Node-Cron**: Task scheduler for periodic breach detection jobs.
+*   **Nodemailer**: Module for sending emails (OTP & Alerts).
+*   **UUID**: For generating unique identifiers.
+*   **Dotenv**: Zero-dependency module for loading environment variables.
+
+### Crypto Engine (`/frontend/crypto-engine`)
+*   **Web Crypto API**: Utilizing native browser capabilities for AES-GCM and random value generation.
 
 ## Installation
 
