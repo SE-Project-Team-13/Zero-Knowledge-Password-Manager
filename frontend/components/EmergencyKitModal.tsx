@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { generateEmergencyKitPDF } from "@/lib/pdfService"
 import { toast } from "sonner"
+import { copyWithAutoClear } from "@/lib/clipboard"
 
 interface EmergencyKitModalProps {
     isOpen: boolean
@@ -70,13 +71,10 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
     const copyToClipboard = async () => {
         if (!recoveryKey) return
 
-        try {
-            await navigator.clipboard.writeText(recoveryKey)
+        const ok = await copyWithAutoClear(recoveryKey)
+        if (ok) {
             setCopied(true)
-            toast.success("Recovery key copied!")
             setTimeout(() => setCopied(false), 2000)
-        } catch {
-            toast.error("Failed to copy")
         }
     }
 

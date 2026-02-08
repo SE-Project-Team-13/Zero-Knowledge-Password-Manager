@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useVault } from "@/context/VaultContext";
 import { toast } from "sonner";
+import { copyWithAutoClear } from "@/lib/clipboard";
 
 // --- Types ---
 // DecryptedEntry is imported from context now, or we can just rely on the context type
@@ -208,8 +209,7 @@ export default function PasswordManagerPage() {
                                                                     size="icon"
                                                                     className="h-6 w-6"
                                                                     onClick={() => {
-                                                                        navigator.clipboard.writeText(entry.username);
-                                                                        toast.success("Username copied!");
+                                                                        void copyWithAutoClear(entry.username);
                                                                     }}
                                                                 >
                                                                     <Copy className="h-3 w-3" />
@@ -245,8 +245,7 @@ export default function PasswordManagerPage() {
                                                                     size="icon"
                                                                     className="h-6 w-6"
                                                                     onClick={() => {
-                                                                        navigator.clipboard.writeText(entry.password);
-                                                                        toast.success("Password copied!");
+                                                                        void copyWithAutoClear(entry.password);
                                                                     }}
                                                                 >
                                                                     <Copy className="h-3 w-3" />
