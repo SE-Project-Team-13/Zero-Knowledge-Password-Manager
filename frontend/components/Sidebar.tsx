@@ -164,7 +164,7 @@ export function Sidebar({
             </button>
 
             <button
-              title={isCollapsed ? (resolvedTheme === 'dark' ? "Light Mode" : "Dark Mode") : undefined}
+              title={mounted && isCollapsed ? (resolvedTheme === 'dark' ? "Light Mode" : "Dark Mode") : undefined}
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
               className={cn(
                 "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-secondary hover:text-foreground",
