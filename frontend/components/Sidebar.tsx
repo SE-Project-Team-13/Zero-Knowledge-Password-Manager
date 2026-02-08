@@ -13,7 +13,6 @@ import {
   Heart,
   LayoutDashboard,
   Menu,
-  RefreshCw,
   X,
   ChevronLeft,
   ChevronRight,
@@ -31,7 +30,6 @@ interface SidebarProps {
   className?: string;
   onLogout: () => void;
   userEmail?: string;
-  onForceSync: () => void;
   isCollapsed: boolean;
   setIsCollapsed: (value: boolean) => void;
   activeView: string;
@@ -45,7 +43,6 @@ export function Sidebar({
   className,
   onLogout,
   userEmail,
-  onForceSync,
   isCollapsed,
   setIsCollapsed,
   activeView,
@@ -116,22 +113,7 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Force Sync Action */}
-        <div className={cn("px-6 mb-6 transition-all", isCollapsed ? "px-4" : "px-6")}>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onForceSync}
-            className={cn(
-              "w-full bg-secondary/50 border-input hover:border-primary transition-all rounded-xl h-10 flex items-center shadow-sm hover:shadow-md",
-              isCollapsed ? "justify-center px-0" : "justify-start px-3"
-            )}
-            title={isCollapsed ? "Force Sync" : undefined}
-          >
-            <RefreshCw className={cn("h-4 w-4 text-primary shrink-0", !isCollapsed && "mr-2")} />
-            {!isCollapsed && <span className="text-xs font-semibold">Force Sync</span>}
-          </Button>
-        </div>
+
 
         {/* Navigation */}
         <nav className={cn("flex-1 px-4 space-y-1", isCollapsed && "px-2")}>

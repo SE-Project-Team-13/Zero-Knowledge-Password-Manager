@@ -139,9 +139,6 @@ export default function AddCredentialPage() {
                     window.location.href = "/";
                 }}
                 userEmail={session.email || ""}
-                onForceSync={() => {
-                    toast.info("Syncing with backend...");
-                }}
                 isCollapsed={isCollapsed}
                 setIsCollapsed={setIsCollapsed}
                 activeView="password-manager"

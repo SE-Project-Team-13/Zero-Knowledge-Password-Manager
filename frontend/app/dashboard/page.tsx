@@ -734,12 +734,6 @@ export default function DashboardPage() {
           window.location.href = "/";
         }}
         userEmail={session.email || ""}
-        onForceSync={() => {
-          // Trigger pull from hook
-          toast.info("Syncing with backend...");
-          // We can call unlockVault again to refresh content
-          unlockVault();
-        }}
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
         activeView="home"
