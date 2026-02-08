@@ -15,12 +15,13 @@ export interface UseVaultSyncState {
   version: number
   vaults: VaultEntry[]
   salt: string | null
+  fullName: string | null
   isBreached?: boolean
   lastBreachCheck?: string
 }
 
 export interface UseVaultSyncActions {
-  register: (email: string, masterPassword: string) => Promise<void>
+  register: (email: string, fullName: string, masterPassword: string) => Promise<void>
   login: (email: string, masterPassword: string) => Promise<void>
   logout: () => void
   encryptAndSync: (entries: VaultEntry[]) => Promise<void>
@@ -39,6 +40,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     version: 0,
     vaults: [],
     salt: null,
+    fullName: null,
     isBreached: false,
     lastBreachCheck: undefined,
   })
@@ -60,6 +62,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       const storedSalt = localStorage.getItem("user_salt")
       const storedUserId = localStorage.getItem("user_id")
       const storedEmail = localStorage.getItem("user_email")
+      const storedFullName = localStorage.getItem("user_fullname")
       const storedToken = localStorage.getItem("auth_token")
       const storedIsBreached = localStorage.getItem("user_is_breached") === "true"
 
@@ -72,6 +75,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
           salt: storedSalt,
           userId: storedUserId,
           email: storedEmail,
+          fullName: storedFullName,
           isAuthenticated: true,
           isBreached: storedIsBreached,
         }))
@@ -79,7 +83,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     }
   }, [])
 
-  const register = useCallback(async (email: string, masterPassword: string) => {
+  const register = useCallback(async (email: string, fullName: string, masterPassword: string) => {
     setState((prev) => ({ ...prev, isLoading: true, error: null }))
     try {
       // Generate random salt on client (16 bytes = 128 bits)
@@ -100,16 +104,18 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
         .join("")
 
       // Register with server
-      const response = await apiClient.register(email, proofHex, salt)
+      const response = await apiClient.register(email, fullName, proofHex, salt)
 
       apiClient.setToken(response.sessionToken)
       localStorage.setItem("user_salt", salt)
       localStorage.setItem("user_id", response.userId)
       localStorage.setItem("user_email", email)
+      localStorage.setItem("user_fullname", fullName)
       setState((prev) => ({
         ...prev,
         userId: response.userId,
         email: email,
+        fullName: fullName,
         isAuthenticated: true,
         isLoading: false,
         salt: salt,
@@ -162,6 +168,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       localStorage.setItem("user_salt", salt)
       localStorage.setItem("user_id", response.userId)
       localStorage.setItem("user_email", email)
+      localStorage.setItem("user_fullname", response.fullName || "")
       if (response.isBreached) {
         localStorage.setItem("user_is_breached", "true")
       } else {
@@ -171,6 +178,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
         ...prev,
         userId: response.userId,
         email: email,
+        fullName: response.fullName || null,
         isAuthenticated: true,
         isLoading: false,
         salt: salt,
@@ -189,6 +197,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     localStorage.removeItem("user_salt")
     localStorage.removeItem("user_id")
     localStorage.removeItem("user_email")
+    localStorage.removeItem("user_fullname")
     sessionStorage.removeItem("otp_verified")
     sessionStorage.removeItem("session_master_password")
     localStorage.removeItem("user_is_breached")
@@ -202,6 +211,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       version: 0,
       vaults: [],
       salt: null,
+      fullName: null,
       isBreached: false,
       lastBreachCheck: undefined,
     })

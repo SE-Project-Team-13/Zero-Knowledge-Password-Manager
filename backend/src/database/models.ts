@@ -6,6 +6,7 @@ import mongoose, { Schema, Document } from "mongoose"
  */
 export interface IUser extends Document {
   email: string
+  fullName: string
   salt: string
   verifier: string
   createdAt: Date
@@ -16,6 +17,7 @@ export interface IUser extends Document {
 
 const UserSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true },
+  fullName: { type: String, required: true },
   salt: { type: String, required: true },
   verifier: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
@@ -149,6 +151,7 @@ OTPSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 export interface IRecoveryKey extends Document {
   userId: mongoose.Types.ObjectId
   keyHash: string
+  encryptedVaultKey: string // Encrypted master password/key
   createdAt: Date
   usedAt?: Date
   isRevoked: boolean
@@ -157,6 +160,7 @@ export interface IRecoveryKey extends Document {
 const RecoveryKeySchema = new Schema<IRecoveryKey>({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
   keyHash: { type: String, required: true },
+  encryptedVaultKey: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   usedAt: { type: Date },
   isRevoked: { type: Boolean, default: false },

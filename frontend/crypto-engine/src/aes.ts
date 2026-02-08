@@ -39,7 +39,7 @@ export async function encrypt(entry: VaultEntry, derivedKey: DerivedKey): Promis
   const plaintextBytes = new TextEncoder().encode(plaintext)
 
   // Encrypt using AES-256-GCM
-  const ciphertext = await crypto.subtle.encrypt(
+  const encryptedBuffer = await crypto.subtle.encrypt(
     {
       name: ALGORITHM,
       iv,
@@ -48,11 +48,17 @@ export async function encrypt(entry: VaultEntry, derivedKey: DerivedKey): Promis
     plaintextBytes,
   )
 
+  // Split ciphertext and tag (Web Crypto API appends tag at the end)
+  const TAG_LENGTH_BYTES = 16
+  const ciphertextBody = encryptedBuffer.slice(0, encryptedBuffer.byteLength - TAG_LENGTH_BYTES)
+  const tag = encryptedBuffer.slice(encryptedBuffer.byteLength - TAG_LENGTH_BYTES)
+
   // Return serializable encrypted vault object
   return {
-    ciphertext: bufferToBase64(new Uint8Array(ciphertext)),
+    ciphertext: bufferToBase64(new Uint8Array(ciphertextBody)),
     iv: bufferToBase64(iv),
     salt: bufferToBase64(derivedKey.salt),
+    tag: bufferToBase64(new Uint8Array(tag)),
     algorithm: "AES-256-GCM",
     derivationAlgorithm: "Argon2id",
   }
@@ -71,18 +77,30 @@ export async function encrypt(entry: VaultEntry, derivedKey: DerivedKey): Promis
  * - If authentication fails, the plaintext is never returned
  */
 export async function decrypt(encrypted: EncryptedVault, derivedKey: DerivedKey): Promise<VaultEntry> {
-  const ciphertext = base64ToBuffer(encrypted.ciphertext)
+  const ciphertextBody = base64ToBuffer(encrypted.ciphertext)
+  const tag = encrypted.tag ? base64ToBuffer(encrypted.tag) : new Uint8Array(0)
   const iv = base64ToBuffer(encrypted.iv)
+
+  // Recombine ciphertext and tag for Web Crypto API
+  let combinedBuffer: Uint8Array
+  if (tag.length > 0) {
+    combinedBuffer = new Uint8Array(ciphertextBody.length + tag.length)
+    combinedBuffer.set(ciphertextBody)
+    combinedBuffer.set(tag, ciphertextBody.length)
+  } else {
+    // Legacy support: tag is already in ciphertext
+    combinedBuffer = ciphertextBody
+  }
 
   try {
     // Decrypt using AES-256-GCM
     const plaintext = await crypto.subtle.decrypt(
       {
         name: ALGORITHM,
-        iv: iv as BufferSource,
+        iv: iv as any,
       },
       derivedKey.encryptionKey,
-      ciphertext as BufferSource,
+      combinedBuffer as any,
     )
 
     // Parse the decrypted JSON

@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Sidebar } from "@/components/Sidebar";
 import { EmergencyKitModal } from "@/components/EmergencyKitModal";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -122,6 +123,7 @@ export default function DashboardPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isAgingModalOpen, setIsAgingModalOpen] = useState(false);
 
   // Vault Data (Managed by Context)
@@ -351,7 +353,9 @@ export default function DashboardPage() {
           passwordToUse = sessionPassword;
           setMasterPassword(sessionPassword);
         } else {
-          throw new Error("Master password not found.");
+          console.log("[Dashboard] Master password not in storage, manual entry required.");
+          setIsVerifyingOtp(false);
+          return;
         }
       }
 
@@ -667,6 +671,40 @@ export default function DashboardPage() {
                 </div>
               )}
 
+              {otpVerified && (
+                <div className="space-y-3">
+                  <Label htmlFor="master-password-input" className="text-sm font-semibold text-foreground/80">
+                    Master Password
+                  </Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="master-password-input"
+                      type={showMasterPassword ? "text" : "password"}
+                      className="pl-10 pr-10 bg-secondary/50 border-input focus:border-primary transition-all font-mono"
+                      placeholder="••••••••••••••••"
+                      value={masterPassword}
+                      onChange={(e) => setMasterPassword(e.target.value)}
+                      required
+                      disabled={isVerifyingOtp}
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1 h-8 w-8 text-muted-foreground"
+                      onClick={() => setShowMasterPassword(!showMasterPassword)}
+                    >
+                      {showMasterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Your master password is required to decrypt your vault locally.
+                  </p>
+                </div>
+              )}
+
 
 
               {!otpVerified && !otpSent && (
@@ -748,18 +786,20 @@ export default function DashboardPage() {
           window.location.href = "/";
         }}
         userEmail={session.email || ""}
-        onForceSync={() => {
-          // Trigger pull from hook
-          toast.info("Syncing with backend...");
-          // We can call unlockVault again to refresh content
-          unlockVault();
-        }}
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
-        activeView="all-items"
+        activeView="home"
         onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+        onChangePassword={() => setIsChangePasswordOpen(true)}
+        fullName={session.fullName}
         onPasswordAging={() => setIsAgingModalOpen(true)}
         passwordAgingCount={agingEntries.length}
+      />
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal 
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
       />
 
       {/* Emergency Kit Modal */}
@@ -1111,14 +1151,7 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              <Alert className="bg-primary/10 border-primary/20 text-primary backdrop-blur-sm">
-                <AlertCircle className="h-4 w-4 text-primary animate-pulse" />
-                <AlertDescription className="text-xs text-primary/90">
-                  Metadata like <strong>Site Name</strong> and{" "}
-                  <strong>Username</strong> are also encrypted in the actual vault
-                  blob. The server only sees anonymous encrypted packets.
-                </AlertDescription>
-              </Alert>
+
             </div>
           </div>
         </main>

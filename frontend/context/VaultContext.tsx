@@ -87,39 +87,140 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
             // Fetch vault
             const vaultFetchPromise = (async () => {
-                // Determine email - session might not be ready, try storage or session
-                const email = session.email || localStorage.getItem("user_email") || "";
-                if (!email) throw new Error("No user email found");
+                 const email = session.email || localStorage.getItem("user_email") || "";
+                 const userId = session.userId || localStorage.getItem("user_id") || "";
+                 const token = localStorage.getItem("auth_token");
+                 
+                 // 1. Try Modern Sync API first (supports multiple devices/blobs)
+                 if (userId && token) {
+                     try {
+                         const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/sync/pull`, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                                userId,
+                                deviceId: "web-dashboard"
+                            })
+                         });
+                         
+                         if (syncResponse.ok) {
+                             const syncData = await syncResponse.json();
+                             // Sync API returns { vaults: [...], lastSyncTimestamp, currentVersion, success }
+                             if (syncData.vaults && syncData.vaults.length > 0) {
+                                 // Return the latest vault blob
+                                 return { ok: true, status: 200, json: async () => syncData.vaults[0] };
+                             } else {
+                                 // Empty vault from sync API
+                                 console.log("[VaultContext] Sync API empty, trying compatibility");
+                             }
+                         } else if (syncResponse.status === 401) {
+                             // Authentication failed, try compatibility layer
+                             console.warn("[VaultContext] Sync API auth failed, trying compatibility layer");
+                         } else {
+                             console.warn("[VaultContext] Sync API failed with status", syncResponse.status);
+                         }
+                     } catch (err) {
+                         console.warn("[VaultContext] Sync API failed, trying compatibility layer", err);
+                     }
+                 }
 
-                return fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(email)}`, {
+                 // 2. Fallback to Compatibility API
+                 if (!email) throw new Error("No user email found");
+                 const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(email)}`, {
                     method: "GET",
                     headers: {
-                        'Authorization': `Bearer ${localStorage.getItem("auth_token")}`
+                        'Authorization': `Bearer ${token}`
                     }
-                })
+                });
+                
+                console.log("[VaultContext] Compatibility API status:", response.status);
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log("[VaultContext] Compatibility API data:", { hasData: !!data, hasCiphertext: !!data?.ciphertext });
+                    return { ok: true, status: 200, json: async () => data };
+                }
+                
+                return response;
             })();
 
-            const [keys, response] = await Promise.all([keyDerivationPromise, vaultFetchPromise]);
+            const [keys, fetchResult] = await Promise.all([keyDerivationPromise, vaultFetchPromise]);
 
-            if (response.ok) {
-                const data = await response.json();
-
-                if (data && data.ciphertext) {
+            if (fetchResult.ok) {
+                const data = await fetchResult.json();
+                
+                 // Handle empty vault (null data or no ciphertext)
+                 if (!data || !data.ciphertext) {
+                      console.log("[VaultContext] No vault data found (empty vault or new user)");
+                      setDerivedKeys(keys);
+                      setDecryptedEntries([]);
+                      setIsUnlocked(true);
+                      setIsLoadingVault(false);
+                      return;
+                 }
+                
+                 if (data && data.ciphertext) {
                     const cryptoEngine = await import("@password-manager/crypto-engine");
 
                     // Decrypt with fallback logic
                     let decryptedEntry: any;
                     let finalKeys = keys;
+                    
+                    // Standardize data tags (sync uses authTag, extension uses tag)
+                    const vaultData = {
+                        ciphertext: data.ciphertext,
+                        iv: data.iv,
+                        salt: data.salt,  // Important: vault has its own salt!
+                        tag: data.authTag || data.tag,
+                        algorithm: "AES-256-GCM" as const,
+                        derivationAlgorithm: "Argon2id" as const
+                    };
 
+                    // First try using the vault's own salt with decryptVault
+                    // This handles the case where password was reset and vault re-encrypted with new salt
                     try {
-                        decryptedEntry = await cryptoEngine.decrypt(data, keys);
-                    } catch (decryptErr) {
-                        console.warn("[VaultContext] Master password failed, trying email fallback");
-                        // Re-derive using email as password
-                        const email = session.email || localStorage.getItem("user_email") || "";
-                        const fallbackKeys = await deriveKey(email, saltBuffer);
-                        decryptedEntry = await cryptoEngine.decrypt(data, fallbackKeys);
-                        finalKeys = fallbackKeys;
+                        console.log("[VaultContext] Attempting decryption with vault's own salt...");
+                        const decryptResult = await cryptoEngine.decryptVault(sessionPassword, vaultData);
+                        if (decryptResult.success && decryptResult.data) {
+                            decryptedEntry = decryptResult.data;
+                            console.log("[VaultContext] Decryption succeeded with vault's salt");
+                        } else {
+                            throw new Error("Decryption failed");
+                        }
+                    } catch (firstAttemptErr) {
+                        console.warn("[VaultContext] Vault salt decryption failed, trying with user salt...");
+                        
+                        // Fallback: Try with pre-derived keys (original approach)
+                        try {
+                            decryptedEntry = await cryptoEngine.decrypt(vaultData as any, keys);
+                            console.log("[VaultContext] Decryption succeeded with user salt");
+                        } catch (secondAttemptErr) {
+                            console.warn("[VaultContext] User salt decryption failed, trying email fallback...");
+                            
+                            // Last resort: Re-derive using email as password
+                            const email = session.email || localStorage.getItem("user_email") || "";
+                            try {
+                                const emailDecryptResult = await cryptoEngine.decryptVault(email, vaultData);
+                                if (emailDecryptResult.success && emailDecryptResult.data) {
+                                    decryptedEntry = emailDecryptResult.data;
+                                    console.log("[VaultContext] Decryption succeeded with email fallback");
+                                } else {
+                                    throw new Error("Email fallback failed");
+                                }
+                            } catch (finalErr) {
+                                console.warn("[VaultContext] All vault decryption attempts failed. User may have changed password without re-encryption.");
+                                toast.error("Failed to decrypt vault. Your data is unreadable due to the password change. You can start fresh by adding new credentials.");
+                                
+                                // Allow starting fresh with empty vault
+                                setDecryptedEntries([]);
+                                setDerivedKeys(keys);
+                                setIsUnlocked(true);
+                                setIsLoadingVault(false);
+                                return;
+                            }
+                        }
                     }
 
                     setDerivedKeys(finalKeys);
@@ -184,14 +285,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     setDerivedKeys(keys); // Still set keys so we can add entries
                     setIsUnlocked(true);
                 }
-            } else if (response.status === 404) {
+            } else if (fetchResult.status === 404) {
                 // No vault found (new user) - initialize as empty
                 console.log("[VaultContext] Vault not found (404), initializing empty vault");
                 setDerivedKeys(keys);
                 setIsUnlocked(true);
             } else {
-                console.error("[VaultContext] Failed to fetch vault:", response.status);
-                // Don't throw here, just leave unlocked false
+                 if (fetchResult.status === 404) {
+                     console.log("[VaultContext] Vault not found on server (new user or reset account).");
+                     setDerivedKeys(keys);
+                     setDecryptedEntries([]);
+                     setIsUnlocked(true);
+                 } else {
+                     console.error("[VaultContext] Failed to fetch vault:", fetchResult.status);
+                 }
             }
 
         } catch (err) {

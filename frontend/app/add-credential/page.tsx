@@ -5,6 +5,8 @@ import { useState, useEffect } from "react";
 import { useVaultSync } from "@/hooks/useVaultSync";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
+import { EmergencyKitModal } from "@/components/EmergencyKitModal";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { cn } from "@/lib/utils";
 import {
     Card,
@@ -61,6 +63,8 @@ export default function AddCredentialPage() {
         showPassword: false,
     });
     const [isAddingEntry, setIsAddingEntry] = useState(false);
+    const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
+    const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const strength = calculatePasswordStrength(newEntry.password);
 
     // Wait for component to mount
@@ -135,13 +139,13 @@ export default function AddCredentialPage() {
                     window.location.href = "/";
                 }}
                 userEmail={session.email || ""}
-                onForceSync={() => {
-                    toast.info("Syncing with backend...");
-                }}
                 isCollapsed={isCollapsed}
                 setIsCollapsed={setIsCollapsed}
                 activeView="password-manager"
                 setActiveView={() => { }}
+                onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+                onChangePassword={() => setIsChangePasswordOpen(true)}
+                fullName={session.fullName}
             />
 
             <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>
@@ -323,6 +327,19 @@ export default function AddCredentialPage() {
                     </Card>
                 </main>
             </div>
+        
+            {/* Change Password Modal */}
+            <ChangePasswordModal 
+                isOpen={isChangePasswordOpen}
+                onClose={() => setIsChangePasswordOpen(false)}
+            />
+
+            {/* Emergency Kit Modal */}
+            <EmergencyKitModal
+                isOpen={isEmergencyKitOpen}
+                onClose={() => setIsEmergencyKitOpen(false)}
+                email={session.email || ""}
+            />
         </div>
     );
 }

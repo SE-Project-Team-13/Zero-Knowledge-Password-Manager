@@ -15,7 +15,8 @@ export function createOTPRouter(): Router {
    */
   router.post("/send", async (req: Request, res: Response) => {
     try {
-      const { email } = req.body
+      let { email } = req.body
+      if (email) email = email.trim().toLowerCase()
 
       if (!email) {
         return res.status(400).json({
@@ -63,7 +64,8 @@ export function createOTPRouter(): Router {
    */
   router.post("/verify", async (req: Request, res: Response) => {
     try {
-      const { email, code } = req.body
+      let { email, code } = req.body
+      if (email) email = email.trim().toLowerCase()
 
       if (!email || !code) {
         return res.status(400).json({

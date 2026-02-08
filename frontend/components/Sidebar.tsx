@@ -13,7 +13,6 @@ import {
   Heart,
   LayoutDashboard,
   Menu,
-  RefreshCw,
   X,
   ChevronLeft,
   ChevronRight,
@@ -32,12 +31,13 @@ interface SidebarProps {
   className?: string;
   onLogout: () => void;
   userEmail?: string;
-  onForceSync: () => void;
   isCollapsed: boolean;
   setIsCollapsed: (value: boolean) => void;
   activeView: string;
   setActiveView?: (view: string) => void;
   onEmergencyKit?: () => void;
+  onChangePassword?: () => void;
+  fullName?: string | null;
   onPasswordAging?: () => void;
   passwordAgingCount?: number;
 }
@@ -46,12 +46,13 @@ export function Sidebar({
   className,
   onLogout,
   userEmail,
-  onForceSync,
   isCollapsed,
   setIsCollapsed,
   activeView,
   setActiveView,
   onEmergencyKit,
+  onChangePassword,
+  fullName,
   onPasswordAging,
   passwordAgingCount = 0,
 }: SidebarProps) {
@@ -64,7 +65,7 @@ export function Sidebar({
   }, []);
 
   const navItems = [
-    { icon: LayoutDashboard, label: "All Items", id: "all-items", href: "/dashboard" },
+    { icon: LayoutDashboard, label: "Home", id: "home", href: "/dashboard" },
     { icon: Key, label: "Password Manager", id: "password-manager", href: "/password-manager" },
     { icon: Shield, label: "Security Audit", id: "security-audit", href: "#" },
   ];
@@ -108,7 +109,7 @@ export function Sidebar({
             <ShieldCheck className="h-6 w-6 text-primary" />
           </div>
           {!isCollapsed && (
-            <div className="flex flex-col overflow-hidden">
+            <div className="flex flex-col overflow-hidden text-center">
               <h1 className="text-xl font-bold text-foreground tracking-tight font-heading truncate leading-none">
                 ZeroKnowledge
               </h1>
@@ -117,22 +118,7 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Force Sync Action */}
-        <div className={cn("px-6 mb-6 transition-all", isCollapsed ? "px-4" : "px-6")}>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onForceSync}
-            className={cn(
-              "w-full bg-secondary/50 border-input hover:border-primary transition-all rounded-xl h-10 flex items-center shadow-sm hover:shadow-md",
-              isCollapsed ? "justify-center px-0" : "justify-start px-3"
-            )}
-            title={isCollapsed ? "Force Sync" : undefined}
-          >
-            <RefreshCw className={cn("h-4 w-4 text-primary shrink-0", !isCollapsed && "mr-2")} />
-            {!isCollapsed && <span className="text-xs font-semibold">Force Sync</span>}
-          </Button>
-        </div>
+
 
         {/* Navigation */}
         <nav className={cn("flex-1 px-4 space-y-1", isCollapsed && "px-2")}>
@@ -189,24 +175,26 @@ export function Sidebar({
                 onClick={onEmergencyKit}
                 title={isCollapsed ? "Emergency Kit" : undefined}
                 className={cn(
-                  "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-primary/10 hover:text-primary",
+                  "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-secondary hover:text-foreground",
                   isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3"
                 )}
               >
-                <FileKey className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" />
+                <FileKey className="h-5 w-5 shrink-0 transition-transform group-hover:-rotate-12" />
                 {!isCollapsed && <span className="truncate">Emergency Kit</span>}
               </button>
             )}
 
             <button
-              title={isCollapsed ? "Settings" : undefined}
+              id="change-master-password-button"
+              title={isCollapsed ? "Change Master Password" : undefined}
+              onClick={onChangePassword}
               className={cn(
                 "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-secondary hover:text-foreground",
                 isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3"
               )}
             >
-              <Settings className="h-5 w-5 shrink-0 transition-transform group-hover:rotate-90" />
-              {!isCollapsed && <span className="truncate">Settings</span>}
+              <Lock className="h-5 w-5 shrink-0 transition-transform group-hover:rotate-12" />
+              {!isCollapsed && <span className="truncate">Change Master Password</span>}
             </button>
 
             <button
@@ -236,7 +224,7 @@ export function Sidebar({
                 <>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">
-                      {userEmail.split("@")[0]}
+                      {fullName || userEmail.split("@")[0]}
                     </p>
                     <p className="text-[10px] text-muted-foreground truncate opacity-70">
                       {userEmail}

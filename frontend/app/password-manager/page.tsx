@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { EmergencyKitModal } from "@/components/EmergencyKitModal";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { cn } from "@/lib/utils";
 import {
     Card,
@@ -43,7 +44,7 @@ export default function PasswordManagerPage() {
     const [mounted, setMounted] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
-
+    const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const getLastUpdatedMs = (entry: any) => {
         const candidates = [entry.lastUpdated, entry.updatedAt, entry.createdAt].filter(Boolean);
         for (const value of candidates) {
@@ -90,21 +91,13 @@ export default function PasswordManagerPage() {
                     window.location.href = "/";
                 }}
                 userEmail={session.email || ""}
-                onForceSync={() => {
-                    toast.info("Syncing with backend...");
-                }}
                 isCollapsed={isCollapsed}
                 setIsCollapsed={setIsCollapsed}
                 activeView="password-manager"
                 setActiveView={() => { }}
                 onEmergencyKit={() => setIsEmergencyKitOpen(true)}
-            />
-
-            {/* Emergency Kit Modal */}
-            <EmergencyKitModal
-                isOpen={isEmergencyKitOpen}
-                onClose={() => setIsEmergencyKitOpen(false)}
-                email={session.email || ""}
+                onChangePassword={() => setIsChangePasswordOpen(true)}
+                fullName={session.fullName}
             />
 
             <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>
@@ -304,6 +297,19 @@ export default function PasswordManagerPage() {
                     </div>
                 </main>
             </div>
+
+            {/* Change Password Modal */}
+            <ChangePasswordModal 
+                isOpen={isChangePasswordOpen}
+                onClose={() => setIsChangePasswordOpen(false)}
+            />
+
+            {/* Emergency Kit Modal */}
+            <EmergencyKitModal
+                isOpen={isEmergencyKitOpen}
+                onClose={() => setIsEmergencyKitOpen(false)}
+                email={session.email || ""}
+            />
         </div>
     );
 }
