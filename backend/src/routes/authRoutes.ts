@@ -5,7 +5,7 @@
 
 import { Router, type Request, type Response } from "express"
 import * as crypto from "crypto"
-import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials } from "../services/authService.js"
+import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists } from "../services/authService.js"
 import type { RegisterRequest, LoginRequest, LoginResponse, ErrorResponse } from "../types/index.js"
 
 export function createAuthRouter(): Router {
@@ -17,17 +17,18 @@ export function createAuthRouter(): Router {
    */
   router.post("/register", async (req: Request, res: Response) => {
     try {
-      let { email, salt, verifier } = req.body as RegisterRequest
+      let { email, fullName, salt, verifier } = req.body
 
-      if (!email || !salt || !verifier) {
+      if (!email || !fullName || !salt || !verifier) {
         return res.status(400).json({
           error: "Missing required fields",
           code: "INVALID_REQUEST",
-          message: "email, salt, and verifier are required",
+          message: "email, fullName, salt, and verifier are required",
         } as ErrorResponse)
       }
 
       email = email.trim().toLowerCase()
+      fullName = fullName.trim()
 
       if (!email.includes("@")) {
         return res.status(400).json({
@@ -38,11 +39,12 @@ export function createAuthRouter(): Router {
       }
 
       try {
-        const user = await registerUser(email, salt, verifier)
+        const user = await registerUser(email, fullName, salt, verifier)
         const sessionToken = await generateSessionToken(user.id)
 
         return res.status(201).json({
           userId: user.id,
+          fullName: user.fullName,
           salt: user.salt,
           sessionToken,
         })
@@ -101,8 +103,9 @@ export function createAuthRouter(): Router {
         .update(user.verifier + challenge)
         .digest("hex")
 
-      const response: LoginResponse = {
+      const response = {
         userId: user.id,
+        fullName: user.fullName,
         sessionToken,
         salt: user.salt,
         serverProof,
@@ -142,6 +145,26 @@ export function createAuthRouter(): Router {
       console.error("[VaultSync] Salt fetch error:", error)
       return res.status(500).json({
         error: "Failed to fetch salt",
+        code: "INTERNAL_ERROR",
+        message: "An unexpected error occurred",
+      } as ErrorResponse)
+    }
+  })
+
+  /**
+   * GET /auth/check-email/:email
+   * Check if an email is already registered.
+   */
+  router.get("/check-email/:email", async (req: Request, res: Response) => {
+    try {
+      let { email } = req.params
+      if (email) email = email.trim().toLowerCase()
+      const exists = await checkUserExists(email)
+      return res.status(200).json({ exists })
+    } catch (error) {
+      console.error("[VaultSync] Email check error:", error)
+      return res.status(500).json({
+        error: "Failed to check email",
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred",
       } as ErrorResponse)

@@ -187,6 +187,7 @@ export function createRecoveryRouter(): Router {
                 success: true,
                 sessionToken,
                 userId: result.userId,
+                fullName: user?.fullName, // Return fullName
                 salt: user?.salt,
                 encryptedVaultKey: result.encryptedVaultKey, // Return the encrypted blob
                 message: "Recovery login successful.",

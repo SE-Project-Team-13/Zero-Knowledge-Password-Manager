@@ -41,7 +41,7 @@ export default function RecoveryLoginPage() {
                     },
                     body: JSON.stringify({
                         email: normalizedEmail,
-                        recoveryKey: recoveryKey.replace(/-/g, "").trim(),
+                        recoveryKey: recoveryKey.replace(/[\s-]/g, "").trim(),
                     }),
                 }
             );
@@ -62,6 +62,9 @@ export default function RecoveryLoginPage() {
             if (data.salt) {
                 localStorage.setItem("user_salt", data.salt);
             }
+            if (data.fullName) {
+                localStorage.setItem("user_fullname", data.fullName);
+            }
             // Bypass OTP check since recovery key proves identity
             sessionStorage.setItem("otp_verified", "true");
 
@@ -72,7 +75,8 @@ export default function RecoveryLoginPage() {
                     const iv = new Uint8Array(encryptedObj.iv.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)))
                     const ciphertext = new Uint8Array(encryptedObj.ciphertext.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)))
                     
-                    const binaryKeyString = atob(recoveryKey.replace(/-/g, "").trim())
+                    const cleanRecoveryKey = recoveryKey.replace(/[\s-]/g, "").trim();
+                    const binaryKeyString = atob(cleanRecoveryKey)
                     const keyBytes = new Uint8Array(binaryKeyString.length)
                     for (let i = 0; i < binaryKeyString.length; i++) {
                         keyBytes[i] = binaryKeyString.charCodeAt(i)

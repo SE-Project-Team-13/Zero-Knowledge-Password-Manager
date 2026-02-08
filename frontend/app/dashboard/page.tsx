@@ -742,6 +742,7 @@ export default function DashboardPage() {
         setIsCollapsed={setIsCollapsed}
         activeView="home"
         onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+        fullName={session.fullName}
       />
 
       {/* Emergency Kit Modal */}

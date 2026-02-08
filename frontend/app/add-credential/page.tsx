@@ -145,6 +145,7 @@ export default function AddCredentialPage() {
                 activeView="password-manager"
                 setActiveView={() => { }}
                 onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+                fullName={session.fullName}
             />
 
             <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>

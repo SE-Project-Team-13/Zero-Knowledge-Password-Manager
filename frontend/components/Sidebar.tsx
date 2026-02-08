@@ -37,6 +37,7 @@ interface SidebarProps {
   activeView: string;
   setActiveView?: (view: string) => void;
   onEmergencyKit?: () => void;
+  fullName?: string | null;
 }
 
 export function Sidebar({
@@ -49,6 +50,7 @@ export function Sidebar({
   activeView,
   setActiveView,
   onEmergencyKit,
+  fullName,
 }: SidebarProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const { setTheme, resolvedTheme } = useTheme();
@@ -207,7 +209,7 @@ export function Sidebar({
                 <>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">
-                      {userEmail.split("@")[0]}
+                      {fullName || userEmail.split("@")[0]}
                     </p>
                     <p className="text-[10px] text-muted-foreground truncate opacity-70">
                       {userEmail}

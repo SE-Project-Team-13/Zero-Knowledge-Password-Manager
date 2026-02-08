@@ -16,6 +16,7 @@ export interface SyncPayload {
 
 export interface AuthResponse {
   userId: string
+  fullName?: string // User's full name
   sessionToken: string
   salt: string
   verifier?: string
@@ -86,10 +87,14 @@ class ApiClient {
     return this.request<{ salt: string }>(`/auth/salt/${encodeURIComponent(email)}`)
   }
 
-  async register(email: string, verifier: string, salt: string): Promise<AuthResponse> {
+  async checkEmail(email: string): Promise<{ exists: boolean }> {
+    return this.request<{ exists: boolean }>(`/auth/check-email/${encodeURIComponent(email)}`)
+  }
+
+  async register(email: string, fullName: string, verifier: string, salt: string): Promise<AuthResponse> {
     return this.request<AuthResponse>("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, verifier, salt }),
+      body: JSON.stringify({ email, fullName, verifier, salt }),
     })
   }
 

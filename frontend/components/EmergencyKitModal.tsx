@@ -129,10 +129,11 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
     }
 
     const copyToClipboard = async () => {
-        if (!recoveryKey) return
+        const rawKey = (formattedKey || recoveryKey)?.replace(/[\s-]/g, '')
+        if (!rawKey) return
 
         try {
-            await navigator.clipboard.writeText(recoveryKey)
+            await navigator.clipboard.writeText(rawKey)
             setCopied(true)
             toast.success("Recovery key copied!")
             setTimeout(() => setCopied(false), 2000)
@@ -147,7 +148,7 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
         generateEmergencyKitPDF({
             email,
             recoveryKey,
-            formattedKey: formattedKey || recoveryKey,
+            formattedKey: (formattedKey || recoveryKey)?.replace(/[\s-]/g, ''),
             generatedAt: new Date(),
         })
 
@@ -232,20 +233,8 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
                             </label>
                             <div className="relative">
                                 <div className="p-4 bg-muted rounded-lg font-mono text-sm break-all select-all border-2 border-primary/20">
-                                    {formattedKey || recoveryKey}
+                                    {(formattedKey || recoveryKey)?.replace(/[\s-]/g, '')}
                                 </div>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="absolute top-2 right-2"
-                                    onClick={copyToClipboard}
-                                >
-                                    {copied ? (
-                                        <Check className="h-4 w-4 text-green-500" />
-                                    ) : (
-                                        <Copy className="h-4 w-4" />
-                                    )}
-                                </Button>
                             </div>
                         </div>
 

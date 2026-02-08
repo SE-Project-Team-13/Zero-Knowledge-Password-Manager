@@ -19,11 +19,11 @@ export function generateRecoveryKey(): string {
 }
 
 /**
- * Format recovery key for display in groups of 4 characters.
- * Makes it easier for users to read and type.
+ * Format recovery key - currently returns the raw key without dashes
+ * to ensure maximum consistency across PDF and UI.
  */
 export function formatRecoveryKey(key: string): string {
-    return key.match(/.{1,4}/g)?.join("-") || key
+    return key.replace(/[\s-]/g, "")
 }
 
 /**

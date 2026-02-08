@@ -6,6 +6,7 @@ import mongoose, { Schema, Document } from "mongoose"
  */
 export interface IUser extends Document {
   email: string
+  fullName: string
   salt: string
   verifier: string
   createdAt: Date
@@ -14,6 +15,7 @@ export interface IUser extends Document {
 
 const UserSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true },
+  fullName: { type: String, required: true },
   salt: { type: String, required: true },
   verifier: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },

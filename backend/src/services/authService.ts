@@ -21,15 +21,17 @@ function verifyClientProof(verifier: string, clientChallenge: string, clientProo
 }
 
 /**
- * Registers a new user with their email, salt, and verifier.
+ * Registers a new user with their email, full name, salt, and verifier.
  * @param email - User's email address.
+ * @param fullName - User's full display name.
  * @param salt - Cryptographic salt for key derivation.
  * @param verifier - The verifier for ZKP authentication.
  * @returns The newly created user object.
  */
-export async function registerUser(email: string, salt: string, verifier: string): Promise<UserType> {
+export async function registerUser(email: string, fullName: string, salt: string, verifier: string): Promise<UserType> {
   const user = new User({
     email: email.trim().toLowerCase(),
+    fullName: fullName.trim(),
     salt,
     verifier,
   })
@@ -39,6 +41,7 @@ export async function registerUser(email: string, salt: string, verifier: string
   return {
     id: user._id.toString(),
     email: user.email,
+    fullName: user.fullName,
     salt: user.salt,
     verifier: user.verifier,
     createdAt: user.createdAt,
@@ -78,6 +81,7 @@ export async function authenticateUser(
     user: {
       id: user._id.toString(),
       email: user.email,
+      fullName: user.fullName,
       salt: user.salt,
       verifier: user.verifier,
       createdAt: user.createdAt,
@@ -132,6 +136,16 @@ export async function validateSessionToken(
  */
 export async function invalidateSessionToken(token: string): Promise<void> {
   await Session.deleteOne({ token })
+}
+
+/**
+ * Checks if a user with the given email already exists.
+ * @param email - User's email to check.
+ * @returns boolean indicating if the user exists.
+ */
+export async function checkUserExists(email: string): Promise<boolean> {
+  const user = await User.findOne({ email: email.trim().toLowerCase() })
+  return !!user
 }
 
 /**
