@@ -283,6 +283,19 @@ export default function AuthPage() {
                   {isLogin ? "Sign up" : "Sign in"}
                 </button>
               </div>
+
+              {/* Recovery Key Link */}
+              {isLogin && (
+                <div className="text-center text-sm">
+                  <a
+                    href="/recovery-login"
+                    className="text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Key className="h-3 w-3" />
+                    Forgot Password? Use Recovery Key
+                  </a>
+                </div>
+              )}
             </CardFooter>
           </form>
         </Card>

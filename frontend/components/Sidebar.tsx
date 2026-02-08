@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Moon,
   Sun,
+  FileKey,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,7 @@ interface SidebarProps {
   setIsCollapsed: (value: boolean) => void;
   activeView: string;
   setActiveView?: (view: string) => void;
+  onEmergencyKit?: () => void;
 }
 
 export function Sidebar({
@@ -46,6 +48,7 @@ export function Sidebar({
   setIsCollapsed,
   activeView,
   setActiveView,
+  onEmergencyKit,
 }: SidebarProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const { setTheme, resolvedTheme } = useTheme();
@@ -152,6 +155,20 @@ export function Sidebar({
 
           {/* Settings & Theme Actions */}
           <div className={cn("space-y-1", isCollapsed && "px-0")}>
+            {onEmergencyKit && (
+              <button
+                onClick={onEmergencyKit}
+                title={isCollapsed ? "Emergency Kit" : undefined}
+                className={cn(
+                  "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-primary/10 hover:text-primary",
+                  isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3"
+                )}
+              >
+                <FileKey className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" />
+                {!isCollapsed && <span className="truncate">Emergency Kit</span>}
+              </button>
+            )}
+
             <button
               title={isCollapsed ? "Settings" : undefined}
               className={cn(
