@@ -337,7 +337,9 @@ export default function DashboardPage() {
           passwordToUse = sessionPassword;
           setMasterPassword(sessionPassword);
         } else {
-          throw new Error("Master password not found.");
+          console.log("[Dashboard] Master password not in storage, manual entry required.");
+          setIsVerifyingOtp(false);
+          return;
         }
       }
 
@@ -612,6 +614,40 @@ export default function DashboardPage() {
                       Resend Code
                     </Button>
                   </div>
+                </div>
+              )}
+
+              {otpVerified && (
+                <div className="space-y-3">
+                  <Label htmlFor="master-password-input" className="text-sm font-semibold text-foreground/80">
+                    Master Password
+                  </Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="master-password-input"
+                      type={showMasterPassword ? "text" : "password"}
+                      className="pl-10 pr-10 bg-secondary/50 border-input focus:border-primary transition-all font-mono"
+                      placeholder="••••••••••••••••"
+                      value={masterPassword}
+                      onChange={(e) => setMasterPassword(e.target.value)}
+                      required
+                      disabled={isVerifyingOtp}
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1 h-8 w-8 text-muted-foreground"
+                      onClick={() => setShowMasterPassword(!showMasterPassword)}
+                    >
+                      {showMasterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Your master password is required to decrypt your vault locally.
+                  </p>
                 </div>
               )}
 

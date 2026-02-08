@@ -37,6 +37,7 @@ export interface EncryptedVault {
   ciphertext: string // base64-encoded
   iv: string // base64-encoded
   salt: string // base64-encoded
+  tag?: string // base64-encoded authentication tag
   algorithm: "AES-256-GCM"
   derivationAlgorithm: "Argon2id"
 }

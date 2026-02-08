@@ -31,15 +31,16 @@ export default function RecoveryLoginPage() {
 
         setIsLoading(true);
         try {
+            const normalizedEmail = email.trim().toLowerCase();
             const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/recovery/login`,
+                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/recovery/login`,
                 {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
-                        email,
+                        email: normalizedEmail,
                         recoveryKey: recoveryKey.replace(/-/g, "").trim(),
                     }),
                 }
@@ -54,18 +55,62 @@ export default function RecoveryLoginPage() {
 
             // Store session info
             localStorage.setItem("auth_token", data.sessionToken);
-            localStorage.setItem("user_email", email);
+            localStorage.setItem("user_email", email.trim().toLowerCase());
+            if (data.userId) {
+                localStorage.setItem("user_id", data.userId);
+            }
             if (data.salt) {
                 localStorage.setItem("user_salt", data.salt);
             }
+            // Bypass OTP check since recovery key proves identity
+            sessionStorage.setItem("otp_verified", "true");
 
-            toast.success("Recovery successful! Please set a new password.");
+            if (data.encryptedVaultKey) {
+                try {
+                    // Decrypt the master password using the recovery key
+                    const encryptedObj = JSON.parse(data.encryptedVaultKey)
+                    const iv = new Uint8Array(encryptedObj.iv.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)))
+                    const ciphertext = new Uint8Array(encryptedObj.ciphertext.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)))
+                    
+                    const binaryKeyString = atob(recoveryKey.replace(/-/g, "").trim())
+                    const keyBytes = new Uint8Array(binaryKeyString.length)
+                    for (let i = 0; i < binaryKeyString.length; i++) {
+                        keyBytes[i] = binaryKeyString.charCodeAt(i)
+                    }
 
-            // Redirect to password reset
-            if (data.requiresPasswordReset) {
-                router.push("/reset-password");
+                    const wrappingKey = await window.crypto.subtle.importKey(
+                        "raw",
+                        keyBytes,
+                        { name: "AES-GCM" },
+                        false,
+                        ["decrypt"]
+                    )
+
+                    const decryptedBuffer = await window.crypto.subtle.decrypt(
+                        { name: "AES-GCM", iv },
+                        wrappingKey,
+                        ciphertext
+                    )
+
+                    const masterPassword = new TextDecoder().decode(decryptedBuffer)
+                    sessionStorage.setItem("session_master_password", masterPassword)
+                    // Store as old password for re-encryption
+                    sessionStorage.setItem("old_master_password", masterPassword)
+                    toast.success("Account recovered! Please set a new password.")
+                    router.push("/reset-password")
+                    return
+                } catch (decryptError) {
+                    console.error("Failed to decrypt master password:", decryptError)
+                    toast.warning("Login successful but failed to decrypt vault. Please reset your password.")
+                    router.push("/reset-password")
+                    return
+                }
             } else {
-                router.push("/dashboard");
+                // No vault key to recover (legacy account or first key)
+                // Force a password reset to ensure they can set a new one
+                toast.info("Recovery successful. Please set a new master password.")
+                router.push("/reset-password")
+                return
             }
         } catch (err) {
             console.error("Recovery login error:", err);
@@ -142,8 +187,8 @@ export default function RecoveryLoginPage() {
                         <Alert className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900">
                             <AlertCircle className="h-4 w-4 text-amber-600" />
                             <AlertDescription className="text-xs text-amber-800 dark:text-amber-200">
-                                <strong>Note:</strong> After recovery, you will need to set a new master password.
-                                Your existing vault data will be preserved.
+                                <strong>Warning:</strong> Recovery allows you to access your account, but you must set a new master password.
+                                Since your vault is encrypted with your old password, existing data will be unreadable unless you have a backup.
                             </AlertDescription>
                         </Alert>
                     </CardContent>

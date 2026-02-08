@@ -1,5 +1,6 @@
 import crypto from "crypto"
-import { User, Session } from "../database/models.js"
+import { User, Session, VaultBlob } from "../database/models.js"
+import { revokeAllRecoveryKeys } from "./recoveryService.js"
 import type { User as UserType } from "../types/index.js"
 
 /**
@@ -28,7 +29,7 @@ function verifyClientProof(verifier: string, clientChallenge: string, clientProo
  */
 export async function registerUser(email: string, salt: string, verifier: string): Promise<UserType> {
   const user = new User({
-    email,
+    email: email.trim().toLowerCase(),
     salt,
     verifier,
   })
@@ -57,7 +58,7 @@ export async function authenticateUser(
   clientChallenge: string,
   clientProof: string,
 ): Promise<{ success: boolean; user?: UserType; error?: string }> {
-  const user = await User.findOne({ email })
+  const user = await User.findOne({ email: email.trim().toLowerCase() })
 
   if (!user) {
     return { success: false, error: "User not found" }
@@ -140,6 +141,96 @@ export async function invalidateSessionToken(token: string): Promise<void> {
  * @returns The user's salt or null if not found.
  */
 export async function getUserSalt(email: string): Promise<string | null> {
-  const user = await User.findOne({ email })
+  const user = await User.findOne({ email: email.trim().toLowerCase() })
   return user ? user.salt : null
+}
+
+/**
+ * Updates a user's credentials (salt and verifier).
+ * Optionally updates the vault blob if provided (for re-encryption flows).
+ * Used for password reset flows.
+ * @param userId - The ID of the user to update.
+ * @param salt - The new salt.
+ * @param verifier - The new verifier.
+ * @param encryptedVault - (Optional) The new encrypted vault blob.
+ */
+export async function updateUserCredentials(
+  userId: string,
+  salt: string,
+  verifier: string,
+  encryptedVault?: {
+    ciphertext: string
+    iv: string
+    salt: string
+    authTag: string
+    version: number
+    deviceId: string
+  }
+): Promise<void> {
+  // Update User credentials
+  await User.findByIdAndUpdate(userId, { salt, verifier })
+
+  // Revoke all existing recovery keys (they point to the old password)
+  await revokeAllRecoveryKeys(userId)
+
+  // 3. If new vault data is provided, update it (Re-encryption)
+  if (encryptedVault) {
+    // Update Sync Vault (VaultBlob)
+    await VaultBlob.findOneAndUpdate(
+      { userId, deviceId: encryptedVault.deviceId },
+      {
+        ciphertext: encryptedVault.ciphertext,
+        iv: encryptedVault.iv,
+        salt: encryptedVault.salt,
+        authTag: encryptedVault.authTag,
+        version: encryptedVault.version,
+        timestamp: Date.now(),
+        nonce: crypto.randomBytes(12).toString("hex"), // New nonce
+        updatedAt: new Date()
+      },
+      { upsert: true }
+    )
+
+    // Update Compatibility Vault (SimpleVault)
+    const { SimpleVault } = await import("../database/models.js");
+    const user = await User.findById(userId);
+    if (user) {
+      const normalizedEmail = user.email.trim().toLowerCase();
+      console.log(`[AuthService] Updating SimpleVault for ${normalizedEmail} with re-encrypted data`);
+      // Map local sync format to simple vault format for compatibility
+      await SimpleVault.findOneAndUpdate(
+        { userId: normalizedEmail },
+        {
+          data: {
+            ciphertext: encryptedVault.ciphertext,
+            iv: encryptedVault.iv,
+            salt: encryptedVault.salt,
+            tag: encryptedVault.authTag, // Compatibility layer uses 'tag'
+            version: encryptedVault.version
+          },
+          updatedAt: new Date()
+        },
+        { upsert: true }
+      );
+    }
+  } else {
+    // RECOVERY FLOW WITHOUT OLD PASSWORD:
+    // If no new vault is provided, it means we couldn't re-encrypt.
+    // We must clear the old vault data so the user doesn't get decryption errors.
+    console.log(`[AuthService] Clearing unreadable vault data for user ${userId} after password reset.`);
+    
+    // Clear Sync Vaults
+    await VaultBlob.deleteMany({ userId });
+    
+    // Clear Sync Metadata
+    const { SyncMetadata, SimpleVault } = await import("../database/models.js");
+    await SyncMetadata.deleteMany({ userId });
+    
+    // Clear Simple Vault (compatibility layer used by dashboard)
+    const user = await User.findById(userId);
+    if (user) {
+      const normalizedEmail = user.email.trim().toLowerCase();
+      await SimpleVault.deleteMany({ userId: normalizedEmail });
+    }
+  }
 }

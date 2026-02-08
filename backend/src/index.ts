@@ -58,7 +58,9 @@ async function start() {
     // Phase 3 compatibility routes for extension (Now using MongoDB)
     app.get("/api/vault/:userId", async (req, res) => {
       try {
-        const { userId } = req.params
+        let { userId } = req.params
+        if (userId) userId = userId.trim().toLowerCase()
+        
         const vault = await SimpleVault.findOne({ userId })
         if (!vault) return res.status(404).json({ error: "Vault not found" })
         res.json(vault.data)
@@ -68,7 +70,9 @@ async function start() {
     })
 
     app.put("/api/vault/:userId", async (req, res) => {
-      const { userId } = req.params
+      let { userId } = req.params
+      if (userId) userId = userId.trim().toLowerCase()
+      
       try {
         console.log(`[VaultSync] Extension saving vault for ${userId}...`)
 
@@ -98,7 +102,9 @@ async function start() {
     // or removed entirely. Currently useful for development and testing.
     app.delete("/api/vault/:userId", async (req, res) => {
       try {
-        const { userId } = req.params
+        let { userId } = req.params
+        if (userId) userId = userId.trim().toLowerCase()
+        
         await SimpleVault.deleteOne({ userId })
         console.log(`[VaultSync] Vault deleted for ${userId}`)
         res.json({ success: true, message: "Vault deleted" })
