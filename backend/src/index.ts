@@ -11,6 +11,7 @@ import { SimpleVault } from "./database/models.js"
 import { createAuthRouter } from "./routes/authRoutes.js"
 import { createSyncRouter } from "./routes/syncRoutes.js"
 import { createOTPRouter } from "./routes/otpRoutes.js"
+import { createRecoveryRouter } from "./routes/recoveryRoutes.js"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3001
@@ -52,6 +53,7 @@ async function start() {
     app.use("/auth", createAuthRouter()) // User registration and ZKP-based authentication
     app.use("/sync", createSyncRouter()) // Blind vault synchronization (merging/versioning)
     app.use("/otp", createOTPRouter())   // Email-based One-Time Passwords
+    app.use("/recovery", createRecoveryRouter()) // Recovery key management
 
     // Phase 3 compatibility routes for extension (Now using MongoDB)
     app.get("/api/vault/:userId", async (req, res) => {
