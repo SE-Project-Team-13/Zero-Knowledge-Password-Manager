@@ -10,11 +10,30 @@ This repository contains the source code for the **Zero-Knowledge Password Manag
 
 ---
 
-## 📚 Documentation Structure
+## Table of Contents
 
-1.  **[Introduction & Installation (You are here)](README.md)**: Features, Dependencies, Setup, and Troubleshooting.
-2.  **[Detailed Usage & Testing](docs/USER_GUIDE.md)**: How to use the application features and run tests.
-3.  **[Architecture & Diagrams](docs/ARCHITECTURE.md)**: System design, security protocols, and UML diagrams.
+- [Introduction](#introduction)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Dependencies & Technologies](#dependencies--technologies)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Running the Project](#running-the-project)
+- [Usage Guide](#usage-guide)
+  - [Registering & Vault Creation](#registering--vault-creation)
+  - [Managing Passwords](#managing-passwords)
+  - [Emergency Kit](#emergency-kit)
+  - [Breach Detection](#breach-detection)
+- [Running Tests](#running-tests)
+- [Architecture Deep Dive](#architecture-deep-dive)
+  - [Zero-Knowledge Encryption](#zero-knowledge-encryption)
+  - [Breach Detection (k-Anonymity)](#breach-detection-k-anonymity-1)
+  - [Blind Sync Protocol](#blind-sync-protocol)
+  - [UML Diagrams](#uml-diagrams)
+- [Troubleshooting](#troubleshooting)
+- [Uninstalling](#uninstalling)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
@@ -22,7 +41,7 @@ This repository contains the source code for the **Zero-Knowledge Password Manag
 
 **ZeroKnowledge Vault** handles your secrets without ever knowing them. Your master password derives an encryption key locally on your device using **Argon2id**. This key is used to encrypt your vault data with **AES-256-GCM** before it ever leaves your browser. The server only sees encrypted blobs.
 
-### Key Features
+## Features
 
 - **True Zero-Knowledge**: Server cannot decrypt your data.
 - **Privacy-Preserving Breach Detection**: Checks your credentials against breach databases without exposing your accounts (using k-Anonymity).
@@ -151,6 +170,110 @@ npm run build -w backend
 npm start
 ```
 
+## Usage Guide
+
+Once the servers are running, follow these steps to use the application:
+
+### Registering & Vault Creation
+1.  Navigate to `http://localhost:3000`.
+2.  Click **"Get Started"** or **"Register"**.
+3.  Enter your Email and a Strong Master Password.
+4.  **Important:** Your Master Password is *never* sent to the server. It generates your encryption keys locally.
+5.  Verification: Check your terminal (or email) for the OTP code.
+
+### Managing Passwords
+*   **Add Item**: Click the "+" button in the dashboard to add a new login.
+*   **View Password**: Click the eye icon to decrypt and view a password.
+*   **Copy**: Use the copy icon to copy username/password to clipboard.
+*   **Edit/Delete**: Use the context menu on any item card.
+
+### Emergency Kit
+1.  Go to **Settings** -> **Danger Zone**.
+2.  Click **"Generate Emergency Kit"**.
+3.  A PDF will be generated containing your **Recovery Key** and instructions.
+4.  **Save this PDF securely!** It is the *only* way to recover your account if you forget your Master Password.
+
+### Breach Detection
+The system automatically checks your email against a mock breach database.
+*   **Manual Check**: The scheduled job runs every minute (in dev).
+*   **Simulate Breach**: Use the email `breached@example.com` during registration to see the Red Alert Banner on the dashboard.
+
+## Running Tests
+
+The backend includes a suite of tests to verify functionality.
+
+### Backend Tests
+To run the backend tests, navigate to the `backend` directory or run from the root workspace:
+
+```bash
+# Run tests for backend
+npm run test -w backend
+```
+
+> **Note:** Ensure your MongoDB instance is running before starting the tests, as some integration tests may require a database connection.
+
+## Architecture Deep Dive
+
+### Zero-Knowledge Encryption
+
+1.  **User Input**: User types `Master Password`.
+2.  **Key Derivation**: `Argon2id` hashes the password with a random salt (100MB memory cost, 4 iterations). Result: `Derived Key`.
+3.  **Encryption**: `AES-256-GCM` uses `Derived Key` to encrypt vault data. Result: `Ciphertext`.
+4.  **Storage**: `Ciphertext` is sent to MongoDB. The server **never** sees the `Master Password` or `Derived Key`.
+
+### Breach Detection (k-Anonymity)
+
+1.  **Hashing**: The system hashes the user's email/username (SHA-1/SHA-256).
+2.  **Prefixing**: Only the **first 5 characters** of the hash are sent to the Breach API.
+3.  **Matching**: The API returns all breaches matching that prefix.
+4.  **Local Filtering**: The client checks the full hash against the returned list locally.
+    *   _Result:_ The API server never knows exactly which account you are checking along the k-anonymity set.
+
+### Blind Sync Protocol
+
+The server acts as a "dumb store". It handles versioning and conflict resolution based on `vaultVersion` numbers, but it cannot merge the _content_ because it is encrypted. Conflic resolution pushes the newer version or asks client to resolve.
+
+### UML Diagrams
+
+#### System Component Diagram
+
+```mermaid
+graph TD
+    User[User Browser]
+    Frontend[Next.js Dashboard]
+    Ext[Browser Extension]
+    Backend[Node.js API]
+    DB[(MongoDB)]
+    BreachAPI[Breach Detection Service]
+
+    User --> Frontend
+    User --> Ext
+    Frontend --> Backend
+    Ext --> Backend
+    Backend --> DB
+    Backend --> BreachAPI
+```
+
+#### Encryption Flow Sequence
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as Client (Browser)
+    participant S as Server
+    participant D as Database
+
+    U->>C: Enter Master Password
+    C->>C: Derive Key (Argon2id)
+    C->>S: Request Salt
+    S-->>C: Return Salt
+    C->>C: Encrypt Data (AES-GCM)
+    C->>S: Send Encrypted Blob
+    S->>D: Store Blob
+    D-->>S: Confirm
+    S-->>C: Success
+```
+
 ## Troubleshooting
 
 ### Installation Issues
@@ -182,6 +305,19 @@ npm start
 #### "MongoDB Connection Failed"
 *   **Cause**: Local MongoDB service is not running or URI is wrong.
 *   **Fix**: Ensure `mongod` is running or check your Atlas IP whitelist.
+
+## Uninstalling
+
+To completely remove the application and its data:
+
+1.  **Stop Servers**: `Ctrl+C` in your terminals.
+2.  **Remove Directory**: `rm -rf Zero-Knowledge-Password-Manager`.
+3.  **Drop Database** (MongoDB Shell):
+    ```bash
+    mongosh
+    use vault
+    db.dropDatabase()
+    ```
 
 ## Contributing
 
