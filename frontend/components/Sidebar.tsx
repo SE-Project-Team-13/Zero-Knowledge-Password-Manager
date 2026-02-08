@@ -103,7 +103,7 @@ export function Sidebar({
             <ShieldCheck className="h-6 w-6 text-primary" />
           </div>
           {!isCollapsed && (
-            <div className="flex flex-col overflow-hidden">
+            <div className="flex flex-col overflow-hidden text-center">
               <h1 className="text-xl font-bold text-foreground tracking-tight font-heading truncate leading-none">
                 ZeroKnowledge
               </h1>

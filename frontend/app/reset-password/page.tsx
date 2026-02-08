@@ -329,13 +329,6 @@ export default function ResetPasswordPage() {
                                 />
                             </div>
                         </div>
-
-                        <Alert className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900">
-                            <AlertCircle className="h-4 w-4 text-amber-600" />
-                            <AlertDescription className="text-xs text-amber-800 dark:text-amber-200">
-                                <strong>Warning:</strong> Resetting your master password means you will start with an empty vault unless you have a backup. Any existing encrypted data will be unreadable.
-                            </AlertDescription>
-                        </Alert>
                     </CardContent>
 
                     <CardFooter>
