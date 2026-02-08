@@ -6,6 +6,7 @@ import { useVaultSync } from "@/hooks/useVaultSync";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
+import { EmergencyKitModal } from "@/components/EmergencyKitModal";
 import { cn } from "@/lib/utils";
 import {
     Card,
@@ -39,6 +40,7 @@ export default function PasswordManagerPage() {
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [mounted, setMounted] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
 
     // Wait for component to mount
     useEffect(() => {
@@ -72,6 +74,14 @@ export default function PasswordManagerPage() {
                 setIsCollapsed={setIsCollapsed}
                 activeView="password-manager"
                 setActiveView={() => { }}
+                onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+            />
+
+            {/* Emergency Kit Modal */}
+            <EmergencyKitModal
+                isOpen={isEmergencyKitOpen}
+                onClose={() => setIsEmergencyKitOpen(false)}
+                email={session.email || ""}
             />
 
             <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>
