@@ -156,6 +156,16 @@ interface RegisterUserMessage {
   masterPassword: string
 }
 
+interface RequestAutofillMessage {
+  type: 'REQUEST_AUTOFILL'
+  url: string
+}
+
+interface CheckUrlMatchMessage {
+  type: 'CHECK_URL_MATCH'
+  url: string
+}
+
 type BackgroundMessage =
   | UnlockVaultMessage
   | AddPasswordMessage
@@ -166,6 +176,8 @@ type BackgroundMessage =
   | DeletePasswordMessage
   | UpdatePasswordMessage
   | RegisterUserMessage
+  | RequestAutofillMessage
+  | CheckUrlMatchMessage
 
 chrome.runtime.onMessage.addListener((message: BackgroundMessage, sender, sendResponse) => {
   console.log('[Background] Received message:', message.type)
@@ -201,6 +213,10 @@ async function handleMessage(message: BackgroundMessage, sender: chrome.runtime.
       return { success: true }
     case 'REGISTER_USER':
       return await handleRegisterUser(message)
+    case 'REQUEST_AUTOFILL':
+      return handleRequestAutofill(message)
+    case 'CHECK_URL_MATCH':
+      return handleCheckUrlMatch(message)
     default:
       return { success: false, error: 'Unknown message type' }
   }
@@ -389,6 +405,71 @@ function handleLockVault() {
 
 function handleGetStatus() {
   return { isLocked: sessionState.isLocked }
+}
+
+function normalizeUrlForMatch(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl)
+    const host = url.hostname.toLowerCase()
+    const port = url.port ? `:${url.port}` : ''
+    let path = url.pathname || '/'
+    if (path.length > 1) {
+      path = path.replace(/\/+$/, '')
+    }
+    return `${url.protocol}//${host}${port}${path}`
+  } catch {
+    return null
+  }
+}
+
+function normalizeEntryUrl(rawUrl: string): string | null {
+  if (!rawUrl) return null
+  const trimmed = rawUrl.trim()
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+  return normalizeUrlForMatch(withScheme)
+}
+
+function findMatchingEntry(currentUrl: string): PasswordEntry | null {
+  if (sessionState.isLocked || !sessionState.decryptedVault) return null
+  const current = normalizeUrlForMatch(currentUrl)
+  if (!current) return null
+
+  for (const entry of sessionState.decryptedVault) {
+    const entryUrl = normalizeEntryUrl(entry.siteUrl)
+    if (entryUrl && entryUrl === current) {
+      return entry
+    }
+  }
+
+  return null
+}
+
+function handleRequestAutofill(message: RequestAutofillMessage) {
+  const entry = findMatchingEntry(message.url)
+  if (!entry) {
+    return { success: false, match: false, error: 'No matching entry for this URL' }
+  }
+  updateLastActivity()
+  return { success: true, match: true, entry }
+}
+
+function handleCheckUrlMatch(message: CheckUrlMatchMessage) {
+  const entry = findMatchingEntry(message.url)
+  const currentNormalized = normalizeUrlForMatch(message.url)
+  const sampleEntries: string[] = []
+  if (sessionState.decryptedVault) {
+    for (const vaultEntry of sessionState.decryptedVault) {
+      if (sampleEntries.length >= 5) break
+      const normalized = normalizeEntryUrl(vaultEntry.siteUrl)
+      if (normalized) sampleEntries.push(normalized)
+    }
+  }
+  return {
+    success: true,
+    match: Boolean(entry),
+    currentNormalized,
+    sampleEntries
+  }
 }
 
 async function syncVaultToBackend(): Promise<void> {
