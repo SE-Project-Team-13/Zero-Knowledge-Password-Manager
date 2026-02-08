@@ -41,7 +41,7 @@ export async function sendOTP(email: string): Promise<{ success: boolean; messag
 
     // Generate new OTP with a 10-minute expiration window
     const code = generateOTPCode()
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
 
     // Save the plain OTP code to the database for verification.
     // In a higher security scenario, this could be hashed.
@@ -298,12 +298,13 @@ ZeroKnowledge Vault
 export async function verifyOTP(email: string, code: string): Promise<{ success: boolean; message: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase()
+    const now = new Date().toISOString().replace("T", " ").substring(0, 19)
     // Find the OTP
     const otp = await OTP.findOne({
       email: normalizedEmail,
       code,
       verified: false,
-      expiresAt: { $gt: new Date() },
+      expiresAt: { $gt: now },
     })
 
     if (!otp) {
@@ -337,8 +338,9 @@ export async function verifyOTP(email: string, code: string): Promise<{ success:
  */
 export async function cleanupExpiredOTPs(): Promise<void> {
   try {
+    const now = new Date().toISOString().replace("T", " ").substring(0, 19)
     const result = await OTP.deleteMany({
-      expiresAt: { $lt: new Date() },
+      expiresAt: { $lt: now },
     })
     console.log(`[OTP] Cleaned up ${result.deletedCount} expired OTPs`)
   } catch (error) {
