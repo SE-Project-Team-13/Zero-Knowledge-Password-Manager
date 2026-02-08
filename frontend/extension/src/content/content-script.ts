@@ -17,10 +17,16 @@ console.log('[Content Script] Password Manager content script loaded')
 function shouldInject(): boolean {
   // Avoid mutating Next.js/React apps before hydration
   if (document.getElementById('__NEXT_DATA__')) return false
+  if (document.querySelector('meta[name="next-head-count"]')) return false
   const host = window.location.hostname.toLowerCase()
   const port = window.location.port
   if ((host === 'localhost' || host === '127.0.0.1') && port === '3000') return false
   return true
+}
+
+const canInject = shouldInject()
+if (!canInject) {
+  console.log('[Content Script] Skipping injection on app page')
 }
 
 // ============================================================================
@@ -155,7 +161,7 @@ function addAutofillButton(form: HTMLFormElement, usernameInput: HTMLInputElemen
 // ============================================================================
 
 // Detect forms on page load
-if (shouldInject()) {
+if (canInject) {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       window.addEventListener('load', () => {
@@ -171,7 +177,7 @@ if (shouldInject()) {
 
 // Re-detect forms when DOM changes (for SPAs)
 const observer = new MutationObserver(() => {
-  if (shouldInject()) detectLoginForms()
+  if (canInject) detectLoginForms()
 })
 
 if (document.body) {

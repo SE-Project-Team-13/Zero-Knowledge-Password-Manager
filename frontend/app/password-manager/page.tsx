@@ -20,6 +20,7 @@ import {
     EyeOff,
     Search,
     Copy,
+    AlertCircle,
     ShieldAlert,
     Plus,
     Key,
@@ -36,12 +37,33 @@ import { copyWithAutoClear } from "@/lib/clipboard";
 
 export default function PasswordManagerPage() {
     const [session, actions] = useVaultSync();
-    const { decryptedEntries, setDecryptedEntries, isLoadingVault } = useVault();
+    const { decryptedEntries, setDecryptedEntries, isLoadingVault, snoozeEntry } = useVault();
     const router = useRouter();
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [mounted, setMounted] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
+
+    const getLastUpdatedMs = (entry: any) => {
+        const candidates = [entry.lastUpdated, entry.updatedAt, entry.createdAt].filter(Boolean);
+        for (const value of candidates) {
+            const parsed = new Date(value).getTime();
+            if (!Number.isNaN(parsed)) return parsed;
+        }
+        return NaN;
+    };
+
+    const isPasswordOld = (entry: any) => {
+        const last = getLastUpdatedMs(entry);
+        if (Number.isNaN(last)) return false;
+        const ageDays = (Date.now() - last) / (1000 * 60 * 60 * 24);
+        return ageDays >= 365;
+    };
+
+    const isSnoozed = (entry: any) => {
+        if (!entry.reminderSnoozeUntil) return false;
+        return new Date(entry.reminderSnoozeUntil).getTime() > Date.now();
+    };
 
     // Wait for component to mount
     useEffect(() => {
@@ -251,6 +273,20 @@ export default function PasswordManagerPage() {
                                                                     <Copy className="h-3 w-3" />
                                                                 </Button>
                                                             </div>
+                                                            {isPasswordOld(entry) && !isSnoozed(entry) && (
+                                                                <div className="flex items-center gap-2 text-xs text-amber-600 mt-2">
+                                                                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                                                                    <span>Password is over 365 days old</span>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="h-7 px-2 text-[10px]"
+                                                                        onClick={() => snoozeEntry(entry.id)}
+                                                                    >
+                                                                        Snooze 7 days
+                                                                    </Button>
+                                                                </div>
+                                                            )}
                                                             {entry.notes && (
                                                                 <div className="flex items-start gap-2 mt-2">
                                                                     <span className="text-muted-foreground w-20">Notes:</span>

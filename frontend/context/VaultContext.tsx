@@ -16,6 +16,7 @@ export interface DecryptedEntry {
     createdAt: string;
     updatedAt: string;
     lastUpdated: string;
+    reminderSnoozeUntil?: string;
     isPasswordVisible: boolean;
 }
 
@@ -29,6 +30,8 @@ interface VaultContextType {
     addEntry: (entryCtx: { site: string; username: string; password: string; url: string; notes: string }) => Promise<void>;
     updateEntry: (entry: DecryptedEntry) => Promise<void>;
     deleteEntry: (id: string) => Promise<void>;
+    snoozeEntry: (id: string) => Promise<void>;
+    setEntryLastUpdated: (id: string, isoDate: string) => Promise<void>;
 }
 
 const VaultContext = createContext<VaultContextType | undefined>(undefined);
@@ -168,6 +171,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                             createdAt: entry.createdAt || new Date().toISOString(),
                             updatedAt: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
                             lastUpdated: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
+                            reminderSnoozeUntil: entry.reminderSnoozeUntil || "",
                             isPasswordVisible: false,
                         }));
 
@@ -210,6 +214,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 notes: entryCtx.notes || "",
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
+                reminderSnoozeUntil: "",
             };
 
             const updatedEntries = [
@@ -222,6 +227,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                   notes: e.notes,
                   createdAt: e.createdAt,
                   updatedAt: e.updatedAt || e.lastUpdated || new Date().toISOString(),
+                  reminderSnoozeUntil: e.reminderSnoozeUntil || "",
                 })),
                 newCredential,
             ];
@@ -240,6 +246,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 createdAt: new Date().toISOString(),
                 updatedAt: newCredential.updatedAt,
                 lastUpdated: newCredential.updatedAt,
+                reminderSnoozeUntil: "",
                 isPasswordVisible: false,
             };
             
@@ -274,6 +281,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 notes: e.notes,
                 createdAt: e.createdAt,
                 updatedAt: e.updatedAt || new Date().toISOString(),
+                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
             }));
             
             await saveVault(transportEntries, derivedKeys);
@@ -302,6 +310,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 notes: e.notes,
                 createdAt: e.createdAt,
                 updatedAt: e.updatedAt || new Date().toISOString(),
+                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
             }));
             
             await saveVault(transportEntries, derivedKeys);
@@ -310,6 +319,71 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         } catch (err) {
             console.error("Delete entry error:", err);
             toast.error("Failed to delete credential");
+        }
+    };
+
+    const snoozeEntry = async (id: string) => {
+        if (!derivedKeys) return;
+
+        try {
+            const snoozeUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+            const updatedEntries = decryptedEntries.map((e) =>
+                e.id === id
+                    ? { ...e, reminderSnoozeUntil: snoozeUntil }
+                    : e,
+            );
+
+            const transportEntries = updatedEntries.map((e) => ({
+                id: e.id,
+                siteName: e.site,
+                siteUrl: e.siteUrl,
+                username: e.username,
+                password: e.password,
+                notes: e.notes,
+                createdAt: e.createdAt,
+                updatedAt: e.updatedAt || new Date().toISOString(),
+                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
+            }));
+
+            await saveVault(transportEntries, derivedKeys);
+            setDecryptedEntries(updatedEntries);
+            toast.info("Reminder snoozed for 7 days");
+        } catch (err) {
+            console.error("Snooze entry error:", err);
+            toast.error("Failed to snooze reminder");
+        }
+    };
+
+    const setEntryLastUpdated = async (id: string, isoDate: string) => {
+        if (!derivedKeys) return;
+
+        const parsed = new Date(isoDate).toISOString();
+
+        try {
+            const updatedEntries = decryptedEntries.map((e) =>
+                e.id === id
+                    ? { ...e, updatedAt: parsed, lastUpdated: parsed }
+                    : e,
+            );
+
+            const transportEntries = updatedEntries.map((e) => ({
+                id: e.id,
+                siteName: e.site,
+                siteUrl: e.siteUrl,
+                username: e.username,
+                password: e.password,
+                notes: e.notes,
+                createdAt: e.createdAt,
+                updatedAt: e.updatedAt || new Date().toISOString(),
+                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
+            }));
+
+            await saveVault(transportEntries, derivedKeys);
+            setDecryptedEntries(updatedEntries);
+            toast.info("Last updated date changed");
+        } catch (err) {
+            console.error("Set lastUpdated error:", err);
+            toast.error("Failed to set last updated date");
         }
     };
     
@@ -376,7 +450,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             unlockVault,
             addEntry,
             updateEntry,
-            deleteEntry
+            deleteEntry,
+            snoozeEntry,
+            setEntryLastUpdated
         }}>
             {children}
         </VaultContext.Provider>

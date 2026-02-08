@@ -23,6 +23,14 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Shield,
   Lock,
   Unlock,
@@ -88,7 +96,9 @@ export default function DashboardPage() {
     isLoadingVault,
     addEntry,
     updateEntry,
-    deleteEntry
+    deleteEntry,
+    snoozeEntry,
+    setEntryLastUpdated
   } = useVault();
 
   const { setTheme, resolvedTheme } = useTheme();
@@ -110,6 +120,7 @@ export default function DashboardPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
+  const [isAgingModalOpen, setIsAgingModalOpen] = useState(false);
 
   // Vault Data (Managed by Context)
   const [masterPassword, setMasterPassword] = useState("");
@@ -473,6 +484,45 @@ export default function DashboardPage() {
     );
   };
 
+  const getLastUpdatedMs = (entry: DecryptedEntry) => {
+    const candidates = [
+      entry.lastUpdated,
+      entry.updatedAt,
+      entry.createdAt,
+    ].filter(Boolean) as string[];
+    for (const value of candidates) {
+      const parsed = new Date(value).getTime();
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    return NaN;
+  };
+
+  const isPasswordOld = (entry: DecryptedEntry) => {
+    const last = getLastUpdatedMs(entry);
+    if (Number.isNaN(last)) return false;
+    const ageDays = (Date.now() - last) / (1000 * 60 * 60 * 24);
+    return ageDays >= 365;
+  };
+
+  const isSnoozed = (entry: DecryptedEntry) => {
+    if (!entry.reminderSnoozeUntil) return false;
+    return new Date(entry.reminderSnoozeUntil).getTime() > Date.now();
+  };
+
+  const agingEntries = decryptedEntries.filter(
+    (entry) => isPasswordOld(entry) && !isSnoozed(entry),
+  );
+
+  const handleSetLastUpdated = (entry: DecryptedEntry) => {
+    const input = window.prompt(
+      "Enter last updated date (YYYY-MM-DD or ISO):",
+      entry.lastUpdated || entry.updatedAt,
+    );
+    if (!input) return;
+    const iso = new Date(input).toISOString();
+    void setEntryLastUpdated(entry.id, iso);
+  };
+
   const copyToClipboard = (text: string) => {
     void copyWithAutoClear(text);
   };
@@ -706,6 +756,8 @@ export default function DashboardPage() {
         setIsCollapsed={setIsCollapsed}
         activeView="all-items"
         onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+        onPasswordAging={() => setIsAgingModalOpen(true)}
+        passwordAgingCount={agingEntries.length}
       />
 
       {/* Emergency Kit Modal */}
@@ -714,6 +766,64 @@ export default function DashboardPage() {
         onClose={() => setIsEmergencyKitOpen(false)}
         email={session.email || ""}
       />
+
+      <Dialog open={isAgingModalOpen} onOpenChange={setIsAgingModalOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Password Warnings</DialogTitle>
+            <DialogDescription>
+              Passwords older than 365 days should be updated. You can snooze each warning for 7 days.
+            </DialogDescription>
+          </DialogHeader>
+
+          {agingEntries.length === 0 ? (
+            <div className="py-6 text-sm text-muted-foreground">
+              No old passwords detected.
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[50vh] overflow-auto pr-1">
+              {agingEntries.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{entry.site}</p>
+                    <p className="text-xs text-muted-foreground truncate">{entry.username}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Updated {formatDistanceToNow(new Date(getLastUpdatedMs(entry)), { addSuffix: true })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => snoozeEntry(entry.id)}
+                    >
+                      Snooze 7 days
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setIsAgingModalOpen(false);
+                        handleEditEntry(entry);
+                      }}
+                    >
+                      Edit now
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsAgingModalOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>
         {/* Top bar for mobile only / breadcrumbs? */}
@@ -890,6 +1000,32 @@ export default function DashboardPage() {
                               </Button>
                             </div>
                           </div>
+
+                          {isPasswordOld(entry) && !isSnoozed(entry) && (
+                            <div className="flex items-center gap-2 text-xs text-amber-600">
+                              <AlertCircle className="h-4 w-4 text-amber-500" />
+                              <span>Password is over 365 days old</span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-[10px]"
+                                onClick={() => snoozeEntry(entry.id)}
+                              >
+                                Snooze 7 days
+                              </Button>
+                            </div>
+                          )}
+
+                          {process.env.NODE_ENV !== "production" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-[10px] text-muted-foreground"
+                              onClick={() => handleSetLastUpdated(entry)}
+                            >
+                              Set lastUpdated
+                            </Button>
+                          )}
 
                           <div className="flex items-center gap-4">
                             <div className="text-[10px] text-muted-foreground flex flex-col items-end">
