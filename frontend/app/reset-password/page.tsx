@@ -249,7 +249,7 @@ export default function ResetPasswordPage() {
                         </CardTitle>
                         <CardDescription>
                             Your master password has been updated securely.
-                            Redirecting to dashboard...
+                            Redirecting to login page...
                         </CardDescription>
                     </CardHeader>
                 </Card>

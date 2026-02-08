@@ -965,14 +965,7 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              <Alert className="bg-primary/10 border-primary/20 text-primary backdrop-blur-sm">
-                <AlertCircle className="h-4 w-4 text-primary animate-pulse" />
-                <AlertDescription className="text-xs text-primary/90">
-                  Metadata like <strong>Site Name</strong> and{" "}
-                  <strong>Username</strong> are also encrypted in the actual vault
-                  blob. The server only sees anonymous encrypted packets.
-                </AlertDescription>
-              </Alert>
+
             </div>
           </div>
         </main>
