@@ -37,6 +37,7 @@ interface SidebarProps {
   activeView: string;
   setActiveView?: (view: string) => void;
   onEmergencyKit?: () => void;
+  onChangePassword?: () => void;
   fullName?: string | null;
 }
 
@@ -50,6 +51,7 @@ export function Sidebar({
   activeView,
   setActiveView,
   onEmergencyKit,
+  onChangePassword,
   fullName,
 }: SidebarProps) {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -162,24 +164,26 @@ export function Sidebar({
                 onClick={onEmergencyKit}
                 title={isCollapsed ? "Emergency Kit" : undefined}
                 className={cn(
-                  "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-primary/10 hover:text-primary",
+                  "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-secondary hover:text-foreground",
                   isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3"
                 )}
               >
-                <FileKey className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" />
+                <FileKey className="h-5 w-5 shrink-0 transition-transform group-hover:-rotate-12" />
                 {!isCollapsed && <span className="truncate">Emergency Kit</span>}
               </button>
             )}
 
             <button
-              title={isCollapsed ? "Settings" : undefined}
+              id="change-master-password-button"
+              title={isCollapsed ? "Change Master Password" : undefined}
+              onClick={onChangePassword}
               className={cn(
                 "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-secondary hover:text-foreground",
                 isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3"
               )}
             >
-              <Settings className="h-5 w-5 shrink-0 transition-transform group-hover:rotate-90" />
-              {!isCollapsed && <span className="truncate">Settings</span>}
+              <Lock className="h-5 w-5 shrink-0 transition-transform group-hover:rotate-12" />
+              {!isCollapsed && <span className="truncate">Change Master Password</span>}
             </button>
 
             <button

@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Sidebar } from "@/components/Sidebar";
 import { EmergencyKitModal } from "@/components/EmergencyKitModal";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -109,6 +110,7 @@ export default function DashboardPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   // Vault Data (Managed by Context)
   const [masterPassword, setMasterPassword] = useState("");
@@ -742,7 +744,14 @@ export default function DashboardPage() {
         setIsCollapsed={setIsCollapsed}
         activeView="home"
         onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+        onChangePassword={() => setIsChangePasswordOpen(true)}
         fullName={session.fullName}
+      />
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal 
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
       />
 
       {/* Emergency Kit Modal */}

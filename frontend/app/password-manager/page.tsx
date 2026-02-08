@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { EmergencyKitModal } from "@/components/EmergencyKitModal";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { cn } from "@/lib/utils";
 import {
     Card,
@@ -41,6 +42,7 @@ export default function PasswordManagerPage() {
     const [mounted, setMounted] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
+    const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
     // Wait for component to mount
     useEffect(() => {
@@ -75,6 +77,7 @@ export default function PasswordManagerPage() {
                 activeView="password-manager"
                 setActiveView={() => { }}
                 onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+                onChangePassword={() => setIsChangePasswordOpen(true)}
                 fullName={session.fullName}
             />
 
@@ -263,7 +266,13 @@ export default function PasswordManagerPage() {
                     </div>
                 </main>
             </div>
-        
+
+            {/* Change Password Modal */}
+            <ChangePasswordModal 
+                isOpen={isChangePasswordOpen}
+                onClose={() => setIsChangePasswordOpen(false)}
+            />
+
             {/* Emergency Kit Modal */}
             <EmergencyKitModal
                 isOpen={isEmergencyKitOpen}

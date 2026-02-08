@@ -6,6 +6,7 @@ import { useVaultSync } from "@/hooks/useVaultSync";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { EmergencyKitModal } from "@/components/EmergencyKitModal";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { cn } from "@/lib/utils";
 import {
     Card,
@@ -63,6 +64,7 @@ export default function AddCredentialPage() {
     });
     const [isAddingEntry, setIsAddingEntry] = useState(false);
     const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
+    const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const strength = calculatePasswordStrength(newEntry.password);
 
     // Wait for component to mount
@@ -145,6 +147,7 @@ export default function AddCredentialPage() {
                 activeView="password-manager"
                 setActiveView={() => { }}
                 onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+                onChangePassword={() => setIsChangePasswordOpen(true)}
                 fullName={session.fullName}
             />
 
@@ -328,6 +331,12 @@ export default function AddCredentialPage() {
                 </main>
             </div>
         
+            {/* Change Password Modal */}
+            <ChangePasswordModal 
+                isOpen={isChangePasswordOpen}
+                onClose={() => setIsChangePasswordOpen(false)}
+            />
+
             {/* Emergency Kit Modal */}
             <EmergencyKitModal
                 isOpen={isEmergencyKitOpen}
