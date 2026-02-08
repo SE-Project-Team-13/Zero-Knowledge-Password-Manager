@@ -103,7 +103,7 @@ export async function generateSessionToken(
   expirationMinutes: number = 24 * 60,
 ): Promise<string> {
   const token = crypto.randomBytes(32).toString("hex")
-  const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000)
+  const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
 
   const session = new Session({
     userId,
@@ -123,7 +123,9 @@ export async function generateSessionToken(
 export async function validateSessionToken(
   token: string,
 ): Promise<{ valid: boolean; userId?: string; error?: string }> {
-  const session = await Session.findOne({ token, expiresAt: { $gt: new Date() } })
+  // ISO string comparison works lexicographically
+  const now = new Date().toISOString().replace("T", " ").substring(0, 19)
+  const session = await Session.findOne({ token, expiresAt: { $gt: now } })
 
   if (!session) {
     return { valid: false, error: "Invalid or expired token" }
@@ -204,7 +206,7 @@ export async function updateUserCredentials(
         version: encryptedVault.version,
         timestamp: Date.now(),
         nonce: crypto.randomBytes(12).toString("hex"), // New nonce
-        updatedAt: new Date()
+        updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
       },
       { upsert: true }
     )
@@ -226,7 +228,7 @@ export async function updateUserCredentials(
             tag: encryptedVault.authTag, // Compatibility layer uses 'tag'
             version: encryptedVault.version
           },
-          updatedAt: new Date()
+          updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
         },
         { upsert: true }
       );

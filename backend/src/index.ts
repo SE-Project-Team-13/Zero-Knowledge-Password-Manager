@@ -88,7 +88,7 @@ async function start() {
           {
             data: encryptedVault || req.body, // Fallback for old extension version
             labels: labels || [],
-            updatedAt: new Date()
+            updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
           },
           { upsert: true, new: true }
         )

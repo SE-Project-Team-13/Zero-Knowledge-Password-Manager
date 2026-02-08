@@ -7,6 +7,10 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { EmergencyKitModal } from "@/components/EmergencyKitModal";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
+import { PasswordWarningsModal } from "@/components/PasswordWarningsModal";
+import { EditCredentialModal } from "@/components/EditCredentialModal";
+import { usePasswordAging } from "@/hooks/usePasswordAging";
+import { DecryptedEntry } from "@/context/VaultContext";
 import { cn } from "@/lib/utils";
 import {
     Card,
@@ -48,7 +52,8 @@ const calculatePasswordStrength = (password: string) => {
 
 export default function AddCredentialPage() {
     const [session, actions] = useVaultSync();
-    const { addEntry } = useVault();
+    const { addEntry, updateEntry } = useVault();
+    const { agingEntries } = usePasswordAging();
     const router = useRouter();
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [mounted, setMounted] = useState(false);
@@ -65,6 +70,24 @@ export default function AddCredentialPage() {
     const [isAddingEntry, setIsAddingEntry] = useState(false);
     const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+    const [isAgingModalOpen, setIsAgingModalOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingEntry, setEditingEntry] = useState<DecryptedEntry | null>(null);
+
+    const handleEditEntry = (entry: DecryptedEntry) => {
+        setEditingEntry(entry);
+        setIsEditModalOpen(true);
+    };
+
+    const handleSaveEdit = async (updatedEntry: DecryptedEntry) => {
+        try {
+            await updateEntry(updatedEntry);
+            setIsEditModalOpen(false);
+            setEditingEntry(null);
+        } catch (error) {
+            console.error("Failed to update entry:", error);
+        }
+    };
     const strength = calculatePasswordStrength(newEntry.password);
 
     // Wait for component to mount
@@ -146,6 +169,8 @@ export default function AddCredentialPage() {
                 onEmergencyKit={() => setIsEmergencyKitOpen(true)}
                 onChangePassword={() => setIsChangePasswordOpen(true)}
                 fullName={session.fullName}
+                onPasswordAging={() => setIsAgingModalOpen(true)}
+                passwordAgingCount={agingEntries.length}
             />
 
             <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>
@@ -339,6 +364,22 @@ export default function AddCredentialPage() {
                 isOpen={isEmergencyKitOpen}
                 onClose={() => setIsEmergencyKitOpen(false)}
                 email={session.email || ""}
+            />
+
+            <PasswordWarningsModal
+                isOpen={isAgingModalOpen}
+                onClose={() => setIsAgingModalOpen(false)}
+                onEdit={(entry) => {
+                    setIsAgingModalOpen(false);
+                    handleEditEntry(entry);
+                }}
+            />
+
+            <EditCredentialModal
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                entry={editingEntry}
+                onSave={handleSaveEdit}
             />
         </div>
     );

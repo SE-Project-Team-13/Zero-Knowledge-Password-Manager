@@ -8,6 +8,9 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { Sidebar } from "@/components/Sidebar";
 import { EmergencyKitModal } from "@/components/EmergencyKitModal";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
+import { PasswordWarningsModal } from "@/components/PasswordWarningsModal";
+import { usePasswordAging } from "@/hooks/usePasswordAging";
+import { EditCredentialModal } from "@/components/EditCredentialModal";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -441,21 +444,10 @@ export default function DashboardPage() {
     setIsEditModalOpen(true);
   };
 
-  const handleSaveEdit = async () => {
-    if (!editingEntry) return;
-    if (
-      !editingEntry.site ||
-      !editingEntry.username ||
-      !editingEntry.password ||
-      !editingEntry.siteUrl
-    ) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-
+  const handleSaveEdit = async (updatedEntry: DecryptedEntry) => {
     setIsSavingEdit(true);
     try {
-      await updateEntry(editingEntry);
+      await updateEntry(updatedEntry);
       setIsEditModalOpen(false);
       setEditingEntry(null);
     } catch (err) {
@@ -490,44 +482,8 @@ export default function DashboardPage() {
     );
   };
 
-  const getLastUpdatedMs = (entry: DecryptedEntry) => {
-    const candidates = [
-      entry.lastUpdated,
-      entry.updatedAt,
-      entry.createdAt,
-    ].filter(Boolean) as string[];
-    for (const value of candidates) {
-      const parsed = new Date(value).getTime();
-      if (!Number.isNaN(parsed)) return parsed;
-    }
-    return NaN;
-  };
-
-  const isPasswordOld = (entry: DecryptedEntry) => {
-    const last = getLastUpdatedMs(entry);
-    if (Number.isNaN(last)) return false;
-    const ageDays = (Date.now() - last) / (1000 * 60 * 60 * 24);
-    return ageDays >= 365;
-  };
-
-  const isSnoozed = (entry: DecryptedEntry) => {
-    if (!entry.reminderSnoozeUntil) return false;
-    return new Date(entry.reminderSnoozeUntil).getTime() > Date.now();
-  };
-
-  const agingEntries = decryptedEntries.filter(
-    (entry) => isPasswordOld(entry) && !isSnoozed(entry),
-  );
-
-  const handleSetLastUpdated = (entry: DecryptedEntry) => {
-    const input = window.prompt(
-      "Enter last updated date (YYYY-MM-DD or ISO):",
-      entry.lastUpdated || entry.updatedAt,
-    );
-    if (!input) return;
-    const iso = new Date(input).toISOString();
-    void setEntryLastUpdated(entry.id, iso);
-  };
+  /* Legacy: helper functions moved to usePasswordAging hook */
+  const { agingEntries, isPasswordOld, isSnoozed, getLastUpdatedMs } = usePasswordAging();
 
   const copyToClipboard = (text: string) => {
     void copyWithAutoClear(text);
@@ -853,63 +809,14 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <Dialog open={isAgingModalOpen} onOpenChange={setIsAgingModalOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Password Warnings</DialogTitle>
-            <DialogDescription>
-              Passwords older than 365 days should be updated. You can snooze each warning for 7 days.
-            </DialogDescription>
-          </DialogHeader>
-
-          {agingEntries.length === 0 ? (
-            <div className="py-6 text-sm text-muted-foreground">
-              No old passwords detected.
-            </div>
-          ) : (
-            <div className="space-y-3 max-h-[50vh] overflow-auto pr-1">
-              {agingEntries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 p-3"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">{entry.site}</p>
-                    <p className="text-xs text-muted-foreground truncate">{entry.username}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Updated {formatDistanceToNow(new Date(getLastUpdatedMs(entry)), { addSuffix: true })}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => snoozeEntry(entry.id)}
-                    >
-                      Snooze 7 days
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setIsAgingModalOpen(false);
-                        handleEditEntry(entry);
-                      }}
-                    >
-                      Edit now
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setIsAgingModalOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PasswordWarningsModal
+        isOpen={isAgingModalOpen}
+        onClose={() => setIsAgingModalOpen(false)}
+        onEdit={(entry) => {
+          setIsAgingModalOpen(false);
+          handleEditEntry(entry);
+        }}
+      />
 
       <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>
         {/* Top bar for mobile only / breadcrumbs? */}
@@ -1102,16 +1009,7 @@ export default function DashboardPage() {
                             </div>
                           )}
 
-                          {process.env.NODE_ENV !== "production" && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-[10px] text-muted-foreground"
-                              onClick={() => handleSetLastUpdated(entry)}
-                            >
-                              Set lastUpdated
-                            </Button>
-                          )}
+
 
                           <div className="flex items-center gap-4">
                             <div className="text-[10px] text-muted-foreground flex flex-col items-end">
@@ -1157,213 +1055,16 @@ export default function DashboardPage() {
         </main>
 
         {/* Edit Modal */}
-        {isEditModalOpen && editingEntry && (
-          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-border shadow-2xl bg-card">
-              <CardHeader className="border-b border-border">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl flex items-center gap-2">
-                      <Edit className="h-5 w-5 text-primary" />
-                      Edit Credential
-                    </CardTitle>
-                    <CardDescription>
-                      Update your stored credential information
-                    </CardDescription>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      setIsEditModalOpen(false);
-                      setEditingEntry(null);
-                    }}
-                    className="text-muted-foreground hover:text-foreground hover:bg-secondary"
-                  >
-                    <X className="h-5 w-5" />
-                  </Button>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4 pt-6">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-site" className="text-foreground/80">
-                    Website/Service
-                  </Label>
-                  <Input
-                    id="edit-site"
-                    placeholder="e.g., GitHub, Gmail"
-                    value={editingEntry.site}
-                    onChange={(e) =>
-                      editingEntry &&
-                      setEditingEntry({ ...editingEntry, site: e.target.value })
-                    }
-                    required
-                    className="bg-secondary/50 border-input focus:border-primary"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-url" className="text-foreground/80">
-                    URL
-                  </Label>
-                  <Input
-                    id="edit-url"
-                    type="url"
-                    placeholder="https://example.com"
-                    value={editingEntry.siteUrl || ""}
-                    onChange={(e) =>
-                      editingEntry &&
-                      setEditingEntry({
-                        ...editingEntry,
-                        siteUrl: e.target.value,
-                      })
-                    }
-                    required
-                    className="bg-secondary/50 border-input focus:border-primary"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-username" className="text-foreground/80">
-                    Username/Email
-                  </Label>
-                  <Input
-                    id="edit-username"
-                    placeholder="your@email.com"
-                    value={editingEntry.username}
-                    onChange={(e) =>
-                      editingEntry &&
-                      setEditingEntry({
-                        ...editingEntry,
-                        username: e.target.value,
-                      })
-                    }
-                    required
-                    className="bg-secondary/50 border-input focus:border-primary"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Label htmlFor="edit-password" className="text-foreground/80">
-                      Password
-                    </Label>
-                    {(() => {
-                      const strength = calculatePasswordStrength(
-                        editingEntry.password,
-                      );
-                      return (
-                        <span
-                          className={`text-[10px] uppercase tracking-wider font-bold ${strength.color.replace("bg-", "text-")}`}
-                        >
-                          {strength.label}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  <div className="relative">
-                    <Input
-                      id="edit-password"
-                      type={editingEntry.isPasswordVisible ? "text" : "password"}
-                      placeholder="Enter password"
-                      value={editingEntry.password}
-                      onChange={(e) =>
-                        editingEntry &&
-                        setEditingEntry({
-                          ...editingEntry,
-                          password: e.target.value,
-                        })
-                      }
-                      className="pr-10 bg-secondary/50 border-input focus:border-primary font-mono"
-                      required
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
-                      onClick={() =>
-                        editingEntry &&
-                        setEditingEntry({
-                          ...editingEntry,
-                          isPasswordVisible: !editingEntry.isPasswordVisible,
-                        })
-                      }
-                    >
-                      {editingEntry.isPasswordVisible ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                  <div className="space-y-1">
-                    {(() => {
-                      const strength = calculatePasswordStrength(
-                        editingEntry.password,
-                      );
-                      return (
-                        <Progress
-                          value={strength.score}
-                          className={`h-1.5 bg-secondary ${strength.color}`}
-                        />
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-notes" className="text-foreground/80">
-                    Notes (optional)
-                  </Label>
-                  <textarea
-                    id="edit-notes"
-                    placeholder="Additional information"
-                    rows={3}
-                    value={editingEntry.notes || ""}
-                    onChange={(e) =>
-                      editingEntry &&
-                      setEditingEntry({ ...editingEntry, notes: e.target.value })
-                    }
-                    className="w-full px-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-secondary/50 text-foreground placeholder-muted-foreground"
-                  />
-                </div>
-              </CardContent>
-
-              <CardFooter className="border-t border-border flex gap-3 pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsEditModalOpen(false);
-                    setEditingEntry(null);
-                  }}
-                  className="flex-1"
-                  disabled={isSavingEdit}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveEdit}
-                  className="flex-1"
-                  disabled={isSavingEdit}
-                >
-                  {isSavingEdit ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="mr-2 h-4 w-4" />
-                      Save Changes
-                    </>
-                  )}
-                </Button>
-              </CardFooter>
-            </Card>
-          </div>
-        )}
+        {/* Edit Modal */}
+        <EditCredentialModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setEditingEntry(null);
+          }}
+          entry={editingEntry}
+          onSave={handleSaveEdit}
+        />
 
         <footer className="bg-background/80 backdrop-blur border-t border-border py-6 px-8 mt-auto">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
