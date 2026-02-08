@@ -10,6 +10,8 @@ export interface IUser extends Document {
   verifier: string
   createdAt: Date
   updatedAt: Date
+  isBreached?: boolean
+  lastBreachCheck?: Date
 }
 
 const UserSchema = new Schema<IUser>({
@@ -18,6 +20,8 @@ const UserSchema = new Schema<IUser>({
   verifier: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
+  isBreached: { type: Boolean, default: false },
+  lastBreachCheck: { type: Date },
 })
 
 /**

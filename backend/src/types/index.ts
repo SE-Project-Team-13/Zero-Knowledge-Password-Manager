@@ -10,6 +10,8 @@ export interface User {
   verifier: string // SRP-style password verifier (never derives master password)
   createdAt: Date
   updatedAt: Date
+  isBreached?: boolean
+  lastBreachCheck?: Date
 }
 
 export interface Device {
@@ -64,6 +66,8 @@ export interface LoginResponse {
   sessionToken: string // Stateless JWT-like token
   salt: string // Echo back for client verification
   serverProof: string // Server proof (demonstrates server knows verifier)
+  isBreached?: boolean
+  lastBreachCheck?: Date
 }
 
 /**
