@@ -24,9 +24,13 @@ import {
   AlertCircle,
   Loader2,
   Sun,
-  Moon
+  Moon,
+  User
 } from "lucide-react"
 import { toast } from "sonner"
+import { generateAndDownloadRecoveryKey } from "@/lib/recovery"
+import { apiClient } from "@/lib/api-client"
+import { Check, XCircle } from "lucide-react"
 
 /**
  * AuthPage: The main entry point for user authentication (Login/Register).
@@ -51,8 +55,32 @@ export default function AuthPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [fullName, setFullName] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Debounced email check
+  useEffect(() => {
+    if (!email || !email.includes('@')) {
+      setEmailStatus('idle')
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      setEmailStatus('checking')
+      try {
+        const { exists } = await apiClient.checkEmail(email)
+        setEmailStatus(exists ? 'exists' : 'available')
+      } catch (err) {
+        setEmailStatus('idle')
+      }
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [email])
+  
+  // Email check state
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'checking' | 'available' | 'exists' | 'invalid'>('idle')
 
   /**
    * Handles form submission for both Login and Registration.
@@ -73,8 +101,18 @@ export default function AuthPage() {
       return
     }
 
+    if (!isLogin && !fullName) {
+      toast.error("Please enter your full name")
+      return
+    }
+
     if (password.length < 8) {
       toast.error("Password must be at least 8 characters")
+      return
+    }
+
+    if (!isLogin && emailStatus === 'exists') {
+      toast.error("Email is already registered")
       return
     }
 
@@ -91,9 +129,23 @@ export default function AuthPage() {
         router.push("/dashboard")
       } else {
         // Register new user, deriving verifiers and salts locally first
-        await actions.register(email, password)
+        await actions.register(email, fullName, password)
 
         sessionStorage.setItem("session_master_password", password)
+        
+        // Generate and download recovery kit automatically for new users
+        toast.info("Generating your Emergency Kit...")
+        try {
+          const token = localStorage.getItem("auth_token")
+          if (token) {
+            await generateAndDownloadRecoveryKey(email, password, token, fullName)
+            toast.success("Emergency Kit downloaded! Keep it safe.")
+          }
+        } catch (recoveryErr) {
+          console.error("[Auth] Recovery key generation failed:", recoveryErr)
+          toast.error("Could not auto-generate Emergency Kit. You can do this later in Settings.")
+        }
+
         toast.success("Account created successfully!")
         router.push("/dashboard")
       }
@@ -112,7 +164,9 @@ export default function AuthPage() {
     setIsLogin(!isLogin)
     setPassword("")
     setConfirmPassword("")
+    setFullName("")
     setShowPassword(false)
+    setEmailStatus('idle')
   }
 
   return (
@@ -153,6 +207,26 @@ export default function AuthPage() {
 
           <form onSubmit={handleSubmit} style={{ position: "relative" }} suppressHydrationWarning>
             <CardContent className="space-y-4">
+              {/* Full Name Field (Register only) */}
+              {!isLogin && (
+                <div className="space-y-2 pb-2">
+                  <Label htmlFor="fullName" className="text-foreground/80">Full Name</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="fullName"
+                      type="text"
+                      className="pl-10 bg-secondary/50 border-input focus:border-primary transition-colors"
+                      placeholder="Enter your full name"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      disabled={isSubmitting}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Email Field */}
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-foreground/80">Email Address</Label>
@@ -168,7 +242,24 @@ export default function AuthPage() {
                     disabled={isSubmitting}
                     required
                   />
+                  <div className="absolute right-3 top-3 flex items-center gap-2">
+                    {emailStatus === 'checking' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    {emailStatus === 'available' && !isLogin && <Check className="h-4 w-4 text-emerald-500" />}
+                    {emailStatus === 'exists' && !isLogin && <XCircle className="h-4 w-4 text-destructive" />}
+                    {emailStatus === 'exists' && isLogin && <Check className="h-4 w-4 text-emerald-500" />}
+                    {emailStatus === 'available' && isLogin && <XCircle className="h-4 w-4 text-amber-500" />}
+                  </div>
                 </div>
+                {!isLogin && emailStatus === 'exists' && (
+                  <p className="text-[10px] text-destructive font-medium mt-1 ml-1">
+                    This email is already registered. Please sign in or use another email.
+                  </p>
+                )}
+                {isLogin && emailStatus === 'available' && email.includes('@') && (
+                  <p className="text-[10px] text-amber-500 font-medium mt-1 ml-1">
+                    No account found with this email. Please check your spelling or register.
+                  </p>
+                )}
               </div>
 
               {/* Password Field */}

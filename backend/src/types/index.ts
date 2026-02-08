@@ -6,6 +6,7 @@
 export interface User {
   id: string
   email: string
+  fullName: string // User's display name
   salt: string // Random salt for Argon2id derivation
   verifier: string // SRP-style password verifier (never derives master password)
   createdAt: Date

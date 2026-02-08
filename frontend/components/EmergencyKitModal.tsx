@@ -38,6 +38,7 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
     const generateKey = async () => {
         setIsGenerating(true)
         try {
+            // 1. Get a random key from the server
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/recovery/generate`,
                 {
@@ -56,22 +57,84 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
             }
 
             const data = await response.json()
+            const { recoveryKey } = data
+
+            // 2. Encrypt the current master password with this key
+            const masterPassword = sessionStorage.getItem("session_master_password")
+            if (!masterPassword) {
+                throw new Error("Session expired. Please log in again to generate a kit.")
+            }
+
+            // Derive wrapping key from recovery key (simple import since it's high entropy)
+            const binaryKeyString = atob(recoveryKey)
+            const keyBytes = new Uint8Array(binaryKeyString.length)
+            for (let i = 0; i < binaryKeyString.length; i++) {
+                keyBytes[i] = binaryKeyString.charCodeAt(i)
+            }
+
+            const wrappingKey = await window.crypto.subtle.importKey(
+                "raw",
+                keyBytes,
+                { name: "AES-GCM" },
+                false,
+                ["encrypt"]
+            )
+
+            const iv = window.crypto.getRandomValues(new Uint8Array(12))
+            const encoder = new TextEncoder()
+            const encryptedBuffer = await window.crypto.subtle.encrypt(
+                { name: "AES-GCM", iv },
+                wrappingKey,
+                encoder.encode(masterPassword)
+            )
+
+            const encryptedVaultKey = JSON.stringify({
+                iv: Array.from(iv).map(b => b.toString(16).padStart(2, "0")).join(""),
+                ciphertext: Array.from(new Uint8Array(encryptedBuffer)).map(b => b.toString(16).padStart(2, "0")).join("")
+            })
+
+            // 3. Hash the key for server authentication
+            const keyData = encoder.encode(recoveryKey)
+            const hashBuffer = await window.crypto.subtle.digest("SHA-256", keyData)
+            const keyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("")
+
+            // 4. Activate the key on the server
+            const activateResponse = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/recovery/activate`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                    },
+                    body: JSON.stringify({ 
+                        email, 
+                        keyHash,
+                        encryptedVaultKey
+                    }),
+                }
+            )
+
+            if (!activateResponse.ok) {
+                throw new Error("Failed to activate recovery key")
+            }
+
             setRecoveryKey(data.recoveryKey)
             setFormattedKey(data.formattedKey)
-            toast.success("Recovery key generated!")
+            toast.success("Recovery key generated and activated!")
         } catch (error) {
             console.error("Error generating recovery key:", error)
-            const message = error instanceof Error ? error.message : "Failed to generate recovery key"
-            toast.error(message)
+            toast.error(error instanceof Error ? error.message : "Failed to generate recovery key")
         } finally {
             setIsGenerating(false)
         }
     }
 
     const copyToClipboard = async () => {
-        if (!recoveryKey) return
+        const rawKey = (formattedKey || recoveryKey)?.replace(/[\s-]/g, '')
+        if (!rawKey) return
 
-        const ok = await copyWithAutoClear(recoveryKey)
+        const ok = await copyWithAutoClear(rawKey)
         if (ok) {
             setCopied(true)
             setTimeout(() => setCopied(false), 2000)
@@ -84,7 +147,7 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
         generateEmergencyKitPDF({
             email,
             recoveryKey,
-            formattedKey: formattedKey || recoveryKey,
+            formattedKey: (formattedKey || recoveryKey)?.replace(/[\s-]/g, ''),
             generatedAt: new Date(),
         })
 
@@ -169,20 +232,8 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
                             </label>
                             <div className="relative">
                                 <div className="p-4 bg-muted rounded-lg font-mono text-sm break-all select-all border-2 border-primary/20">
-                                    {formattedKey || recoveryKey}
+                                    {(formattedKey || recoveryKey)?.replace(/[\s-]/g, '')}
                                 </div>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="absolute top-2 right-2"
-                                    onClick={copyToClipboard}
-                                >
-                                    {copied ? (
-                                        <Check className="h-4 w-4 text-green-500" />
-                                    ) : (
-                                        <Copy className="h-4 w-4" />
-                                    )}
-                                </Button>
                             </div>
                         </div>
 

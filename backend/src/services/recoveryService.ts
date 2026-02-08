@@ -19,11 +19,11 @@ export function generateRecoveryKey(): string {
 }
 
 /**
- * Format recovery key for display in groups of 4 characters.
- * Makes it easier for users to read and type.
+ * Format recovery key - currently returns the raw key without dashes
+ * to ensure maximum consistency across PDF and UI.
  */
 export function formatRecoveryKey(key: string): string {
-    return key.match(/.{1,4}/g)?.join("-") || key
+    return key.replace(/[\s-]/g, "")
 }
 
 /**
@@ -35,12 +35,13 @@ export function hashRecoveryKey(key: string): string {
 }
 
 /**
- * Store a hashed recovery key for a user.
+ * Store a hashed recovery key for a user with the encrypted master key.
  * Revokes any existing recovery keys for the user.
  */
 export async function storeRecoveryKeyHash(
     userId: string,
-    keyHash: string
+    keyHash: string,
+    encryptedVaultKey: string
 ): Promise<IRecoveryKey> {
     // Revoke any existing recovery keys for this user
     await RecoveryKey.updateMany(
@@ -52,6 +53,7 @@ export async function storeRecoveryKeyHash(
     const recoveryKey = new RecoveryKey({
         userId: new mongoose.Types.ObjectId(userId),
         keyHash,
+        encryptedVaultKey,
         createdAt: new Date(),
         isRevoked: false,
     })
@@ -66,10 +68,10 @@ export async function storeRecoveryKeyHash(
 export async function verifyRecoveryKey(
     email: string,
     recoveryKey: string
-): Promise<{ success: boolean; userId?: string; error?: string }> {
+): Promise<{ success: boolean; userId?: string; encryptedVaultKey?: string; error?: string }> {
     try {
         // Find the user by email
-        const user = await User.findOne({ email })
+        const user = await User.findOne({ email: email.trim().toLowerCase() })
         if (!user) {
             return { success: false, error: "User not found" }
         }
@@ -92,7 +94,11 @@ export async function verifyRecoveryKey(
         storedKey.usedAt = new Date()
         await storedKey.save()
 
-        return { success: true, userId: user._id.toString() }
+        return { 
+            success: true, 
+            userId: user._id.toString(), 
+            encryptedVaultKey: storedKey.encryptedVaultKey 
+        }
     } catch (error) {
         console.error("[Recovery] Verification error:", error)
         return { success: false, error: "Verification failed" }

@@ -24,7 +24,7 @@ export function createRecoveryRouter(): Router {
      */
     router.post("/generate", async (req: Request, res: Response) => {
         try {
-            const { email } = req.body
+            let { email } = req.body
 
             if (!email) {
                 return res.status(400).json({
@@ -32,6 +32,8 @@ export function createRecoveryRouter(): Router {
                     code: "INVALID_REQUEST",
                 })
             }
+            
+            email = email.trim().toLowerCase()
 
             // Find the user
             const user = await User.findOne({ email })
@@ -44,17 +46,14 @@ export function createRecoveryRouter(): Router {
 
             // Generate new recovery key
             const rawKey = generateRecoveryKey()
-            const keyHash = hashRecoveryKey(rawKey)
+            
+            // We DO NOT store it yet. The client must encrypt their master password 
+            // with this key and call /activate to store the hash + encrypted blob.
 
-            // Store the hash (revokes any existing keys)
-            await storeRecoveryKeyHash(user._id.toString(), keyHash)
-
-            // Return the raw key (formatted for display)
-            // This is the ONLY time the raw key is shown
             return res.status(200).json({
                 recoveryKey: rawKey,
                 formattedKey: formatRecoveryKey(rawKey),
-                message: "Recovery key generated. Store this safely - it cannot be retrieved again.",
+                message: "Recovery key generated. You must activate it to enable recovery.",
             })
         } catch (error) {
             console.error("[Recovery] Generate error:", error)
@@ -66,12 +65,53 @@ export function createRecoveryRouter(): Router {
     })
 
     /**
+     * POST /recovery/activate
+     * Stored the hashed recovery key and the encrypted master password blob.
+     * This must be called after /generate to actually enable recovery.
+     */
+    router.post("/activate", async (req: Request, res: Response) => {
+        try {
+            let { email, keyHash, encryptedVaultKey } = req.body
+
+            if (!email || !keyHash || !encryptedVaultKey) {
+                return res.status(400).json({
+                    error: "Missing required fields",
+                    code: "INVALID_REQUEST",
+                })
+            }
+            
+            email = email.trim().toLowerCase()
+
+            const user = await User.findOne({ email })
+            if (!user) {
+                return res.status(404).json({
+                    error: "User not found",
+                    code: "USER_NOT_FOUND",
+                })
+            }
+
+            await storeRecoveryKeyHash(user._id.toString(), keyHash, encryptedVaultKey)
+
+            return res.status(200).json({
+                success: true,
+                message: "Recovery key activated successfully",
+            })
+        } catch (error) {
+            console.error("[Recovery] Activate error:", error)
+            return res.status(500).json({
+                error: "Failed to activate recovery key",
+                code: "INTERNAL_ERROR",
+            })
+        }
+    })
+
+    /**
      * POST /recovery/verify
      * Verify a recovery key (for checking purposes, doesn't consume it).
      */
     router.post("/verify", async (req: Request, res: Response) => {
         try {
-            const { email, recoveryKey } = req.body
+            let { email, recoveryKey } = req.body
 
             if (!email || !recoveryKey) {
                 return res.status(400).json({
@@ -79,6 +119,8 @@ export function createRecoveryRouter(): Router {
                     code: "INVALID_REQUEST",
                 })
             }
+            
+            email = email.trim().toLowerCase()
 
             // Clean up the recovery key (remove dashes if formatted)
             const cleanKey = recoveryKey.replace(/-/g, "")
@@ -112,7 +154,7 @@ export function createRecoveryRouter(): Router {
      */
     router.post("/login", async (req: Request, res: Response) => {
         try {
-            const { email, recoveryKey } = req.body
+            let { email, recoveryKey } = req.body
 
             if (!email || !recoveryKey) {
                 return res.status(400).json({
@@ -120,6 +162,8 @@ export function createRecoveryRouter(): Router {
                     code: "INVALID_REQUEST",
                 })
             }
+            
+            email = email.trim().toLowerCase()
 
             // Clean up the recovery key (remove dashes if formatted)
             const cleanKey = recoveryKey.replace(/-/g, "")
@@ -143,9 +187,11 @@ export function createRecoveryRouter(): Router {
                 success: true,
                 sessionToken,
                 userId: result.userId,
+                fullName: user?.fullName, // Return fullName
                 salt: user?.salt,
-                message: "Recovery login successful. Please set a new password.",
-                requiresPasswordReset: true,
+                encryptedVaultKey: result.encryptedVaultKey, // Return the encrypted blob
+                message: "Recovery login successful.",
+                requiresPasswordReset: false, // No longer forced since we recovered the key!
             })
         } catch (error) {
             console.error("[Recovery] Login error:", error)
@@ -162,7 +208,11 @@ export function createRecoveryRouter(): Router {
      */
     router.get("/status/:email", async (req: Request, res: Response) => {
         try {
-            const { email } = req.params
+            let { email } = req.params
+            
+            if (email) {
+                email = email.trim().toLowerCase()
+            }
 
             const user = await User.findOne({ email })
             if (!user) {

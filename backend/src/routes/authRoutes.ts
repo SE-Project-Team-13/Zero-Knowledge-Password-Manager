@@ -5,7 +5,7 @@
 
 import { Router, type Request, type Response } from "express"
 import * as crypto from "crypto"
-import { registerUser, authenticateUser, generateSessionToken, getUserSalt } from "../services/authService.js"
+import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists } from "../services/authService.js"
 import { User } from "../database/models.js"
 import type { RegisterRequest, LoginRequest, LoginResponse, ErrorResponse } from "../types/index.js"
 
@@ -18,15 +18,18 @@ export function createAuthRouter(): Router {
    */
   router.post("/register", async (req: Request, res: Response) => {
     try {
-      const { email, salt, verifier } = req.body as RegisterRequest
+      let { email, fullName, salt, verifier } = req.body
 
-      if (!email || !salt || !verifier) {
+      if (!email || !fullName || !salt || !verifier) {
         return res.status(400).json({
           error: "Missing required fields",
           code: "INVALID_REQUEST",
-          message: "email, salt, and verifier are required",
+          message: "email, fullName, salt, and verifier are required",
         } as ErrorResponse)
       }
+
+      email = email.trim().toLowerCase()
+      fullName = fullName.trim()
 
       if (!email.includes("@")) {
         return res.status(400).json({
@@ -37,11 +40,12 @@ export function createAuthRouter(): Router {
       }
 
       try {
-        const user = await registerUser(email, salt, verifier)
+        const user = await registerUser(email, fullName, salt, verifier)
         const sessionToken = await generateSessionToken(user.id)
 
         return res.status(201).json({
           userId: user.id,
+          fullName: user.fullName,
           salt: user.salt,
           sessionToken,
         })
@@ -71,7 +75,7 @@ export function createAuthRouter(): Router {
    */
   router.post("/login", async (req: Request, res: Response) => {
     try {
-      const { email, challenge, clientProof } = req.body as LoginRequest
+      let { email, challenge, clientProof } = req.body as LoginRequest
 
       if (!email || !challenge || !clientProof) {
         return res.status(400).json({
@@ -80,6 +84,8 @@ export function createAuthRouter(): Router {
           message: "email, challenge, and clientProof are required",
         } as ErrorResponse)
       }
+      
+      email = email.trim().toLowerCase()
 
       const authResult = await authenticateUser(email, challenge, clientProof)
 
@@ -98,8 +104,9 @@ export function createAuthRouter(): Router {
         .update(user.verifier + challenge)
         .digest("hex")
 
-      const response: LoginResponse = {
+      const response = {
         userId: user.id,
+        fullName: user.fullName,
         sessionToken,
         salt: user.salt,
         serverProof,
@@ -124,7 +131,8 @@ export function createAuthRouter(): Router {
    */
   router.get("/salt/:email", async (req: Request, res: Response) => {
     try {
-      const { email } = req.params
+      let { email } = req.params
+      if (email) email = email.trim().toLowerCase()
       const salt = await getUserSalt(email)
 
       if (!salt) {
@@ -146,6 +154,82 @@ export function createAuthRouter(): Router {
     }
   })
 
+  /**
+   * GET /auth/check-email/:email
+   * Check if an email is already registered.
+   */
+  router.get("/check-email/:email", async (req: Request, res: Response) => {
+    try {
+      let { email } = req.params
+      if (email) email = email.trim().toLowerCase()
+      const exists = await checkUserExists(email)
+      return res.status(200).json({ exists })
+    } catch (error) {
+      console.error("[VaultSync] Email check error:", error)
+      return res.status(500).json({
+        error: "Failed to check email",
+        code: "INTERNAL_ERROR",
+        message: "An unexpected error occurred",
+      } as ErrorResponse)
+    }
+  })
+
+  /**
+   * POST /auth/reset-password
+   * Resets the user's password (verifier) and salt.
+   * Requires a valid session token (e.g. from recovery login).
+   */
+  router.post("/reset-password", async (req: Request, res: Response) => {
+    try {
+      const authHeader = req.headers.authorization
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const errorResponse: ErrorResponse = {
+          error: "Unauthorized",
+          code: "UNAUTHORIZED",
+          message: "Missing or invalid session token",
+        }
+        return res.status(401).json(errorResponse)
+      }
+
+      const token = authHeader.split(" ")[1]
+      const sessionValidation = await validateSessionToken(token)
+
+      if (!sessionValidation.valid || !sessionValidation.userId) {
+        const errorResponse: ErrorResponse = {
+          error: "Unauthorized",
+          code: "UNAUTHORIZED",
+          message: "Invalid or expired session token",
+        }
+        return res.status(401).json(errorResponse)
+      }
+
+      const { salt, verifier, encryptedVault } = req.body
+
+      if (!salt || !verifier) {
+        const errorResponse: ErrorResponse = {
+          error: "Missing required fields",
+          code: "INVALID_REQUEST",
+          message: "New salt and verifier are required",
+        }
+        return res.status(400).json(errorResponse)
+      }
+
+      await updateUserCredentials(sessionValidation.userId, salt, verifier, encryptedVault)
+
+      return res.status(200).json({
+        success: true,
+        message: "Password reset successfully",
+      })
+    } catch (error) {
+      console.error("[VaultSync] Reset password error:", error)
+      const errorResponse: ErrorResponse = {
+        error: "Reset failed",
+        code: "INTERNAL_ERROR",
+        message: "An unexpected error occurred",
+      }
+      return res.status(500).json(errorResponse)
+    }
+  })
 
   /**
    * POST /auth/resolve-breach

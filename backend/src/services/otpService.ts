@@ -35,8 +35,9 @@ function generateOTPCode(): string {
  */
 export async function sendOTP(email: string): Promise<{ success: boolean; message: string }> {
   try {
+    const normalizedEmail = email.trim().toLowerCase()
     // Delete any existing OTPs for this email to ensure only one is active
-    await OTP.deleteMany({ email })
+    await OTP.deleteMany({ email: normalizedEmail })
 
     // Generate new OTP with a 10-minute expiration window
     const code = generateOTPCode()
@@ -45,7 +46,7 @@ export async function sendOTP(email: string): Promise<{ success: boolean; messag
     // Save the plain OTP code to the database for verification.
     // In a higher security scenario, this could be hashed.
     await OTP.create({
-      email,
+      email: normalizedEmail,
       code,
       expiresAt,
       verified: false,
@@ -55,7 +56,7 @@ export async function sendOTP(email: string): Promise<{ success: boolean; messag
     const mailOptions = {
       // ... rest of email template ...
       from: process.env.SMTP_FROM || '"Password Manager" <noreply@passwordmanager.com>',
-      to: email,
+      to: normalizedEmail,
       subject: "🔐 Your Vault Access Code",
       html: `
         <!DOCTYPE html>
@@ -266,16 +267,16 @@ ZeroKnowledge Vault
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
         await transporter.sendMail(mailOptions)
-        console.log(`[OTP] ✅ Sent OTP to ${email}`)
+        console.log(`[OTP] ✅ Sent OTP to ${normalizedEmail}`)
         console.log(`[OTP] 🔑 Security Code: ${code}`) // For dev/test
       } catch (emailError: any) {
         console.error(`[OTP] ❌ Email sending failed:`, emailError.message)
-        console.log(`[OTP] 📋 Fallback - OTP for ${email}: ${code}`)
+        console.log(`[OTP] 📋 Fallback - OTP for ${normalizedEmail}: ${code}`)
         // Don't throw error, still return success since OTP is saved in DB
       }
     } else {
       // For development: log OTP to console
-      console.log(`[OTP] 🔧 Development mode - OTP for ${email}: ${code}`)
+      console.log(`[OTP] 🔧 Development mode - OTP for ${normalizedEmail}: ${code}`)
     }
 
     return {
@@ -296,9 +297,10 @@ ZeroKnowledge Vault
  */
 export async function verifyOTP(email: string, code: string): Promise<{ success: boolean; message: string }> {
   try {
+    const normalizedEmail = email.trim().toLowerCase()
     // Find the OTP
     const otp = await OTP.findOne({
-      email,
+      email: normalizedEmail,
       code,
       verified: false,
       expiresAt: { $gt: new Date() },
@@ -315,7 +317,7 @@ export async function verifyOTP(email: string, code: string): Promise<{ success:
     otp.verified = true
     await otp.save()
 
-    console.log(`[OTP] Verified OTP for ${email}`)
+    console.log(`[OTP] Verified OTP for ${normalizedEmail}`)
 
     return {
       success: true,
