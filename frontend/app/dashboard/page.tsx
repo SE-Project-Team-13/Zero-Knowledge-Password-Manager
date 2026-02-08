@@ -84,6 +84,14 @@ const calculatePasswordStrength = (password: string) => {
   return { score, label: "Strong", color: "bg-green-500" };
 };
 
+/**
+ * DashboardPage: The main authenticated view for managing vault entries.
+ * Responsibilities:
+ * - Session and idle timeout management.
+ * - OTP-based vault unlocking.
+ * - Local encryption/decryption of vault items.
+ * - CRUD operations for vault entries with live synchronization.
+ */
 export default function DashboardPage() {
   const [session, actions] = useVaultSync();
   const { setTheme, resolvedTheme } = useTheme();
@@ -139,59 +147,59 @@ export default function DashboardPage() {
     // 1. Check if user is theoretically logged in (has token)
     // We check window to stay safe with SSR, though "use client" blocks most issues
     const hasToken = typeof window !== 'undefined' && localStorage.getItem("auth_token")
-    
+
     if (!hasToken) {
-        // No token, so we are definitely not logged in.
-        // Stop loading, show login screen.
-        setIsInitializing(false)
-        return
+      // No token, so we are definitely not logged in.
+      // Stop loading, show login screen.
+      setIsInitializing(false)
+      return
     }
 
     // 2. If has token, wait for useVaultSync to verify it and set isAuthenticated
     if (!session.isAuthenticated) {
-        // Still waiting for hook to sync
-        return
+      // Still waiting for hook to sync
+      return
     }
 
     // 3. Check if there's a temp password from login (first-time login flow)
     const tempPassword = sessionStorage.getItem("temp_master_password")
     if (tempPassword && !masterPassword) {
-        setMasterPassword(tempPassword)
+      setMasterPassword(tempPassword)
     }
 
     // 4. User is authenticated. Check OTP status.
-    if (!otpSent) { 
-        // Only run if we haven't processed OTP yet in this component lifecycle
-        const isVerified = sessionStorage.getItem("otp_verified") === "true"
-        if (isVerified) {
-             setOtpVerified(true)
-             setOtpSent(true)
-             
-             // Check if we have master password in session
-             const sessionPassword = sessionStorage.getItem("session_master_password")
-             if (sessionPassword) {
-                 // Have password - fetch and decrypt vault (works for both first login and refresh)
-                 setMasterPassword(sessionPassword)
-                 unlockVault().finally(() => {
-                     setIsInitializing(false)
-                 })
-             } else {
-                 // No password - show empty dashboard
-                 console.log('[Dashboard] No session password - showing empty dashboard')
-                 setIsUnlocked(true)
-                 setIsInitializing(false)
-             }
+    if (!otpSent) {
+      // Only run if we haven't processed OTP yet in this component lifecycle
+      const isVerified = sessionStorage.getItem("otp_verified") === "true"
+      if (isVerified) {
+        setOtpVerified(true)
+        setOtpSent(true)
+
+        // Check if we have master password in session
+        const sessionPassword = sessionStorage.getItem("session_master_password")
+        if (sessionPassword) {
+          // Have password - fetch and decrypt vault (works for both first login and refresh)
+          setMasterPassword(sessionPassword)
+          unlockVault().finally(() => {
+            setIsInitializing(false)
+          })
         } else {
-             // Not verified
-             sendOTPToUser()
-             // Show OTP screen immediately
-             setIsInitializing(false)
+          // No password - show empty dashboard
+          console.log('[Dashboard] No session password - showing empty dashboard')
+          setIsUnlocked(true)
+          setIsInitializing(false)
         }
+      } else {
+        // Not verified
+        sendOTPToUser()
+        // Show OTP screen immediately
+        setIsInitializing(false)
+      }
     } else {
-         // OTP already sent state. 
-         // If we reached here without going through the above block (e.g. re-render),
-         // ensure loading is off.
-         setIsInitializing(false)
+      // OTP already sent state. 
+      // If we reached here without going through the above block (e.g. re-render),
+      // ensure loading is off.
+      setIsInitializing(false)
     }
   }, [session.isAuthenticated, session.email, otpSent]);
 
@@ -313,13 +321,19 @@ export default function DashboardPage() {
     };
   }, [isUnlocked, actions]);
 
-  // Unlock vault after OTP verification
+  /**
+   * Performs the multi-step vault unlocking process:
+   * 1. Derives the Master Key from user input.
+   * 2. Fetches encrypted vault blobs from the server.
+   * 3. Decrypts blobs locally using the derived key.
+   * 4. Populates the application state with decrypted entries.
+   */
   const unlockVault = async () => {
     setIsVerifyingOtp(true);
     try {
       // 1. Ensure we have the master password (from temp storage or state)
       let passwordToUse = masterPassword.trim();
-      
+
       if (!passwordToUse) {
         // Try to get from sessionStorage
         const sessionPassword = sessionStorage.getItem("session_master_password");
@@ -345,12 +359,12 @@ export default function DashboardPage() {
       const saltBuffer = new Uint8Array(
         session.salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
       );
-      
+
       // Start parallel execution: Key Derivation (CPU) + Vault Fetch (Network)
       console.log('[Dashboard] Starting parallel unlock operations...')
-      
+
       const keyDerivationPromise = deriveKey(passwordToUse, saltBuffer)
-      
+
       const vaultFetchPromise = (async () => {
         console.log('[Dashboard] Fetching vault from backend...')
         console.log('[Dashboard] email:', session.email)
@@ -364,7 +378,7 @@ export default function DashboardPage() {
 
       // Wait for both to complete
       const [keys, response] = await Promise.all([keyDerivationPromise, vaultFetchPromise])
-      
+
       setDerivedKeys(keys)
 
       // 2. Process fetched vault
@@ -570,6 +584,11 @@ export default function DashboardPage() {
     toast.success("Strong password generated");
   };
 
+  /**
+   * Handles the addition of a new vault entry.
+   * - Encrypts the entry details locally using the derived session key.
+   * - Pushes the resulting ciphertext to the server via the sync service.
+   */
   const handleAddEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
@@ -706,7 +725,7 @@ export default function DashboardPage() {
       console.error("[Dashboard] Add entry error:", err);
       toast.error(
         "Failed to save credential: " +
-          (err instanceof Error ? err.message : "Unknown error"),
+        (err instanceof Error ? err.message : "Unknown error"),
       );
     } finally {
       setIsAddingEntry(false);
@@ -739,10 +758,10 @@ export default function DashboardPage() {
       const updatedEntries = decryptedEntries.map((e) =>
         e.id === editingEntry.id
           ? {
-              ...editingEntry,
-              lastUpdated: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            }
+            ...editingEntry,
+            lastUpdated: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
           : e,
       );
 
@@ -822,10 +841,10 @@ export default function DashboardPage() {
       const finalEntries = decryptedEntries.map((e) =>
         e.id === editingEntry.id
           ? {
-              ...editingEntry,
-              lastUpdated: dbTimestamp,
-              updatedAt: dbTimestamp,
-            }
+            ...editingEntry,
+            lastUpdated: dbTimestamp,
+            updatedAt: dbTimestamp,
+          }
           : e,
       );
 
@@ -837,7 +856,7 @@ export default function DashboardPage() {
       console.error("[Dashboard] Edit entry error:", err);
       toast.error(
         "Failed to update credential: " +
-          (err instanceof Error ? err.message : "Unknown error"),
+        (err instanceof Error ? err.message : "Unknown error"),
       );
     } finally {
       setIsSavingEdit(false);
@@ -937,7 +956,7 @@ export default function DashboardPage() {
       console.error("[Dashboard] Add entry error:", err);
       toast.error(
         "Failed to save credential: " +
-          (err instanceof Error ? err.message : "Unknown error"),
+        (err instanceof Error ? err.message : "Unknown error"),
       );
     } finally {
       setIsAddingEntry(false);
@@ -969,15 +988,15 @@ export default function DashboardPage() {
   if (isInitializing || (isVerifyingOtp && otpVerified)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background relative">
-         <div className="absolute top-4 right-4 z-50">
-            <ThemeToggle />
-         </div>
-         <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-muted-foreground font-medium">
-              {isVerifyingOtp ? "Unlocking your vault..." : "Securing Dashboard..."}
-            </p>
-         </div>
+        <div className="absolute top-4 right-4 z-50">
+          <ThemeToggle />
+        </div>
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="text-muted-foreground font-medium">
+            {isVerifyingOtp ? "Unlocking your vault..." : "Securing Dashboard..."}
+          </p>
+        </div>
       </div>
     )
   }
@@ -1033,7 +1052,7 @@ export default function DashboardPage() {
               {otpVerified ? "Unlock Vault" : "Verify Identity"}
             </CardTitle>
             <CardDescription className="text-muted-foreground">
-              {otpVerified 
+              {otpVerified
                 ? "Enter your master password to decrypt your vault"
                 : "Enter the 6-digit code sent to your email"}
             </CardDescription>
@@ -1169,7 +1188,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background flex font-sans">
-      <Sidebar 
+      <Sidebar
         onLogout={() => {
           setIsLoggingOut(true);
           actions.logout();
@@ -1181,7 +1200,7 @@ export default function DashboardPage() {
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
       />
-      
+
       <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>
         {/* Top bar for mobile only / breadcrumbs? */}
         <header className="lg:hidden bg-background/80 backdrop-blur-md border-b border-border sticky top-0 z-30 p-4 pl-16">
@@ -1197,610 +1216,609 @@ export default function DashboardPage() {
         </header>
 
         <main className="flex-1 p-4 lg:p-8 space-y-8 max-w-7xl mx-auto w-full">
-        {/* Statistics & Info Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="bg-gradient-to-br from-primary/80 to-blue-900 border-none shadow-lg text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/20 rounded-full blur-3xl -mr-10 -mt-10"></div>
-            <CardHeader className="pb-2">
-              <CardDescription className="text-white/70">
-                Stored Credentials
-              </CardDescription>
-              <CardTitle className="text-4xl font-bold tracking-tighter">
-                {decryptedEntries.length}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center text-xs text-white/60">
-                <Clock className="h-3 w-3 mr-1" />
-                Updated just now
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border bg-card">
-            <CardHeader className="pb-2">
-              <CardDescription className="text-muted-foreground">
-                Security Status
-              </CardDescription>
-              <CardTitle className="text-lg flex items-center gap-2 text-foreground font-heading">
-                <ShieldCheck className="h-5 w-5 text-green-500" />
-                AES-256-GCM
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-muted-foreground/80">
-              Keys are never stored in browser memory across sessions.
-            </CardContent>
-          </Card>
-
-          <Card className="border-border bg-card">
-            <CardHeader className="pb-2">
-              <CardDescription className="text-muted-foreground">
-                Auto-Logout
-              </CardDescription>
-              <CardTitle className="text-lg flex items-center gap-2 text-foreground font-heading">
-                <Clock className="h-5 w-5 text-amber-500" />5 Minutes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-muted-foreground/80">
-              You will be logged out automatically if no activity is detected.
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Add New Credential Form */}
-          <div className="lg:col-span-1">
-            <Card className="border border-border sticky top-24 bg-card/50 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg text-foreground font-heading">
-                  <Plus className="h-5 w-5 text-primary" />
-                  Add New Credential
-                </CardTitle>
-                <CardDescription className="text-muted-foreground">
-                  New entries are encrypted before syncing.
+          {/* Statistics & Info Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="bg-gradient-to-br from-primary/80 to-blue-900 border-none shadow-lg text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/20 rounded-full blur-3xl -mr-10 -mt-10"></div>
+              <CardHeader className="pb-2">
+                <CardDescription className="text-white/70">
+                  Stored Credentials
                 </CardDescription>
+                <CardTitle className="text-4xl font-bold tracking-tighter">
+                  {decryptedEntries.length}
+                </CardTitle>
               </CardHeader>
-              <form onSubmit={handleAddEntry}>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="site" className="text-foreground/80">
-                      Website/Service
-                    </Label>
-                    <Input
-                      id="site"
-                      placeholder="e.g., GitHub, Gmail"
-                      value={newEntry.site}
-                      onChange={(e) =>
-                        setNewEntry({ ...newEntry, site: e.target.value })
-                      }
-                      required
-                      className="bg-secondary/50 border-input focus:border-primary"
-                    />
-                  </div>
+              <CardContent>
+                <div className="flex items-center text-xs text-white/60">
+                  <Clock className="h-3 w-3 mr-1" />
+                  Updated just now
+                </div>
+              </CardContent>
+            </Card>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="url" className="text-foreground/80">
-                      URL
-                    </Label>
-                    <Input
-                      id="url"
-                      type="url"
-                      placeholder="https://example.com"
-                      value={newEntry.url || ""}
-                      onChange={(e) =>
-                        setNewEntry({ ...newEntry, url: e.target.value })
-                      }
-                      required
-                      className="bg-secondary/50 border-input focus:border-primary"
-                    />
-                  </div>
+            <Card className="border-border bg-card">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-muted-foreground">
+                  Security Status
+                </CardDescription>
+                <CardTitle className="text-lg flex items-center gap-2 text-foreground font-heading">
+                  <ShieldCheck className="h-5 w-5 text-green-500" />
+                  AES-256-GCM
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground/80">
+                Keys are never stored in browser memory across sessions.
+              </CardContent>
+            </Card>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="username" className="text-foreground/80">
-                      Username/Email
-                    </Label>
-                    <Input
-                      id="username"
-                      placeholder="your@email.com"
-                      value={newEntry.username}
-                      onChange={(e) =>
-                        setNewEntry({ ...newEntry, username: e.target.value })
-                      }
-                      required
-                      className="bg-secondary/50 border-input focus:border-primary"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <Label
-                        htmlFor="new-password"
-                        className="text-foreground/80"
-                      >
-                        Password
-                      </Label>
-                      <span
-                        className={`text-[10px] uppercase tracking-wider font-bold ${strength.color.replace("bg-", "text-")}`}
-                      >
-                        {strength.label}
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <Input
-                        id="new-password"
-                        type={newEntry.showPassword ? "text" : "password"}
-                        placeholder="Enter password"
-                        value={newEntry.password}
-                        onChange={(e) =>
-                          setNewEntry({ ...newEntry, password: e.target.value })
-                        }
-                        className="pr-20 bg-secondary/50 border-input focus:border-primary font-mono"
-                        required
-                      />
-                      <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
-                          onClick={() =>
-                            setNewEntry({
-                              ...newEntry,
-                              showPassword: !newEntry.showPassword,
-                            })
-                          }
-                        >
-                          {newEntry.showPassword ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
-                          onClick={generatePassword}
-                          title="Generate strong password"
-                        >
-                          <Sparkles className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Progress
-                        value={strength.score}
-                        className={`h-1.5 bg-secondary ${strength.color}`}
-                      />
-                      <p className="text-[10px] text-muted-foreground italic">
-                        Strength is calculated locally based on entropy rules.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="notes" className="text-foreground/80">
-                      Notes (optional)
-                    </Label>
-                    <textarea
-                      id="notes"
-                      placeholder="Additional information"
-                      rows={3}
-                      value={newEntry.notes || ""}
-                      onChange={(e) =>
-                        setNewEntry({ ...newEntry, notes: e.target.value })
-                      }
-                      className="w-full px-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-secondary/50 text-foreground placeholder-muted-foreground"
-                    />
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button
-                    type="submit"
-                    className="w-full font-heading tracking-wide"
-                    disabled={isAddingEntry}
-                  >
-                    {isAddingEntry ? "Encrypting..." : "Save Password"}
-                  </Button>
-                </CardFooter>
-              </form>
+            <Card className="border-border bg-card">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-muted-foreground">
+                  Auto-Logout
+                </CardDescription>
+                <CardTitle className="text-lg flex items-center gap-2 text-foreground font-heading">
+                  <Clock className="h-5 w-5 text-amber-500" />5 Minutes
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground/80">
+                You will be logged out automatically if no activity is detected.
+              </CardContent>
             </Card>
           </div>
 
-          {/* Vault Listing */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-foreground font-heading">
-                Stored Credentials
-              </h2>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toast.info("Syncing with backend...")}
-                  className="border-border hover:bg-secondary"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Force Sync
-                </Button>
-              </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Add New Credential Form */}
+            <div className="lg:col-span-1">
+              <Card className="border border-border sticky top-24 bg-card/50 backdrop-blur-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg text-foreground font-heading">
+                    <Plus className="h-5 w-5 text-primary" />
+                    Add New Credential
+                  </CardTitle>
+                  <CardDescription className="text-muted-foreground">
+                    New entries are encrypted before syncing.
+                  </CardDescription>
+                </CardHeader>
+                <form onSubmit={handleAddEntry}>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="site" className="text-foreground/80">
+                        Website/Service
+                      </Label>
+                      <Input
+                        id="site"
+                        placeholder="e.g., GitHub, Gmail"
+                        value={newEntry.site}
+                        onChange={(e) =>
+                          setNewEntry({ ...newEntry, site: e.target.value })
+                        }
+                        required
+                        className="bg-secondary/50 border-input focus:border-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="url" className="text-foreground/80">
+                        URL
+                      </Label>
+                      <Input
+                        id="url"
+                        type="url"
+                        placeholder="https://example.com"
+                        value={newEntry.url || ""}
+                        onChange={(e) =>
+                          setNewEntry({ ...newEntry, url: e.target.value })
+                        }
+                        required
+                        className="bg-secondary/50 border-input focus:border-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="username" className="text-foreground/80">
+                        Username/Email
+                      </Label>
+                      <Input
+                        id="username"
+                        placeholder="your@email.com"
+                        value={newEntry.username}
+                        onChange={(e) =>
+                          setNewEntry({ ...newEntry, username: e.target.value })
+                        }
+                        required
+                        className="bg-secondary/50 border-input focus:border-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label
+                          htmlFor="new-password"
+                          className="text-foreground/80"
+                        >
+                          Password
+                        </Label>
+                        <span
+                          className={`text-[10px] uppercase tracking-wider font-bold ${strength.color.replace("bg-", "text-")}`}
+                        >
+                          {strength.label}
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <Input
+                          id="new-password"
+                          type={newEntry.showPassword ? "text" : "password"}
+                          placeholder="Enter password"
+                          value={newEntry.password}
+                          onChange={(e) =>
+                            setNewEntry({ ...newEntry, password: e.target.value })
+                          }
+                          className="pr-20 bg-secondary/50 border-input focus:border-primary font-mono"
+                          required
+                        />
+                        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
+                            onClick={() =>
+                              setNewEntry({
+                                ...newEntry,
+                                showPassword: !newEntry.showPassword,
+                              })
+                            }
+                          >
+                            {newEntry.showPassword ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
+                            onClick={generatePassword}
+                            title="Generate strong password"
+                          >
+                            <Sparkles className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Progress
+                          value={strength.score}
+                          className={`h-1.5 bg-secondary ${strength.color}`}
+                        />
+                        <p className="text-[10px] text-muted-foreground italic">
+                          Strength is calculated locally based on entropy rules.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="notes" className="text-foreground/80">
+                        Notes (optional)
+                      </Label>
+                      <textarea
+                        id="notes"
+                        placeholder="Additional information"
+                        rows={3}
+                        value={newEntry.notes || ""}
+                        onChange={(e) =>
+                          setNewEntry({ ...newEntry, notes: e.target.value })
+                        }
+                        className="w-full px-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-secondary/50 text-foreground placeholder-muted-foreground"
+                      />
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button
+                      type="submit"
+                      className="w-full font-heading tracking-wide"
+                      disabled={isAddingEntry}
+                    >
+                      {isAddingEntry ? "Encrypting..." : "Save Password"}
+                    </Button>
+                  </CardFooter>
+                </form>
+              </Card>
             </div>
 
-            {filteredEntries.length === 0 ? (
-              <div className="text-center py-20 px-6 bg-card border border-dashed border-border rounded-3xl">
-                <div className="bg-secondary p-4 rounded-full w-fit mx-auto mb-4">
-                  <ShieldAlert className="h-10 w-10 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground">
-                  No credentials found
-                </h3>
-                <p className="text-muted-foreground max-w-xs mx-auto mt-2">
-                  {searchQuery
-                    ? "No entries match your search."
-                    : "Start by adding your first secure credential using the form."}
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4">
-                {filteredEntries.map((entry) => (
-                  <Card
-                    key={entry.id}
-                    className="group hover:border-primary/50 transition-all duration-200 bg-card border-border"
-                  >
-                    <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-4">
-                        <div className="bg-secondary p-2.5 rounded-xl text-foreground font-bold uppercase text-xs w-10 h-10 flex items-center justify-center border border-border group-hover:border-primary/30 transition-colors">
-                          {entry.site[0]}
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-foreground text-lg">
-                            {entry.site}
-                          </h4>
-                          <p className="text-sm text-muted-foreground">
-                            {entry.username}
-                          </p>
-                          {/* Password Strength Indicator */}
-                          {(() => {
-                            const strength = calculatePasswordStrength(
-                              entry.password,
-                            );
-                            return (
-                              <div className="flex items-center gap-2 mt-1">
-                                <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden w-20">
-                                  <div
-                                    className={`h-full ${strength.color} transition-all duration-300`}
-                                    style={{ width: `${strength.score}%` }}
-                                  />
-                                </div>
-                                <span
-                                  className={`text-[10px] font-semibold ${
-                                    strength.label === "Strong"
-                                      ? "text-green-600"
-                                      : strength.label === "Moderate"
-                                        ? "text-yellow-600"
-                                        : "text-red-600"
-                                  }`}
-                                >
-                                  {strength.label}
-                                </span>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-6 w-full sm:w-auto">
-                        <div className="flex-1 sm:w-48 bg-secondary/30 px-3 py-2 rounded-lg border border-border flex items-center justify-between">
-                          <code className="text-sm font-mono text-foreground/90">
-                            {entry.isPasswordVisible
-                              ? entry.password
-                              : "••••••••••••"}
-                          </code>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
-                              onClick={() => togglePasswordVisibility(entry.id)}
-                            >
-                              {entry.isPasswordVisible ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
-                              onClick={() => copyToClipboard(entry.password)}
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                          <div className="text-[10px] text-muted-foreground flex flex-col items-end">
-                            <span className="uppercase font-bold tracking-wider">
-                              Updated
-                            </span>
-                            <span>
-                              {formatDistanceToNow(
-                                new Date(entry.lastUpdated),
-                                { addSuffix: true },
-                              )}
-                            </span>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                            onClick={() => handleEditEntry(entry)}
-                            title="Edit credential"
-                          >
-                            <Edit className="h-5 w-5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => handleDeleteEntry(entry.id)}
-                            title="Delete credential"
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            <Alert className="bg-primary/10 border-primary/20 text-primary backdrop-blur-sm">
-              <AlertCircle className="h-4 w-4 text-primary animate-pulse" />
-              <AlertDescription className="text-xs text-primary/90">
-                Metadata like <strong>Site Name</strong> and{" "}
-                <strong>Username</strong> are also encrypted in the actual vault
-                blob. The server only sees anonymous encrypted packets.
-              </AlertDescription>
-            </Alert>
-          </div>
-        </div>
-      </main>
-
-      {/* Edit Modal */}
-      {isEditModalOpen && editingEntry && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-border shadow-2xl bg-card">
-            <CardHeader className="border-b border-border">
+            {/* Vault Listing */}
+            <div className="lg:col-span-2 space-y-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl flex items-center gap-2">
-                    <Edit className="h-5 w-5 text-primary" />
-                    Edit Credential
-                  </CardTitle>
-                  <CardDescription>
-                    Update your stored credential information
-                  </CardDescription>
+                <h2 className="text-xl font-bold text-foreground font-heading">
+                  Stored Credentials
+                </h2>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toast.info("Syncing with backend...")}
+                    className="border-border hover:bg-secondary"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Force Sync
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setIsEditModalOpen(false);
-                    setEditingEntry(null);
-                  }}
-                  className="text-muted-foreground hover:text-foreground hover:bg-secondary"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-4 pt-6">
-              <div className="space-y-2">
-                <Label htmlFor="edit-site" className="text-foreground/80">
-                  Website/Service
-                </Label>
-                <Input
-                  id="edit-site"
-                  placeholder="e.g., GitHub, Gmail"
-                  value={editingEntry.site}
-                  onChange={(e) =>
-                    editingEntry &&
-                    setEditingEntry({ ...editingEntry, site: e.target.value })
-                  }
-                  required
-                  className="bg-secondary/50 border-input focus:border-primary"
-                />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="edit-url" className="text-foreground/80">
-                  URL
-                </Label>
-                <Input
-                  id="edit-url"
-                  type="url"
-                  placeholder="https://example.com"
-                  value={editingEntry.siteUrl || ""}
-                  onChange={(e) =>
-                    editingEntry &&
-                    setEditingEntry({
-                      ...editingEntry,
-                      siteUrl: e.target.value,
-                    })
-                  }
-                  required
-                  className="bg-secondary/50 border-input focus:border-primary"
-                />
-              </div>
+              {filteredEntries.length === 0 ? (
+                <div className="text-center py-20 px-6 bg-card border border-dashed border-border rounded-3xl">
+                  <div className="bg-secondary p-4 rounded-full w-fit mx-auto mb-4">
+                    <ShieldAlert className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground">
+                    No credentials found
+                  </h3>
+                  <p className="text-muted-foreground max-w-xs mx-auto mt-2">
+                    {searchQuery
+                      ? "No entries match your search."
+                      : "Start by adding your first secure credential using the form."}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {filteredEntries.map((entry) => (
+                    <Card
+                      key={entry.id}
+                      className="group hover:border-primary/50 transition-all duration-200 bg-card border-border"
+                    >
+                      <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-secondary p-2.5 rounded-xl text-foreground font-bold uppercase text-xs w-10 h-10 flex items-center justify-center border border-border group-hover:border-primary/30 transition-colors">
+                            {entry.site[0]}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-foreground text-lg">
+                              {entry.site}
+                            </h4>
+                            <p className="text-sm text-muted-foreground">
+                              {entry.username}
+                            </p>
+                            {/* Password Strength Indicator */}
+                            {(() => {
+                              const strength = calculatePasswordStrength(
+                                entry.password,
+                              );
+                              return (
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden w-20">
+                                    <div
+                                      className={`h-full ${strength.color} transition-all duration-300`}
+                                      style={{ width: `${strength.score}%` }}
+                                    />
+                                  </div>
+                                  <span
+                                    className={`text-[10px] font-semibold ${strength.label === "Strong"
+                                        ? "text-green-600"
+                                        : strength.label === "Moderate"
+                                          ? "text-yellow-600"
+                                          : "text-red-600"
+                                      }`}
+                                  >
+                                    {strength.label}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="edit-username" className="text-foreground/80">
-                  Username/Email
-                </Label>
-                <Input
-                  id="edit-username"
-                  placeholder="your@email.com"
-                  value={editingEntry.username}
-                  onChange={(e) =>
-                    editingEntry &&
-                    setEditingEntry({
-                      ...editingEntry,
-                      username: e.target.value,
-                    })
-                  }
-                  required
-                  className="bg-secondary/50 border-input focus:border-primary"
-                />
-              </div>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-6 w-full sm:w-auto">
+                          <div className="flex-1 sm:w-48 bg-secondary/30 px-3 py-2 rounded-lg border border-border flex items-center justify-between">
+                            <code className="text-sm font-mono text-foreground/90">
+                              {entry.isPasswordVisible
+                                ? entry.password
+                                : "••••••••••••"}
+                            </code>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
+                                onClick={() => togglePasswordVisibility(entry.id)}
+                              >
+                                {entry.isPasswordVisible ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
+                                onClick={() => copyToClipboard(entry.password)}
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <Label htmlFor="edit-password" className="text-foreground/80">
-                    Password
+                          <div className="flex items-center gap-4">
+                            <div className="text-[10px] text-muted-foreground flex flex-col items-end">
+                              <span className="uppercase font-bold tracking-wider">
+                                Updated
+                              </span>
+                              <span>
+                                {formatDistanceToNow(
+                                  new Date(entry.lastUpdated),
+                                  { addSuffix: true },
+                                )}
+                              </span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                              onClick={() => handleEditEntry(entry)}
+                              title="Edit credential"
+                            >
+                              <Edit className="h-5 w-5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeleteEntry(entry.id)}
+                              title="Delete credential"
+                            >
+                              <Trash2 className="h-5 w-5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              <Alert className="bg-primary/10 border-primary/20 text-primary backdrop-blur-sm">
+                <AlertCircle className="h-4 w-4 text-primary animate-pulse" />
+                <AlertDescription className="text-xs text-primary/90">
+                  Metadata like <strong>Site Name</strong> and{" "}
+                  <strong>Username</strong> are also encrypted in the actual vault
+                  blob. The server only sees anonymous encrypted packets.
+                </AlertDescription>
+              </Alert>
+            </div>
+          </div>
+        </main>
+
+        {/* Edit Modal */}
+        {isEditModalOpen && editingEntry && (
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-border shadow-2xl bg-card">
+              <CardHeader className="border-b border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <Edit className="h-5 w-5 text-primary" />
+                      Edit Credential
+                    </CardTitle>
+                    <CardDescription>
+                      Update your stored credential information
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setIsEditModalOpen(false);
+                      setEditingEntry(null);
+                    }}
+                    className="text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-4 pt-6">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-site" className="text-foreground/80">
+                    Website/Service
                   </Label>
-                  {(() => {
-                    const strength = calculatePasswordStrength(
-                      editingEntry.password,
-                    );
-                    return (
-                      <span
-                        className={`text-[10px] uppercase tracking-wider font-bold ${strength.color.replace("bg-", "text-")}`}
-                      >
-                        {strength.label}
-                      </span>
-                    );
-                  })()}
-                </div>
-                <div className="relative">
                   <Input
-                    id="edit-password"
-                    type={editingEntry.isPasswordVisible ? "text" : "password"}
-                    placeholder="Enter password"
-                    value={editingEntry.password}
+                    id="edit-site"
+                    placeholder="e.g., GitHub, Gmail"
+                    value={editingEntry.site}
+                    onChange={(e) =>
+                      editingEntry &&
+                      setEditingEntry({ ...editingEntry, site: e.target.value })
+                    }
+                    required
+                    className="bg-secondary/50 border-input focus:border-primary"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-url" className="text-foreground/80">
+                    URL
+                  </Label>
+                  <Input
+                    id="edit-url"
+                    type="url"
+                    placeholder="https://example.com"
+                    value={editingEntry.siteUrl || ""}
                     onChange={(e) =>
                       editingEntry &&
                       setEditingEntry({
                         ...editingEntry,
-                        password: e.target.value,
+                        siteUrl: e.target.value,
                       })
                     }
-                    className="pr-10 bg-secondary/50 border-input focus:border-primary font-mono"
                     required
+                    className="bg-secondary/50 border-input focus:border-primary"
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
-                    onClick={() =>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-username" className="text-foreground/80">
+                    Username/Email
+                  </Label>
+                  <Input
+                    id="edit-username"
+                    placeholder="your@email.com"
+                    value={editingEntry.username}
+                    onChange={(e) =>
                       editingEntry &&
                       setEditingEntry({
                         ...editingEntry,
-                        isPasswordVisible: !editingEntry.isPasswordVisible,
+                        username: e.target.value,
                       })
                     }
-                  >
-                    {editingEntry.isPasswordVisible ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
+                    required
+                    className="bg-secondary/50 border-input focus:border-primary"
+                  />
                 </div>
-                <div className="space-y-1">
-                  {(() => {
-                    const strength = calculatePasswordStrength(
-                      editingEntry.password,
-                    );
-                    return (
-                      <Progress
-                        value={strength.score}
-                        className={`h-1.5 bg-secondary ${strength.color}`}
-                      />
-                    );
-                  })()}
+
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="edit-password" className="text-foreground/80">
+                      Password
+                    </Label>
+                    {(() => {
+                      const strength = calculatePasswordStrength(
+                        editingEntry.password,
+                      );
+                      return (
+                        <span
+                          className={`text-[10px] uppercase tracking-wider font-bold ${strength.color.replace("bg-", "text-")}`}
+                        >
+                          {strength.label}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div className="relative">
+                    <Input
+                      id="edit-password"
+                      type={editingEntry.isPasswordVisible ? "text" : "password"}
+                      placeholder="Enter password"
+                      value={editingEntry.password}
+                      onChange={(e) =>
+                        editingEntry &&
+                        setEditingEntry({
+                          ...editingEntry,
+                          password: e.target.value,
+                        })
+                      }
+                      className="pr-10 bg-secondary/50 border-input focus:border-primary font-mono"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
+                      onClick={() =>
+                        editingEntry &&
+                        setEditingEntry({
+                          ...editingEntry,
+                          isPasswordVisible: !editingEntry.isPasswordVisible,
+                        })
+                      }
+                    >
+                      {editingEntry.isPasswordVisible ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <div className="space-y-1">
+                    {(() => {
+                      const strength = calculatePasswordStrength(
+                        editingEntry.password,
+                      );
+                      return (
+                        <Progress
+                          value={strength.score}
+                          className={`h-1.5 bg-secondary ${strength.color}`}
+                        />
+                      );
+                    })()}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="edit-notes" className="text-foreground/80">
-                  Notes (optional)
-                </Label>
-                <textarea
-                  id="edit-notes"
-                  placeholder="Additional information"
-                  rows={3}
-                  value={editingEntry.notes || ""}
-                  onChange={(e) =>
-                    editingEntry &&
-                    setEditingEntry({ ...editingEntry, notes: e.target.value })
-                  }
-                  className="w-full px-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-secondary/50 text-foreground placeholder-muted-foreground"
-                />
-              </div>
-            </CardContent>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-notes" className="text-foreground/80">
+                    Notes (optional)
+                  </Label>
+                  <textarea
+                    id="edit-notes"
+                    placeholder="Additional information"
+                    rows={3}
+                    value={editingEntry.notes || ""}
+                    onChange={(e) =>
+                      editingEntry &&
+                      setEditingEntry({ ...editingEntry, notes: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-secondary/50 text-foreground placeholder-muted-foreground"
+                  />
+                </div>
+              </CardContent>
 
-            <CardFooter className="border-t border-border flex gap-3 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsEditModalOpen(false);
-                  setEditingEntry(null);
-                }}
-                className="flex-1"
-                disabled={isSavingEdit}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveEdit}
-                className="flex-1"
-                disabled={isSavingEdit}
-              >
-                {isSavingEdit ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="mr-2 h-4 w-4" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
-      )}
-
-      <footer className="bg-background/80 backdrop-blur border-t border-border py-6 px-8 mt-auto">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
-          <p>
-            © 2026 ZeroKnowledge Password Manager.
-          </p>
-          <div className="flex items-center gap-6 opacity-80">
-            <span className="flex items-center">
-              <ShieldCheck className="h-3 w-3 mr-1 text-green-500" />
-              End-to-end Encrypted
-            </span>
-            <span className="flex items-center">
-              <Lock className="h-3 w-3 mr-1 text-indigo-500" />
-              Argon2id KDF
-            </span>
-            <span className="flex items-center">
-              <Unlock className="h-3 w-3 mr-1 text-amber-500" />
-              AES-256-GCM
-            </span>
+              <CardFooter className="border-t border-border flex gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setEditingEntry(null);
+                  }}
+                  className="flex-1"
+                  disabled={isSavingEdit}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveEdit}
+                  className="flex-1"
+                  disabled={isSavingEdit}
+                >
+                  {isSavingEdit ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="mr-2 h-4 w-4" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
           </div>
-        </div>
-      </footer>
+        )}
+
+        <footer className="bg-background/80 backdrop-blur border-t border-border py-6 px-8 mt-auto">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
+            <p>
+              © 2026 ZeroKnowledge Password Manager.
+            </p>
+            <div className="flex items-center gap-6 opacity-80">
+              <span className="flex items-center">
+                <ShieldCheck className="h-3 w-3 mr-1 text-green-500" />
+                End-to-end Encrypted
+              </span>
+              <span className="flex items-center">
+                <Lock className="h-3 w-3 mr-1 text-indigo-500" />
+                Argon2id KDF
+              </span>
+              <span className="flex items-center">
+                <Unlock className="h-3 w-3 mr-1 text-amber-500" />
+                AES-256-GCM
+              </span>
+            </div>
+          </div>
+        </footer>
       </div>
     </div>
   );

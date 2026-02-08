@@ -1,6 +1,9 @@
 import mongoose, { Schema, Document } from "mongoose"
 
-// User Schema
+/**
+ * User Schema: Stores core user identity and ZKP verifier.
+ * Salt and verifier are used for the Zero-Knowledge Proof authentication flow.
+ */
 export interface IUser extends Document {
   email: string
   salt: string
@@ -17,7 +20,10 @@ const UserSchema = new Schema<IUser>({
   updatedAt: { type: Date, default: Date.now },
 })
 
-// Session Status Schema
+/**
+ * Session Schema: Manages active authenticated sessions.
+ * Tokens are used for authorizing vault sync operations.
+ */
 export interface ISession extends Document {
   userId: mongoose.Types.ObjectId
   token: string
@@ -32,7 +38,10 @@ const SessionSchema = new Schema<ISession>({
   createdAt: { type: Date, default: Date.now },
 })
 
-// Vault Blob Schema
+/**
+ * Vault Blob Schema: Stores the encrypted vault payload for a specific device.
+ * Uses a versioning system and nonces to manage synchronization state.
+ */
 export interface IVaultBlob extends Document {
   userId: mongoose.Types.ObjectId
   deviceId: string
@@ -61,7 +70,10 @@ const VaultBlobSchema = new Schema<IVaultBlob>({
   updatedAt: { type: Date, default: Date.now },
 })
 
-// Sync Metadata Schema
+/**
+ * Sync Metadata Schema: Tracks the current state of a user's vault across devices.
+ * Helps detect conflicts and determine if a sync is necessary.
+ */
 export interface ISyncMetadata extends Document {
   userId: mongoose.Types.ObjectId
   deviceId: string
@@ -81,10 +93,13 @@ const SyncMetadataSchema = new Schema<ISyncMetadata>({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 })
-// Compound index for uniqueness
+// Compound index ensures only one sync record exists per user/device pair.
 SyncMetadataSchema.index({ userId: 1, deviceId: 1 }, { unique: true })
 
-// Simple Vault Schema (Phase 3 Extension Compatibility)
+/**
+ * Simple Vault Schema: Used for compatibility with simpler extension storage models.
+ * Stores arbitrary encrypted data and optional plaintext labels.
+ */
 export interface ISimpleVault extends Document {
   userId: string
   data: any
@@ -95,11 +110,14 @@ export interface ISimpleVault extends Document {
 const SimpleVaultSchema = new Schema<ISimpleVault>({
   userId: { type: String, required: true, unique: true },
   data: { type: Schema.Types.Mixed, required: true },
-  labels: { type: [String], default: [] }, // NEW: Plaintext labels for identification
+  labels: { type: [String], default: [] }, // Plaintext labels for identification
   updatedAt: { type: Date, default: Date.now },
 })
 
-// OTP Schema for email verification
+/**
+ * OTP Schema: Manages One-Time Passwords for email-based secondary verification.
+ * Includes automatic expiration logic via TTL index.
+ */
 export interface IOTP extends Document {
   email: string
   code: string
@@ -116,9 +134,10 @@ const OTPSchema = new Schema<IOTP>({
   createdAt: { type: Date, default: Date.now },
 })
 
-// Index for automatic deletion of expired OTPs
+// Index for automatic deletion of expired OTPs (TTL Index)
 OTPSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
+// Export Mongoose Models
 export const User = mongoose.model<IUser>("User", UserSchema)
 export const Session = mongoose.model<ISession>("Session", SessionSchema)
 export const VaultBlob = mongoose.model<IVaultBlob>("VaultBlob", VaultBlobSchema)

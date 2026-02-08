@@ -66,52 +66,81 @@ The core of ZeroKnowledge Vault relies on the principle that the server should n
 
 ### Prerequisites
 
-- **Node.js:** v20.x or higher
-- **Database:** MongoDB (Local instance or Atlas Cluster)
-- **Email:** An SMTP provider (like Gmail) for OTP delivery
+- **Node.js:** v20.x or higher (LTS recommended)
+- **Package Manager:** npm (v9.x or higher)
+- **Database:** MongoDB (Local instance or [MongoDB Atlas](https://www.mongodb.com/cloud/atlas))
+- **Email:** An SMTP provider for OTP delivery (e.g., Gmail, SendGrid, or local development log)
 
 ### Installation
 
-1.  **Clone & Enter Repository:**
-
+1.  **Clone the Repository:**
     ```bash
     git clone https://github.com/SE-Project-Team-13/Zero-Knowledge-Password-Manager.git
     cd Zero-Knowledge-Password-Manager
     ```
 
-2.  **Install Monorepo Dependencies:**
-
+2.  **Install Dependencies:**
+    This project uses a monorepo structure with npm workspaces. Install all dependencies from the root:
     ```bash
     npm install
     ```
 
-3.  **Configure Environment:**
-    Navigate to the backend directory and set up your `.env`:
+3.  **Build Shared Components:**
+    The core cryptographic engine must be built before running the application:
+    ```bash
+    npm run crypto:build
+    ```
+
+### Configuration
+
+The backend requires several environment variables to function correctly.
+
+1.  **Backend Setup:**
     ```bash
     cp backend/.env.example backend/.env
-    # Edit backend/.env with your MongoDB and SMTP credentials
     ```
+2.  **Edit `backend/.env`:**
+    - `PORT`: Server port (default: 3001)
+    - `MONGODB_URI`: Your MongoDB connection string.
+    - `SMTP_*`: Credentials for your email provider (see the file for details).
+    > [!TIP]
+    > If SMTP credentials are omitted, the system will log OTPs directly to the terminal for development convenience.
 
 ---
 
 ## 🛠️ Development Workflow
 
-### Running the Ecosystem
+To run the full ecosystem, you'll need to start both the backend and frontend separately from the root directory.
 
-The project uses npm workspaces to manage both frontend and backend from the root.
+### 1. Start the Backend Server
+The backend handles authentication, synchronization, and OTP management.
+```bash
+npm run dev:backend
+```
+*Access point: `http://localhost:3001`*
 
-| Command                   | Action                                  |
-| :------------------------ | :-------------------------------------- |
-| `npm run dev`             | Launches the Next.js Web Dashboard      |
-| `npm run dev:backend`     | Starts the Express Backend with Nodemon |
-| `npm run extension:build` | Compiles the Browser Extension          |
-| `npm run crypto:build`    | Builds the shared Crypto Engine         |
+### 2. Start the Frontend Dashboard
+The dashboard is a Next.js application that provides the primary user interface.
+```bash
+npm run dev
+```
+*Access point: `http://localhost:3000`*
 
-### Access Points
+### 3. Build & Load the Browser Extension
+The extension provides auto-fill and quick-access features.
+```bash
+npm run extension:build
+```
+**To Load in Browser:**
+1. Open Chrome or Edge and navigate to `chrome://extensions/`.
+2. Enable **Developer mode** (top right toggle).
+3. Click **Load unpacked** and select the `frontend/extension/dist` folder.
 
-- **Dashboard:** `http://localhost:3000`
-- **API Server:** `http://localhost:3001`
-- **Extension:** Load the `frontend/extension/dist` folder into `chrome://extensions/`
+### 4. Shared Crypto Engine
+If you make changes to the shared cryptographic logic in `frontend/crypto-engine`, rebuild it:
+```bash
+npm run crypto:build
+```
 
 ---
 
