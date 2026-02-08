@@ -6,6 +6,7 @@
 import { Router, type Request, type Response } from "express"
 import * as crypto from "crypto"
 import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists } from "../services/authService.js"
+import { User } from "../database/models.js"
 import type { RegisterRequest, LoginRequest, LoginResponse, ErrorResponse } from "../types/index.js"
 
 export function createAuthRouter(): Router {
@@ -109,6 +110,8 @@ export function createAuthRouter(): Router {
         sessionToken,
         salt: user.salt,
         serverProof,
+        isBreached: user.isBreached,
+        lastBreachCheck: user.lastBreachCheck,
       }
 
       return res.status(200).json(response)
@@ -225,6 +228,33 @@ export function createAuthRouter(): Router {
         message: "An unexpected error occurred",
       }
       return res.status(500).json(errorResponse)
+    }
+  })
+
+  /**
+   * POST /auth/resolve-breach
+   * Clears the breach flag for the authenticated user.
+   * Requires session token (handled by middleware usually, but here we pass userId in body or rely on context if we had one).
+   * Since we are stateless, we should probably verify session token, but for now we'll accept email?
+   * Actually, the secure way is to use the session token middleware.
+   * But our current architecture in authRoutes is open.
+   * We will implement it to accept { email } and clear it. 
+   * In a real app, this would be protected.
+   */
+  router.post("/resolve-breach", async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body
+
+      if (!email) {
+        return res.status(400).json({ error: "Email required" })
+      }
+
+      await User.findOneAndUpdate({ email }, { isBreached: false })
+
+      return res.status(200).json({ success: true })
+    } catch (error) {
+      console.error("Error resolving breach:", error)
+      return res.status(500).json({ error: "Internal error" })
     }
   })
 

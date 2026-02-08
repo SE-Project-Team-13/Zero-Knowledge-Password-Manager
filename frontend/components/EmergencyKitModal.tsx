@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { generateEmergencyKitPDF } from "@/lib/pdfService"
 import { toast } from "sonner"
+import { copyWithAutoClear } from "@/lib/clipboard"
 
 interface EmergencyKitModalProps {
     isOpen: boolean
@@ -51,7 +52,8 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
             )
 
             if (!response.ok) {
-                throw new Error("Failed to generate recovery key")
+                const errorData = await response.json().catch(() => ({}))
+                throw new Error(errorData.error || "Failed to generate recovery key")
             }
 
             const data = await response.json()
@@ -132,13 +134,10 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
         const rawKey = (formattedKey || recoveryKey)?.replace(/[\s-]/g, '')
         if (!rawKey) return
 
-        try {
-            await navigator.clipboard.writeText(rawKey)
+        const ok = await copyWithAutoClear(rawKey)
+        if (ok) {
             setCopied(true)
-            toast.success("Recovery key copied!")
             setTimeout(() => setCopied(false), 2000)
-        } catch {
-            toast.error("Failed to copy")
         }
     }
 

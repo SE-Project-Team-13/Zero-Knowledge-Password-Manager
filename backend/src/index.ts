@@ -12,6 +12,7 @@ import { createAuthRouter } from "./routes/authRoutes.js"
 import { createSyncRouter } from "./routes/syncRoutes.js"
 import { createOTPRouter } from "./routes/otpRoutes.js"
 import { createRecoveryRouter } from "./routes/recoveryRoutes.js"
+import { initScheduledJobs } from "./services/cronService.js"; // Import cron service
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3001
@@ -23,6 +24,9 @@ async function start() {
 
     // Initialize database connection
     await connectToDatabase(MONGODB_URI)
+
+    // Initialize scheduled jobs (Cron)
+    initScheduledJobs()
 
     // Create Express app instance
     const app = express()

@@ -16,6 +16,7 @@ export interface DecryptedEntry {
     createdAt: string;
     updatedAt: string;
     lastUpdated: string;
+    reminderSnoozeUntil?: string;
     isPasswordVisible: boolean;
 }
 
@@ -29,6 +30,8 @@ interface VaultContextType {
     addEntry: (entryCtx: { site: string; username: string; password: string; url: string; notes: string }) => Promise<void>;
     updateEntry: (entry: DecryptedEntry) => Promise<void>;
     deleteEntry: (id: string) => Promise<void>;
+    snoozeEntry: (id: string) => Promise<void>;
+    setEntryLastUpdated: (id: string, isoDate: string) => Promise<void>;
 }
 
 const VaultContext = createContext<VaultContextType | undefined>(undefined);
@@ -57,12 +60,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
             // 1. Ensure we have the master password (from temp storage or state)
             const sessionPassword = sessionStorage.getItem("session_master_password");
-            
+
             if (!sessionPassword) {
-                 // Not an error, just means we can't auto-unlock
-                 console.log('[VaultContext] No session password found, cannot auto-unlock');
-                 setIsLoadingVault(false);
-                 return;
+                // Not an error, just means we can't auto-unlock
+                console.log('[VaultContext] No session password found, cannot auto-unlock');
+                setIsLoadingVault(false);
+                return;
             }
 
             // 2. Derive encryption key locally
@@ -160,7 +163,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 
                  if (data && data.ciphertext) {
                     const cryptoEngine = await import("@password-manager/crypto-engine");
-                    
+
                     // Decrypt with fallback logic
                     let decryptedEntry: any;
                     let finalKeys = keys;
@@ -219,7 +222,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                             }
                         }
                     }
-                    
+
                     setDerivedKeys(finalKeys);
 
                     // Parse entries (handle legacy formats)
@@ -227,7 +230,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     if (Array.isArray(decryptedEntry)) {
                         entries = decryptedEntry;
                     } else if (decryptedEntry && typeof decryptedEntry === "object") {
-                         // Check for wrapped password field
+                        // Check for wrapped password field
                         if (decryptedEntry.password) {
                             try {
                                 const parsed = JSON.parse(decryptedEntry.password);
@@ -236,7 +239,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                                 }
                             } catch { }
                         }
-                        
+
                         // Check for array properties
                         if (entries.length === 0) {
                             const possibleArrays = Object.values(decryptedEntry).filter(
@@ -247,7 +250,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                             } else {
                                 // Treat as single object if it looks like an entry
                                 if (decryptedEntry.site || decryptedEntry.siteName) {
-                                     entries = [decryptedEntry];
+                                    entries = [decryptedEntry];
                                 }
                             }
                         }
@@ -269,6 +272,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                             createdAt: entry.createdAt || new Date().toISOString(),
                             updatedAt: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
                             lastUpdated: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
+                            reminderSnoozeUntil: entry.reminderSnoozeUntil || "",
                             isPasswordVisible: false,
                         }));
 
@@ -276,11 +280,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     setIsUnlocked(true);
                     // toast.success(`Vault loaded: ${entriesWithVisibility.length} entries`);
                 } else {
-                     // No data but successful fetch usually means empty vault for new user
-                     console.log("[VaultContext] No vault data found (empty vault)");
-                     setDerivedKeys(keys); // Still set keys so we can add entries
-                     setIsUnlocked(true);
+                    // No data but successful fetch usually means empty vault for new user
+                    console.log("[VaultContext] No vault data found (empty vault)");
+                    setDerivedKeys(keys); // Still set keys so we can add entries
+                    setIsUnlocked(true);
                 }
+            } else if (fetchResult.status === 404) {
+                // No vault found (new user) - initialize as empty
+                console.log("[VaultContext] Vault not found (404), initializing empty vault");
+                setDerivedKeys(keys);
+                setIsUnlocked(true);
             } else {
                  if (fetchResult.status === 404) {
                      console.log("[VaultContext] Vault not found on server (new user or reset account).");
@@ -302,13 +311,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
     const addEntry = async (entryCtx: { site: string; username: string; password: string; url: string; notes: string }) => {
         if (!derivedKeys) {
-             toast.error("Encryption key not available");
-             return;
+            toast.error("Encryption key not available");
+            return;
         }
 
         try {
-             const entryId = Math.random().toString(36).substring(7);
-             const newCredential = {
+            const entryId = Math.random().toString(36).substring(7);
+            const newCredential = {
                 id: entryId,
                 siteName: entryCtx.site,
                 siteUrl: entryCtx.url || "",
@@ -317,25 +326,27 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 notes: entryCtx.notes || "",
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
+                reminderSnoozeUntil: "",
             };
 
             const updatedEntries = [
                 ...decryptedEntries.map((e) => ({
-                  id: e.id,
-                  siteName: e.site,
-                  siteUrl: e.siteUrl,
-                  username: e.username,
-                  password: e.password,
-                  notes: e.notes,
-                  createdAt: e.createdAt,
-                  updatedAt: e.updatedAt || e.lastUpdated || new Date().toISOString(),
+                    id: e.id,
+                    siteName: e.site,
+                    siteUrl: e.siteUrl,
+                    username: e.username,
+                    password: e.password,
+                    notes: e.notes,
+                    createdAt: e.createdAt,
+                    updatedAt: e.updatedAt || e.lastUpdated || new Date().toISOString(),
+                    reminderSnoozeUntil: e.reminderSnoozeUntil || "",
                 })),
                 newCredential,
             ];
 
             // Re-encrypt and save
             await saveVault(updatedEntries, derivedKeys);
-            
+
             // Update local state
             const displayEntry: DecryptedEntry = {
                 id: entryId,
@@ -347,9 +358,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 createdAt: new Date().toISOString(),
                 updatedAt: newCredential.updatedAt,
                 lastUpdated: newCredential.updatedAt,
+                reminderSnoozeUntil: "",
                 isPasswordVisible: false,
             };
-            
+
             setDecryptedEntries([...decryptedEntries, displayEntry]);
             toast.success("Credential saved successfully!");
         } catch (err) {
@@ -360,19 +372,19 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
     const updateEntry = async (entry: DecryptedEntry) => {
         if (!derivedKeys) return;
-        
+
         try {
             const updatedEntries = decryptedEntries.map((e) =>
                 e.id === entry.id
-                  ? {
-                    ...entry,
-                    lastUpdated: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                  }
-                  : e,
+                    ? {
+                        ...entry,
+                        lastUpdated: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    }
+                    : e,
             );
-            
-             const transportEntries = updatedEntries.map((e) => ({
+
+            const transportEntries = updatedEntries.map((e) => ({
                 id: e.id,
                 siteName: e.site,
                 siteUrl: e.siteUrl,
@@ -381,8 +393,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 notes: e.notes,
                 createdAt: e.createdAt,
                 updatedAt: e.updatedAt || new Date().toISOString(),
+                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
             }));
-            
+
             await saveVault(transportEntries, derivedKeys);
             setDecryptedEntries(updatedEntries);
             toast.success("Credential updated!");
@@ -394,13 +407,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
     const deleteEntry = async (id: string) => {
         if (!derivedKeys) {
-             toast.error("Encryption key not available");
-             return;
+            toast.error("Encryption key not available");
+            return;
         }
 
         try {
             const updatedEntries = decryptedEntries.filter((e) => e.id !== id);
-             const transportEntries = updatedEntries.map((e) => ({
+            const transportEntries = updatedEntries.map((e) => ({
                 id: e.id,
                 siteName: e.site,
                 siteUrl: e.siteUrl,
@@ -409,8 +422,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 notes: e.notes,
                 createdAt: e.createdAt,
                 updatedAt: e.updatedAt || new Date().toISOString(),
+                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
             }));
-            
+
             await saveVault(transportEntries, derivedKeys);
             setDecryptedEntries(updatedEntries);
             toast.success("Credential deleted!");
@@ -419,58 +433,123 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             toast.error("Failed to delete credential");
         }
     };
-    
+
+    const snoozeEntry = async (id: string) => {
+        if (!derivedKeys) return;
+
+        try {
+            const snoozeUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+            const updatedEntries = decryptedEntries.map((e) =>
+                e.id === id
+                    ? { ...e, reminderSnoozeUntil: snoozeUntil }
+                    : e,
+            );
+
+            const transportEntries = updatedEntries.map((e) => ({
+                id: e.id,
+                siteName: e.site,
+                siteUrl: e.siteUrl,
+                username: e.username,
+                password: e.password,
+                notes: e.notes,
+                createdAt: e.createdAt,
+                updatedAt: e.updatedAt || new Date().toISOString(),
+                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
+            }));
+
+            await saveVault(transportEntries, derivedKeys);
+            setDecryptedEntries(updatedEntries);
+            toast.info("Reminder snoozed for 7 days");
+        } catch (err) {
+            console.error("Snooze entry error:", err);
+            toast.error("Failed to snooze reminder");
+        }
+    };
+
+    const setEntryLastUpdated = async (id: string, isoDate: string) => {
+        if (!derivedKeys) return;
+
+        const parsed = new Date(isoDate).toISOString();
+
+        try {
+            const updatedEntries = decryptedEntries.map((e) =>
+                e.id === id
+                    ? { ...e, updatedAt: parsed, lastUpdated: parsed }
+                    : e,
+            );
+
+            const transportEntries = updatedEntries.map((e) => ({
+                id: e.id,
+                siteName: e.site,
+                siteUrl: e.siteUrl,
+                username: e.username,
+                password: e.password,
+                notes: e.notes,
+                createdAt: e.createdAt,
+                updatedAt: e.updatedAt || new Date().toISOString(),
+                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
+            }));
+
+            await saveVault(transportEntries, derivedKeys);
+            setDecryptedEntries(updatedEntries);
+            toast.info("Last updated date changed");
+        } catch (err) {
+            console.error("Set lastUpdated error:", err);
+            toast.error("Failed to set last updated date");
+        }
+    };
+
     // Helper to encrypt and save
     const saveVault = async (entries: any[], keys: DerivedKey) => {
-         const { encrypt } = await import("@password-manager/crypto-engine");
-         const vaultEntry = {
+        const { encrypt } = await import("@password-manager/crypto-engine");
+        const vaultEntry = {
             site: "VAULT_ROOT",
             username: "SYSTEM",
             password: JSON.stringify(entries),
-         };
-         
-         const encryptedVault = await encrypt(vaultEntry, keys);
-         const labels = entries.map((e) => (e.siteName || "").toLowerCase());
-         const email = session.email || localStorage.getItem("user_email") || "";
+        };
 
-         const response = await fetch(
+        const encryptedVault = await encrypt(vaultEntry, keys);
+        const labels = entries.map((e) => (e.siteName || "").toLowerCase());
+        const email = session.email || localStorage.getItem("user_email") || "";
+
+        const response = await fetch(
             `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(email)}`,
             {
-              method: "PUT",
-              headers: {
-                Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                encryptedVault,
-                labels,
-              }),
+                method: "PUT",
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    encryptedVault,
+                    labels,
+                }),
             },
-         );
-         
-         if (!response.ok) throw new Error("Failed to save to backend");
+        );
+
+        if (!response.ok) throw new Error("Failed to save to backend");
     };
 
     // Auto-unlock effect
     useEffect(() => {
         if (session.isAuthenticated && !isUnlocked && !isLoadingVault) {
-             // Try to unlock if we have session password
-             const sessionPassword = sessionStorage.getItem("session_master_password");
-             if (sessionPassword) {
-                 unlockVault();
-             }
+            // Try to unlock if we have session password
+            const sessionPassword = sessionStorage.getItem("session_master_password");
+            if (sessionPassword) {
+                unlockVault();
+            }
         }
     }, [session.isAuthenticated, isUnlocked]);
 
     // Initial load
     useEffect(() => {
-         const sessionPassword = sessionStorage.getItem("session_master_password");
-         const token = localStorage.getItem("auth_token");
-         if (sessionPassword && token) {
-             unlockVault(); // Try immediately on mount
-         } else {
-             setIsLoadingVault(false);
-         }
+        const sessionPassword = sessionStorage.getItem("session_master_password");
+        const token = localStorage.getItem("auth_token");
+        if (sessionPassword && token) {
+            unlockVault(); // Try immediately on mount
+        } else {
+            setIsLoadingVault(false);
+        }
     }, []);
 
     return (
@@ -483,7 +562,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             unlockVault,
             addEntry,
             updateEntry,
-            deleteEntry
+            deleteEntry,
+            snoozeEntry,
+            setEntryLastUpdated
         }}>
             {children}
         </VaultContext.Provider>

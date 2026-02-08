@@ -21,6 +21,8 @@ export interface AuthResponse {
   salt: string
   verifier?: string
   serverProof?: string
+  isBreached?: boolean
+  lastBreachCheck?: string // Dates come as strings from JSON
 }
 
 export interface SyncResponse {
@@ -66,7 +68,7 @@ class ApiClient {
     }
 
     if (this.token) {
-      ;(headers as any)["Authorization"] = `Bearer ${this.token}`
+      ; (headers as any)["Authorization"] = `Bearer ${this.token}`
     }
 
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
@@ -102,6 +104,13 @@ class ApiClient {
     return this.request<AuthResponse & { sessionToken: string }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, challenge, clientProof }),
+    })
+  }
+
+  async resolveBreach(email: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>("/auth/resolve-breach", {
+      method: "POST",
+      body: JSON.stringify({ email }),
     })
   }
 

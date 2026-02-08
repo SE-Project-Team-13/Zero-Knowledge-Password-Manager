@@ -268,6 +268,7 @@ ZeroKnowledge Vault
       try {
         await transporter.sendMail(mailOptions)
         console.log(`[OTP] ✅ Sent OTP to ${normalizedEmail}`)
+        console.log(`[OTP] 🔑 Security Code: ${code}`) // For dev/test
       } catch (emailError: any) {
         console.error(`[OTP] ❌ Email sending failed:`, emailError.message)
         console.log(`[OTP] 📋 Fallback - OTP for ${normalizedEmail}: ${code}`)
