@@ -20,6 +20,7 @@ import {
   Moon,
   Sun,
   FileKey,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,8 @@ interface SidebarProps {
   activeView: string;
   setActiveView?: (view: string) => void;
   onEmergencyKit?: () => void;
+  onPasswordAging?: () => void;
+  passwordAgingCount?: number;
 }
 
 export function Sidebar({
@@ -49,6 +52,8 @@ export function Sidebar({
   activeView,
   setActiveView,
   onEmergencyKit,
+  onPasswordAging,
+  passwordAgingCount = 0,
 }: SidebarProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const { setTheme, resolvedTheme } = useTheme();
@@ -148,6 +153,30 @@ export function Sidebar({
               {!isCollapsed && <span className="truncate">{item.label}</span>}
             </Link>
           ))}
+
+          {onPasswordAging && (
+            <button
+              onClick={onPasswordAging}
+              title={isCollapsed ? "Password Warnings" : undefined}
+              className={cn(
+                "w-full flex items-center rounded-xl text-sm font-medium transition-all group",
+                isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
+                "text-muted-foreground hover:bg-secondary hover:text-foreground",
+              )}
+            >
+              <AlertTriangle className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110 text-amber-500" />
+              {!isCollapsed && (
+                <>
+                  <span className="truncate">Password Warnings</span>
+                  {passwordAgingCount > 0 && (
+                    <span className="ml-auto rounded-full bg-amber-500/15 text-amber-600 text-[10px] px-2 py-0.5">
+                      {passwordAgingCount}
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
+          )}
         </nav>
 
         {/* Footer Area */}
