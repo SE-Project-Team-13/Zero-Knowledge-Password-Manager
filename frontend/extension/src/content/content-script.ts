@@ -14,6 +14,15 @@
 
 console.log('[Content Script] Password Manager content script loaded')
 
+function shouldInject(): boolean {
+  // Avoid mutating Next.js/React apps before hydration
+  if (document.getElementById('__NEXT_DATA__')) return false
+  const host = window.location.hostname.toLowerCase()
+  const port = window.location.port
+  if ((host === 'localhost' || host === '127.0.0.1') && port === '3000') return false
+  return true
+}
+
 // ============================================================================
 // Form Detection
 // ============================================================================
@@ -146,15 +155,23 @@ function addAutofillButton(form: HTMLFormElement, usernameInput: HTMLInputElemen
 // ============================================================================
 
 // Detect forms on page load
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', detectLoginForms)
-} else {
-  detectLoginForms()
+if (shouldInject()) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      window.addEventListener('load', () => {
+        setTimeout(detectLoginForms, 0)
+      }, { once: true })
+    })
+  } else {
+    window.addEventListener('load', () => {
+      setTimeout(detectLoginForms, 0)
+    }, { once: true })
+  }
 }
 
 // Re-detect forms when DOM changes (for SPAs)
 const observer = new MutationObserver(() => {
-  detectLoginForms()
+  if (shouldInject()) detectLoginForms()
 })
 
 if (document.body) {

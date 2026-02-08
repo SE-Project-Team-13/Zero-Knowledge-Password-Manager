@@ -47,6 +47,7 @@ import {
   Loader2
 } from "lucide-react";
 import { toast } from "sonner";
+import { copyWithAutoClear } from "@/lib/clipboard";
 
 // --- Types ---
 import { useVault, type DecryptedEntry } from "@/context/VaultContext";
@@ -473,8 +474,7 @@ export default function DashboardPage() {
   };
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.info("Copied to clipboard");
+    void copyWithAutoClear(text);
   };
 
   // --- Render Loading State ---
