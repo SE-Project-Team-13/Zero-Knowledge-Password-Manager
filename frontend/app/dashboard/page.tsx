@@ -45,27 +45,10 @@ import {
   Moon,
   Loader2
 } from "lucide-react";
-import {
-  deriveKey,
-  encryptVault,
-  decryptVault,
-} from "@password-manager/crypto-engine";
-import type { DerivedKey } from "@password-manager/crypto-engine";
 import { toast } from "sonner";
 
 // --- Types ---
-interface DecryptedEntry {
-  id: string;
-  site: string;
-  siteUrl: string;
-  username: string;
-  password: string;
-  notes: string;
-  createdAt: string;
-  updatedAt: string;
-  lastUpdated: string;
-  isPasswordVisible: boolean;
-}
+import { useVault, type DecryptedEntry } from "@/context/VaultContext";
 
 // --- Helpers ---
 const calculatePasswordStrength = (password: string) => {
@@ -94,6 +77,18 @@ const calculatePasswordStrength = (password: string) => {
  */
 export default function DashboardPage() {
   const [session, actions] = useVaultSync();
+  const { 
+    decryptedEntries, 
+    setDecryptedEntries, 
+    derivedKeys, 
+    isUnlocked: isVaultUnlocked, 
+    unlockVault: contextUnlockVault, 
+    isLoadingVault, 
+    addEntry, 
+    updateEntry,
+    deleteEntry
+  } = useVault();
+  
   const { setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -113,11 +108,7 @@ export default function DashboardPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
 
-  // Vault Data (In-Memory Only)
-  const [decryptedEntries, setDecryptedEntries] = useState<DecryptedEntry[]>(
-    [],
-  );
-  const [derivedKeys, setDerivedKeys] = useState<DerivedKey | null>(null);
+  // Vault Data (Managed by Context)
   const [masterPassword, setMasterPassword] = useState("");
   const [showMasterPassword, setShowMasterPassword] = useState(false);
 
@@ -328,238 +319,32 @@ export default function DashboardPage() {
    * 3. Decrypts blobs locally using the derived key.
    * 4. Populates the application state with decrypted entries.
    */
+  /**
+   * Performs the multi-step vault unlocking process:
+   * Delegates to VaultContext
+   */
   const unlockVault = async () => {
     setIsVerifyingOtp(true);
     try {
-      // 1. Ensure we have the master password (from temp storage or state)
+      // 1. Ensure we have the master password
       let passwordToUse = masterPassword.trim();
 
       if (!passwordToUse) {
-        // Try to get from sessionStorage
         const sessionPassword = sessionStorage.getItem("session_master_password");
         if (sessionPassword) {
-          passwordToUse = sessionPassword;
-          setMasterPassword(sessionPassword);
-          console.log('[Dashboard] Loaded master password from sessionStorage');
+            passwordToUse = sessionPassword;
+            setMasterPassword(sessionPassword);
         } else {
-          console.error('[Dashboard] No master password available');
-          throw new Error("Master password not found. Please log in again.");
+             throw new Error("Master password not found.");
         }
       }
-
-      // 2. Derive encryption key locally using Phase-1 crypto engine
-      // The salt is retrieved from the session state (fetched during login/register)
-      if (!session.salt) {
-        throw new Error("No salt found for user. Please re-login.");
-      }
-
-      console.log('[Dashboard] Using password for decryption, length:', passwordToUse.length);
-
-
-      const saltBuffer = new Uint8Array(
-        session.salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
-      );
-
-      // Start parallel execution: Key Derivation (CPU) + Vault Fetch (Network)
-      console.log('[Dashboard] Starting parallel unlock operations...')
-
-      const keyDerivationPromise = deriveKey(passwordToUse, saltBuffer)
-
-      const vaultFetchPromise = (async () => {
-        console.log('[Dashboard] Fetching vault from backend...')
-        console.log('[Dashboard] email:', session.email)
-        return fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || '')}`, {
-          method: "GET",
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem("auth_token")}`
-          }
-        })
-      })()
-
-      // Wait for both to complete
-      const [keys, response] = await Promise.all([keyDerivationPromise, vaultFetchPromise])
-
-      setDerivedKeys(keys)
-
-      // 2. Process fetched vault
-      try {
-        console.log("[Dashboard] Response status:", response.status);
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log("[Dashboard] Response data:", data);
-
-          // SimpleVault returns the encrypted data directly
-          if (data && data.ciphertext && data.iv && data.salt) {
-            console.log("[Dashboard] Decrypting vault...");
-            // Import the decrypt function from crypto-engine
-            const { decrypt } = await import("@password-manager/crypto-engine");
-
-            // Create EncryptedVault object
-            const encryptedVault = {
-              ciphertext: data.ciphertext,
-              iv: data.iv,
-              salt: data.salt,
-              algorithm: "AES-256-GCM" as const,
-              derivationAlgorithm: "Argon2id" as const,
-            };
-
-            // Decrypt the vault
-            let decryptedEntry: any;
-            try {
-              decryptedEntry = await decrypt(encryptedVault, keys);
-              console.log("[Dashboard] Decrypted entry with master password");
-            } catch (decryptErr) {
-              // Try email fallback for accounts created with old system
-              console.warn("[Dashboard] Master password failed, trying email fallback");
-              const fallbackKeys = await deriveKey(session.email || "", saltBuffer);
-              decryptedEntry = await decrypt(encryptedVault, fallbackKeys);
-              console.log("[Dashboard] Decrypted entry with email fallback");
-              setDerivedKeys(fallbackKeys);
-            }
-
-            console.log(
-              "[Dashboard] Decrypted entry type:",
-              typeof decryptedEntry,
-            );
-            console.log(
-              "[Dashboard] Decrypted entry keys:",
-              Object.keys(decryptedEntry),
-            );
-            console.log(
-              "[Dashboard] Decrypted entry JSON:",
-              JSON.stringify(decryptedEntry, null, 2),
-            );
-
-            // The extension stores credentials as an array
-            // The decrypt function returns a VaultEntry, but the actual data might be in a property
-            let entries: any[] = [];
-
-            // Check if decryptedEntry is already an array
-            if (Array.isArray(decryptedEntry)) {
-              console.log("[Dashboard] Decrypted entry is an array");
-              entries = decryptedEntry;
-            }
-            // Check if it's a VaultEntry with the data in a property
-            else if (decryptedEntry && typeof decryptedEntry === "object") {
-              console.log(
-                "[Dashboard] Decrypted entry is an object, inspecting properties...",
-              );
-
-              // Log all properties
-              for (const [key, value] of Object.entries(decryptedEntry)) {
-                console.log(
-                  `[Dashboard] Property "${key}":`,
-                  value,
-                  "Type:",
-                  typeof value,
-                );
-              }
-
-              // Try to find an array property
-              const possibleArrays = Object.values(decryptedEntry).filter(
-                (val) => Array.isArray(val),
-              );
-              if (possibleArrays.length > 0) {
-                console.log("[Dashboard] Found array in property");
-                entries = possibleArrays[0] as any[];
-              } else {
-                // Check if any property contains a JSON string that's an array
-                for (const [key, value] of Object.entries(decryptedEntry)) {
-                  if (typeof value === "string") {
-                    try {
-                      const parsed = JSON.parse(value);
-                      if (Array.isArray(parsed)) {
-                        console.log(
-                          `[Dashboard] Found JSON array in property "${key}"`,
-                        );
-                        entries = parsed;
-                        break;
-                      }
-                    } catch (e) {
-                      // Not JSON, continue
-                    }
-                  }
-                }
-
-                // If still no entries, treat as single entry
-                if (entries.length === 0) {
-                  console.log("[Dashboard] Treating as single entry");
-                  entries = [decryptedEntry];
-                }
-              }
-            }
-
-            console.log("[Dashboard] Parsed entries:", entries);
-            console.log("[Dashboard] Number of entries:", entries.length);
-
-            // Add visibility flag to each entry
-            // Handle both 'site' and 'siteName' fields (extension uses 'siteName')
-            // Filter out system entries (VAULT_ROOT)
-            const entriesWithVisibility = entries
-              .filter((entry: any) => {
-                const siteName = entry.siteName || entry.site || "";
-                return siteName !== "VAULT_ROOT" && siteName !== "SYSTEM";
-              })
-              .map((entry: any, index: number) => {
-                console.log(`[Dashboard] Processing entry ${index}:`, entry);
-                const site = entry.siteName || entry.site || "Unknown";
-                const username = entry.username || "";
-                const password = entry.password || "";
-                const siteUrl = entry.siteUrl || entry.url || "";
-                const notes = entry.notes || "";
-                const createdAt = entry.createdAt || entry.created_at || new Date().toISOString();
-                const updatedAt = entry.updatedAt || entry.lastUpdated || entry.updated_at || createdAt;
-
-                return {
-                  id: entry.id || Math.random().toString(36).substring(7),
-                  site,
-                  username,
-                  password,
-                  siteUrl,
-                  siteName: site,
-                  notes,
-                  createdAt,
-                  updatedAt,
-                  lastUpdated: updatedAt,
-                  isPasswordVisible: false,
-                };
-              });
-
-            console.log("[Dashboard] Setting entries:", entriesWithVisibility);
-            setDecryptedEntries(entriesWithVisibility);
-            toast.success(
-              `Loaded ${entriesWithVisibility.length} credential(s)`,
-            );
-          } else {
-            console.log("[Dashboard] No encrypted data found in response");
-            // No vault data, but password was successfully derived with the salt
-            // This is OK for new users or empty vaults
-          }
-        } else if (response.status === 404) {
-          console.log("[Dashboard] No vault found for user (new user)");
-          // No vault exists yet, but password was successfully derived with the salt
-          // This is OK for new users
-        } else {
-          const errorText = await response.text();
-          console.error(
-            "[Dashboard] Response not OK:",
-            response.status,
-            errorText,
-          );
-          throw new Error("Failed to fetch vault data");
-        }
-      } catch (fetchErr) {
-        console.error("[Dashboard] Fetch/decrypt error:", fetchErr);
-        // If decryption failed, it means wrong password
-        // Re-throw to prevent unlocking
-        throw fetchErr;
-      }
-
+      
+      // Context unlock reads from session storage, so ensure it's set
+      sessionStorage.setItem("session_master_password", passwordToUse);
+      
+      await contextUnlockVault();
+      
       setIsUnlocked(true);
-      // Clear temp password after successful unlock
-      sessionStorage.removeItem("temp_master_password");
-
       toast.success("Vault unlocked successfully");
     } catch (err) {
       console.error("Unlock error:", err);
@@ -586,8 +371,7 @@ export default function DashboardPage() {
 
   /**
    * Handles the addition of a new vault entry.
-   * - Encrypts the entry details locally using the derived session key.
-   * - Pushes the resulting ciphertext to the server via the sync service.
+   * Delegates to VaultContext.
    */
   const handleAddEntry = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -605,113 +389,14 @@ export default function DashboardPage() {
 
     setIsAddingEntry(true);
     try {
-      console.log("[Dashboard] Adding new credential...");
-
-      // Create the new entry
-      const entryId = Math.random().toString(36).substring(7);
-      const newCredential = {
-        id: entryId,
-        siteName: newEntry.site,
-        siteUrl: newEntry.url || "",
-        username: newEntry.username,
-        password: newEntry.password,
-        notes: newEntry.notes || "",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      // Add to existing entries
-      const updatedEntries = [
-        ...decryptedEntries.map((e) => ({
-          id: e.id,
-          siteName: e.site,
-          siteUrl: e.siteUrl,
-          username: e.username,
-          password: e.password,
-          notes: e.notes,
-          createdAt: e.createdAt,
-          updatedAt: e.updatedAt || e.lastUpdated || new Date().toISOString(),
-        })),
-        newCredential,
-      ];
-
-      console.log(
-        "[Dashboard] Encrypting",
-        updatedEntries.length,
-        "credentials...",
-      );
-
-      // Get the derived keys from the unlock process
-      if (!derivedKeys) {
-        toast.error("Encryption key not available. Please unlock vault first.");
-        return;
-      }
-
-      // Get salt
-      const salt = localStorage.getItem("user_salt");
-      if (!salt) {
-        toast.error("Salt not found. Please re-login.");
-        return;
-      }
-
-      // IMPORTANT: Match the extension's format
-      // The extension wraps the array in a VaultEntry object with VAULT_ROOT/SYSTEM
-      const { encrypt } = await import("@password-manager/crypto-engine");
-
-      // Wrap the credentials array in a VaultEntry object (matching extension format)
-      const vaultEntry = {
-        site: "VAULT_ROOT",
-        username: "SYSTEM",
-        password: JSON.stringify(updatedEntries),
-      };
-
-      // Encrypt using the crypto engine's encrypt function with the full DerivedKey
-      const encryptedVault = await encrypt(vaultEntry, derivedKeys);
-
-      console.log("[Dashboard] Saving to MongoDB...");
-
-      // Extract site names for labels
-      const labels = updatedEntries.map((e) => e.siteName.toLowerCase());
-
-      // Save to MongoDB
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || "")}`,
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            encryptedVault,
-            labels,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to save: ${response.status}`);
-      }
-
-      console.log("[Dashboard] Saved successfully!");
-      const data = await response.json();
-      const dbTimestamp = data.updatedAt || new Date().toISOString();
-
-      // Update local state
-      const displayEntry: DecryptedEntry = {
-        id: entryId,
+      await addEntry({
         site: newEntry.site,
-        siteUrl: newEntry.url,
         username: newEntry.username,
         password: newEntry.password,
+        url: newEntry.url,
         notes: newEntry.notes,
-        createdAt: new Date().toISOString(),
-        updatedAt: dbTimestamp,
-        lastUpdated: dbTimestamp,
-        isPasswordVisible: false,
-      };
-
-      setDecryptedEntries([...decryptedEntries, displayEntry]);
+      });
+      
       setNewEntry({
         site: "",
         username: "",
@@ -720,13 +405,11 @@ export default function DashboardPage() {
         notes: "",
         showPassword: false,
       });
-      toast.success("Credential saved and synced to vault!");
+      // Context shows success toast
     } catch (err) {
       console.error("[Dashboard] Add entry error:", err);
-      toast.error(
-        "Failed to save credential: " +
-        (err instanceof Error ? err.message : "Unknown error"),
-      );
+      // Context shows error toast usually, but duplicate here just in case? 
+      // Context handles toast.error
     } finally {
       setIsAddingEntry(false);
     }
@@ -752,112 +435,11 @@ export default function DashboardPage() {
 
     setIsSavingEdit(true);
     try {
-      console.log("[Dashboard] Updating credential...");
-
-      // Update the entry in the list
-      const updatedEntries = decryptedEntries.map((e) =>
-        e.id === editingEntry.id
-          ? {
-            ...editingEntry,
-            lastUpdated: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }
-          : e,
-      );
-
-      // Get the derived keys
-      if (!derivedKeys) {
-        toast.error("Encryption key not available. Please unlock vault first.");
-        return;
-      }
-
-      // Get salt
-      const salt = localStorage.getItem("user_salt");
-      if (!salt) {
-        toast.error("Salt not found. Please re-login.");
-        return;
-      }
-
-      // Prepare credentials for encryption
-      // Prepare credentials for encryption
-      const credentialsForEncryption = updatedEntries.map((e) => ({
-        id: e.id,
-        siteName: e.site,
-        siteUrl: e.siteUrl,
-        username: e.username,
-        password: e.password,
-        notes: e.notes,
-        createdAt: e.createdAt,
-        updatedAt: e.updatedAt || new Date().toISOString(),
-      }));
-
-      console.log(
-        "[Dashboard] Encrypting",
-        credentialsForEncryption.length,
-        "credentials...",
-      );
-
-      const { encrypt } = await import("@password-manager/crypto-engine");
-
-      // Wrap in VaultEntry object
-      const vaultEntry = {
-        site: "VAULT_ROOT",
-        username: "SYSTEM",
-        password: JSON.stringify(credentialsForEncryption),
-      };
-
-      const encryptedVault = await encrypt(vaultEntry, derivedKeys);
-
-      console.log("[Dashboard] Saving to MongoDB...");
-
-      const labels = credentialsForEncryption.map((e) =>
-        e.siteName.toLowerCase(),
-      );
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || "")}`,
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            encryptedVault,
-            labels,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to save: ${response.status}`);
-      }
-
-      console.log("[Dashboard] Updated successfully!");
-      const data = await response.json();
-      const dbTimestamp = data.updatedAt || new Date().toISOString();
-
-      // Update local state with the actual DB timestamp
-      const finalEntries = decryptedEntries.map((e) =>
-        e.id === editingEntry.id
-          ? {
-            ...editingEntry,
-            lastUpdated: dbTimestamp,
-            updatedAt: dbTimestamp,
-          }
-          : e,
-      );
-
-      setDecryptedEntries(finalEntries);
+      await updateEntry(editingEntry);
       setIsEditModalOpen(false);
       setEditingEntry(null);
-      toast.success("Credential updated successfully!");
     } catch (err) {
       console.error("[Dashboard] Edit entry error:", err);
-      toast.error(
-        "Failed to update credential: " +
-        (err instanceof Error ? err.message : "Unknown error"),
-      );
     } finally {
       setIsSavingEdit(false);
     }
@@ -874,92 +456,9 @@ export default function DashboardPage() {
     }
 
     try {
-      console.log("[Dashboard] Deleting credential...");
-
-      // Remove from list
-      const updatedEntries = decryptedEntries.filter((e) => e.id !== entryId);
-
-      // Get the derived keys
-      if (!derivedKeys) {
-        toast.error("Encryption key not available. Please unlock vault first.");
-        return;
-      }
-
-      // Get salt
-      const salt = localStorage.getItem("user_salt");
-      if (!salt) {
-        toast.error("Salt not found. Please re-login.");
-        return;
-      }
-
-      // Prepare credentials for encryption
-      // Prepare credentials for encryption
-      const credentialsForEncryption = updatedEntries.map((e) => ({
-        id: e.id,
-        siteName: e.site,
-        siteUrl: e.siteUrl,
-        username: e.username,
-        password: e.password,
-        notes: e.notes,
-        createdAt: e.createdAt,
-        updatedAt: new Date().toISOString(),
-      }));
-
-      console.log(
-        "[Dashboard] Encrypting",
-        credentialsForEncryption.length,
-        "credentials...",
-      );
-
-      const { encrypt } = await import("@password-manager/crypto-engine");
-
-      // Wrap in VaultEntry object
-      const vaultEntry = {
-        site: "VAULT_ROOT",
-        username: "SYSTEM",
-        password: JSON.stringify(credentialsForEncryption),
-      };
-
-      const encryptedVault = await encrypt(vaultEntry, derivedKeys);
-
-      console.log("[Dashboard] Saving to MongoDB...");
-
-      const labels = credentialsForEncryption.map((e) =>
-        e.siteName.toLowerCase(),
-      );
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || "")}`,
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            encryptedVault,
-            labels,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to save: ${response.status}`);
-      }
-
-      console.log("[Dashboard] Deleted successfully!");
-
-      // Update local state
-      setDecryptedEntries(updatedEntries);
-      toast.success("Credential deleted successfully!");
+      await deleteEntry(entryId);
     } catch (err) {
-      console.error("[Dashboard] Add entry error:", err);
-      toast.error(
-        "Failed to save credential: " +
-        (err instanceof Error ? err.message : "Unknown error"),
-      );
-    } finally {
-      setIsAddingEntry(false);
+      console.error("[Dashboard] Delete entry error:", err);
     }
   };
 

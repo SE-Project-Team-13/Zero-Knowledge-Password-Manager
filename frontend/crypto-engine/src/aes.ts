@@ -92,7 +92,7 @@ export async function decrypt(encrypted: EncryptedVault, derivedKey: DerivedKey)
     return entry
   } catch (error) {
     // GCM authentication failed (wrong password or tampered ciphertext)
-    throw new Error("Decryption failed. This could be due to incorrect password or corrupted data.")
+    throw new Error(`Decryption failed: ${error instanceof Error ? error.message : String(error)}. This could be due to incorrect password or corrupted data.`);
   }
 }
 

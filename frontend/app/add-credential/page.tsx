@@ -24,10 +24,7 @@ import {
     EyeOff,
     Sparkles,
 } from "lucide-react";
-import {
-    deriveKey,
-} from "@password-manager/crypto-engine";
-import type { DerivedKey } from "@password-manager/crypto-engine";
+import { useVault } from "@/context/VaultContext";
 import { toast } from "sonner";
 
 // --- Helpers ---
@@ -49,9 +46,9 @@ const calculatePasswordStrength = (password: string) => {
 
 export default function AddCredentialPage() {
     const [session, actions] = useVaultSync();
+    const { addEntry } = useVault();
     const router = useRouter();
     const [isCollapsed, setIsCollapsed] = useState(true);
-    const [derivedKeys, setDerivedKeys] = useState<DerivedKey | null>(null);
     const [mounted, setMounted] = useState(false);
 
     // Add Entry Form
@@ -112,163 +109,19 @@ export default function AddCredentialPage() {
 
         setIsAddingEntry(true);
         try {
-            console.log("[AddCredential] Adding new credential...");
-
-            // Get derived keys from localStorage or derive them
-            let keys = derivedKeys;
-            if (!keys) {
-                const sessionPassword = sessionStorage.getItem("session_master_password");
-                const salt = localStorage.getItem("user_salt");
-
-                if (!sessionPassword || !salt) {
-                    toast.error("Session expired. Please log in again.");
-                    router.push("/");
-                    return;
-                }
-
-                const saltBuffer = new Uint8Array(
-                    salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
-                );
-                keys = await deriveKey(sessionPassword, saltBuffer);
-                setDerivedKeys(keys);
-            }
-
-            // Create the new entry
-            const entryId = Math.random().toString(36).substring(7);
-            const newCredential = {
-                id: entryId,
-                siteName: newEntry.site,
-                siteUrl: newEntry.url || "",
+            await addEntry({
+                site: newEntry.site,
                 username: newEntry.username,
                 password: newEntry.password,
-                notes: newEntry.notes || "",
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-            };
-
-            // Fetch existing entries
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || "")}`,
-                {
-                    method: "GET",
-                    headers: {
-                        Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-                    },
-                }
-            );
-
-            let existingEntries: any[] = [];
-            if (response.ok) {
-                const data = await response.json();
-                console.log("[AddCredential] Fetched vault data:", data);
-
-                if (data && data.ciphertext) {
-                    // Import decrypt function (not decryptVault)
-                    const cryptoEngine = await import("@password-manager/crypto-engine");
-
-                    // Decrypt using the decrypt function with derived keys
-                    const decryptedEntry = await cryptoEngine.decrypt(data, keys);
-                    console.log("[AddCredential] Decrypted vault:", decryptedEntry);
-
-                    // Parse the decrypted data (same logic as dashboard)
-                    let entries: any[] = [];
-                    if (Array.isArray(decryptedEntry)) {
-                        entries = decryptedEntry;
-                    } else if (decryptedEntry && typeof decryptedEntry === "object") {
-                        // Check if password field contains JSON array
-                        if (decryptedEntry.password) {
-                            try {
-                                const parsed = JSON.parse(decryptedEntry.password);
-                                if (Array.isArray(parsed)) {
-                                    entries = parsed;
-                                }
-                            } catch {
-                                // Not JSON, continue
-                            }
-                        }
-
-                        // If still no entries, check for arrays in object values
-                        if (entries.length === 0) {
-                            const possibleArrays = Object.values(decryptedEntry).filter(
-                                (val) => Array.isArray(val),
-                            );
-                            if (possibleArrays.length > 0) {
-                                entries = possibleArrays[0] as any[];
-                            }
-                        }
-                    }
-
-                    console.log("[AddCredential] Parsed entries:", entries);
-
-                    // Filter out system entries
-                    existingEntries = entries.filter((e: any) => {
-                        const siteName = e.siteName || e.site || "";
-                        return siteName !== "VAULT_ROOT" && siteName !== "SYSTEM";
-                    });
-
-                    console.log("[AddCredential] Existing entries count:", existingEntries.length);
-                }
-            }
-
-            // Add to existing entries
-            const updatedEntries = [
-                ...existingEntries.filter((e: any) => {
-                    const siteName = e.siteName || e.site || "";
-                    return siteName !== "VAULT_ROOT" && siteName !== "SYSTEM";
-                }).map((e: any) => ({
-                    id: e.id,
-                    siteName: e.siteName || e.site,
-                    siteUrl: e.siteUrl || e.url,
-                    username: e.username,
-                    password: e.password,
-                    notes: e.notes,
-                    createdAt: e.createdAt,
-                    updatedAt: e.updatedAt || e.lastUpdated,
-                })),
-                newCredential,
-            ];
-
-            const { encrypt } = await import("@password-manager/crypto-engine");
-            const vaultEntry = {
-                site: "VAULT_ROOT",
-                username: "SYSTEM",
-                password: JSON.stringify(updatedEntries),
-            };
-
-            const encryptedVault = await encrypt(vaultEntry, keys);
-            const labels = updatedEntries.map((e) => e.siteName.toLowerCase());
-
-            // Save to MongoDB
-            const saveResponse = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email || "")}`,
-                {
-                    method: "PUT",
-                    headers: {
-                        Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        encryptedVault,
-                        labels,
-                    }),
-                },
-            );
-
-            if (!saveResponse.ok) {
-                throw new Error(`Failed to save: ${saveResponse.status}`);
-            }
-
-            console.log("[AddCredential] Saved successfully!");
-            toast.success("Credential saved successfully!");
-
+                url: newEntry.url,
+                notes: newEntry.notes,
+            });
+            
             // Redirect to password manager
             router.push("/password-manager");
         } catch (err) {
             console.error("[AddCredential] Add entry error:", err);
-            toast.error(
-                "Failed to save credential: " +
-                (err instanceof Error ? err.message : "Unknown error"),
-            );
+            // Context handles the error toast
         } finally {
             setIsAddingEntry(false);
         }

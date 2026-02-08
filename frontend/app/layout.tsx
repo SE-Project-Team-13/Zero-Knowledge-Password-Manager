@@ -31,6 +31,8 @@ export const metadata: Metadata = {
 import { Toaster } from "sonner"
 import { ThemeProvider } from "@/components/theme-provider"
 
+import { VaultProvider } from "@/context/VaultContext"
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -45,9 +47,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
-          <Toaster position="top-right" richColors closeButton duration={1500} />
-          <Analytics />
+          <VaultProvider>
+            {children}
+            <Toaster position="top-right" richColors closeButton duration={1500} />
+            <Analytics />
+          </VaultProvider>
         </ThemeProvider>
       </body>
     </html>

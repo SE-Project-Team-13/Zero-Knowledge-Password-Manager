@@ -23,35 +23,22 @@ import {
     Plus,
     Key,
 } from "lucide-react";
-import {
-    deriveKey,
-} from "@password-manager/crypto-engine";
-import type { DerivedKey } from "@password-manager/crypto-engine";
+import { useVault } from "@/context/VaultContext";
 import { toast } from "sonner";
 
 // --- Types ---
-interface DecryptedEntry {
-    id: string;
-    site: string;
-    siteUrl: string;
-    username: string;
-    password: string;
-    notes: string;
-    createdAt: string;
-    updatedAt: string;
-    lastUpdated: string;
-    isPasswordVisible: boolean;
-}
+// DecryptedEntry is imported from context now, or we can just rely on the context type
+// But the rendered code uses explicit properties, so TS needs to know.
+// Since we import useVault, we get types from there if we want, but let's just stick to what we need.
+
 
 export default function PasswordManagerPage() {
     const [session, actions] = useVaultSync();
+    const { decryptedEntries, setDecryptedEntries, isLoadingVault } = useVault();
     const router = useRouter();
     const [isCollapsed, setIsCollapsed] = useState(true);
-    const [derivedKeys, setDerivedKeys] = useState<DerivedKey | null>(null);
-    const [decryptedEntries, setDecryptedEntries] = useState<DecryptedEntry[]>([]);
     const [mounted, setMounted] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
-    const [isLoadingVault, setIsLoadingVault] = useState(false);
 
     // Wait for component to mount
     useEffect(() => {
@@ -68,106 +55,7 @@ export default function PasswordManagerPage() {
         }
     }, [mounted, session.isAuthenticated, session.isLoading, router]);
 
-    // Load vault entries on mount
-    const loadVault = async () => {
-        if (!session.isAuthenticated || !session.email) return;
 
-        setIsLoadingVault(true);
-        try {
-            // Get master password from sessionStorage
-            const sessionPassword = sessionStorage.getItem("session_master_password");
-            const salt = localStorage.getItem("user_salt");
-
-            if (!sessionPassword || !salt) {
-                console.log("[PasswordManager] No session password or salt found");
-                setIsLoadingVault(false);
-                return;
-            }
-
-            // Derive keys
-            const saltBuffer = new Uint8Array(
-                salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
-            );
-            const keys = await deriveKey(sessionPassword, saltBuffer);
-            setDerivedKeys(keys);
-
-            // Fetch vault
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(session.email)}`,
-                {
-                    method: "GET",
-                    headers: {
-                        Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-                    },
-                }
-            );
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data && data.ciphertext) {
-                    const cryptoEngine = await import("@password-manager/crypto-engine");
-                    const decryptedEntry = await cryptoEngine.decrypt(data, keys);
-
-                    let entries: any[] = [];
-                    if (Array.isArray(decryptedEntry)) {
-                        entries = decryptedEntry;
-                    } else if (decryptedEntry && typeof decryptedEntry === "object") {
-                        if (decryptedEntry.password) {
-                            try {
-                                const parsed = JSON.parse(decryptedEntry.password);
-                                if (Array.isArray(parsed)) {
-                                    entries = parsed;
-                                }
-                            } catch { }
-                        }
-
-                        if (entries.length === 0) {
-                            const possibleArrays = Object.values(decryptedEntry).filter(
-                                (val) => Array.isArray(val),
-                            );
-                            if (possibleArrays.length > 0) {
-                                entries = possibleArrays[0] as any[];
-                            }
-                        }
-                    }
-
-                    const entriesWithVisibility = entries
-                        .filter((entry: any) => {
-                            const siteName = entry.siteName || entry.site || "";
-                            return siteName !== "VAULT_ROOT" && siteName !== "SYSTEM";
-                        })
-                        .map((entry: any) => ({
-                            id: entry.id || Math.random().toString(36).substring(7),
-                            site: entry.siteName || entry.site || "Unknown",
-                            username: entry.username || "",
-                            password: entry.password || "",
-                            siteUrl: entry.siteUrl || entry.url || "",
-                            siteName: entry.siteName || entry.site || "Unknown",
-                            notes: entry.notes || "",
-                            createdAt: entry.createdAt || new Date().toISOString(),
-                            updatedAt: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
-                            lastUpdated: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
-                            isPasswordVisible: false,
-                        }));
-
-                    setDecryptedEntries(entriesWithVisibility);
-                    toast.success(`Loaded ${entriesWithVisibility.length} credential(s)`);
-                }
-            }
-        } catch (err) {
-            console.error("[PasswordManager] Load vault error:", err);
-            toast.error("Failed to load credentials");
-        } finally {
-            setIsLoadingVault(false);
-        }
-    };
-
-    // Load vault on mount
-    useEffect(() => {
-        if (mounted && session.isAuthenticated) {
-            loadVault();
-        }
-    }, [mounted, session.isAuthenticated]);
 
     return (
         <div className="min-h-screen bg-background flex font-sans">
@@ -221,13 +109,32 @@ export default function PasswordManagerPage() {
                     {/* Credentials List */}
                     <div className="space-y-4">
                         {isLoadingVault ? (
-                            <div className="text-center py-20 px-6 bg-card border border-dashed border-border rounded-3xl">
-                                <div className="bg-secondary p-4 rounded-full w-fit mx-auto mb-4 animate-pulse">
-                                    <Shield className="h-10 w-10 text-muted-foreground" />
-                                </div>
-                                <h3 className="text-lg font-semibold text-foreground">
-                                    Loading credentials...
-                                </h3>
+                            <div className="grid grid-cols-1 gap-4">
+                                {[1, 2, 3].map((i) => (
+                                    <Card key={i} className="border border-border bg-card/50 backdrop-blur-sm">
+                                        <CardContent className="p-6">
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                    <div className="h-7 w-1/3 bg-muted rounded-md animate-pulse mb-4" />
+                                                    <div className="space-y-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="h-4 w-20 bg-muted/50 rounded animate-pulse" />
+                                                            <div className="h-4 w-48 bg-muted/50 rounded animate-pulse" />
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="h-4 w-20 bg-muted/50 rounded animate-pulse" />
+                                                            <div className="h-4 w-32 bg-muted/50 rounded animate-pulse" />
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="h-4 w-20 bg-muted/50 rounded animate-pulse" />
+                                                            <div className="h-4 w-24 bg-muted/50 rounded animate-pulse" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
                             </div>
                         ) : decryptedEntries.filter((entry) =>
                             entry.site.toLowerCase().includes(searchQuery.toLowerCase()) ||
