@@ -52,7 +52,9 @@ import {
   X,
   Sun,
   Moon,
-  Loader2
+  Loader2,
+  Check, // Added
+  FileKey // Added
 } from "lucide-react";
 import { toast } from "sonner";
 import { copyWithAutoClear } from "@/lib/clipboard";
@@ -766,6 +768,50 @@ export default function DashboardPage() {
         onClose={() => setIsEmergencyKitOpen(false)}
         email={session.email || ""}
       />
+
+      {/* Breach Alert Banner */}
+      {session.isBreached && (
+        <div className="bg-destructive/10 border-l-4 border-destructive p-4 m-6 mb-0 rounded-r flex items-start gap-4">
+          <div className="p-2 bg-destructive/20 rounded-full">
+            <ShieldAlert className="h-6 w-6 text-destructive" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-destructive text-lg">Data Breach Detected</h3>
+            <p className="text-sm text-destructive-foreground/90 mt-1 max-w-3xl">
+              Your email address ({session.email}) was found in a data breach.
+              This means your email and potentially other data (on other sites) were exposed.
+              We recommend changing your Master Password immediately to ensure your vault remains secure.
+            </p>
+            <div className="mt-4 flex gap-3">
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => {
+                  // Ideally redirect to change password
+                  toast.info("Password change feature coming soon. Please ensure your new password is strong.");
+                }}
+              >
+                Change Master Password
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                onClick={async () => {
+                  try {
+                    await actions.resolveBreach();
+                    toast.success("Breach alert dismissed.");
+                  } catch (err) {
+                    toast.error("Failed to dismiss alert.");
+                  }
+                }}
+              >
+                Dismiss Alert
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Dialog open={isAgingModalOpen} onOpenChange={setIsAgingModalOpen}>
         <DialogContent className="sm:max-w-2xl">
