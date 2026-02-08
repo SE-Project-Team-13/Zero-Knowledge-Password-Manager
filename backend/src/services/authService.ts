@@ -81,6 +81,8 @@ export async function authenticateUser(
       verifier: user.verifier,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+      isBreached: user.isBreached,
+      lastBreachCheck: user.lastBreachCheck,
     },
   }
 }
