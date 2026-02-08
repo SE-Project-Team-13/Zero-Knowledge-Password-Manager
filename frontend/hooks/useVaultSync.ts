@@ -15,6 +15,8 @@ export interface UseVaultSyncState {
   version: number
   vaults: VaultEntry[]
   salt: string | null
+  isBreached?: boolean
+  lastBreachCheck?: string
 }
 
 export interface UseVaultSyncActions {
@@ -23,6 +25,7 @@ export interface UseVaultSyncActions {
   logout: () => void
   encryptAndSync: (entries: VaultEntry[]) => Promise<void>
   pullAndDecrypt: () => Promise<VaultEntry[]>
+  resolveBreach: () => Promise<void>
 }
 
 export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
@@ -36,6 +39,8 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     version: 0,
     vaults: [],
     salt: null,
+    isBreached: false,
+    lastBreachCheck: undefined,
   })
 
   const deviceIdRef = useRef<string>("")
@@ -50,23 +55,25 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
         localStorage.setItem("device_id", newId)
         deviceIdRef.current = newId
       }
-      
+
       // Restore authentication state from localStorage
       const storedSalt = localStorage.getItem("user_salt")
       const storedUserId = localStorage.getItem("user_id")
       const storedEmail = localStorage.getItem("user_email")
       const storedToken = localStorage.getItem("auth_token")
-      
+      const storedIsBreached = localStorage.getItem("user_is_breached") === "true"
+
       if (storedSalt && storedUserId && storedToken && storedEmail) {
         // Restore session token to API client
         apiClient.setToken(storedToken)
-        
-        setState(prev => ({ 
-          ...prev, 
+
+        setState(prev => ({
+          ...prev,
           salt: storedSalt,
           userId: storedUserId,
           email: storedEmail,
-          isAuthenticated: true
+          isAuthenticated: true,
+          isBreached: storedIsBreached,
         }))
       }
     }
@@ -119,7 +126,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     try {
       // 1. Get salt from server
       const { salt } = await apiClient.getSalt(email)
-      
+
       // Convert salt hex to buffer
       const saltBuffer = new Uint8Array(salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)))
 
@@ -155,6 +162,11 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       localStorage.setItem("user_salt", salt)
       localStorage.setItem("user_id", response.userId)
       localStorage.setItem("user_email", email)
+      if (response.isBreached) {
+        localStorage.setItem("user_is_breached", "true")
+      } else {
+        localStorage.removeItem("user_is_breached")
+      }
       setState((prev) => ({
         ...prev,
         userId: response.userId,
@@ -162,6 +174,8 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
         isAuthenticated: true,
         isLoading: false,
         salt: salt,
+        isBreached: response.isBreached,
+        lastBreachCheck: response.lastBreachCheck,
       }))
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed"
@@ -177,6 +191,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     localStorage.removeItem("user_email")
     sessionStorage.removeItem("otp_verified")
     sessionStorage.removeItem("session_master_password")
+    localStorage.removeItem("user_is_breached")
     setState({
       userId: null,
       email: null,
@@ -187,6 +202,8 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       version: 0,
       vaults: [],
       salt: null,
+      isBreached: false,
+      lastBreachCheck: undefined,
     })
   }, [])
 
@@ -257,6 +274,12 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       logout,
       encryptAndSync,
       pullAndDecrypt,
+      resolveBreach: async () => {
+        if (!state.email) return
+        await apiClient.resolveBreach(state.email)
+        localStorage.removeItem("user_is_breached")
+        setState((prev) => ({ ...prev, isBreached: false }))
+      },
     },
   ]
 }
