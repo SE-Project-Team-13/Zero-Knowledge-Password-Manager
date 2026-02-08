@@ -6,6 +6,7 @@ import { useVaultSync } from "@/hooks/useVaultSync";
 import { useTheme } from "next-themes";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Sidebar } from "@/components/Sidebar";
+import { EmergencyKitModal } from "@/components/EmergencyKitModal";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -77,18 +78,18 @@ const calculatePasswordStrength = (password: string) => {
  */
 export default function DashboardPage() {
   const [session, actions] = useVaultSync();
-  const { 
-    decryptedEntries, 
-    setDecryptedEntries, 
-    derivedKeys, 
-    isUnlocked: isVaultUnlocked, 
-    unlockVault: contextUnlockVault, 
-    isLoadingVault, 
-    addEntry, 
+  const {
+    decryptedEntries,
+    setDecryptedEntries,
+    derivedKeys,
+    isUnlocked: isVaultUnlocked,
+    unlockVault: contextUnlockVault,
+    isLoadingVault,
+    addEntry,
     updateEntry,
     deleteEntry
   } = useVault();
-  
+
   const { setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -107,6 +108,7 @@ export default function DashboardPage() {
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes in seconds
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
 
   // Vault Data (Managed by Context)
   const [masterPassword, setMasterPassword] = useState("");
@@ -332,18 +334,18 @@ export default function DashboardPage() {
       if (!passwordToUse) {
         const sessionPassword = sessionStorage.getItem("session_master_password");
         if (sessionPassword) {
-            passwordToUse = sessionPassword;
-            setMasterPassword(sessionPassword);
+          passwordToUse = sessionPassword;
+          setMasterPassword(sessionPassword);
         } else {
-             throw new Error("Master password not found.");
+          throw new Error("Master password not found.");
         }
       }
-      
+
       // Context unlock reads from session storage, so ensure it's set
       sessionStorage.setItem("session_master_password", passwordToUse);
-      
+
       await contextUnlockVault();
-      
+
       setIsUnlocked(true);
       toast.success("Vault unlocked successfully");
     } catch (err) {
@@ -396,7 +398,7 @@ export default function DashboardPage() {
         url: newEntry.url,
         notes: newEntry.notes,
       });
-      
+
       setNewEntry({
         site: "",
         username: "",
@@ -703,6 +705,14 @@ export default function DashboardPage() {
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
         activeView="all-items"
+        onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+      />
+
+      {/* Emergency Kit Modal */}
+      <EmergencyKitModal
+        isOpen={isEmergencyKitOpen}
+        onClose={() => setIsEmergencyKitOpen(false)}
+        email={session.email || ""}
       />
 
       <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>
