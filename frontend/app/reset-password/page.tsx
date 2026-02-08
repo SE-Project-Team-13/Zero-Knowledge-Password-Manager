@@ -59,15 +59,16 @@ export default function ResetPasswordPage() {
                 try {
                     // A. Fetch the current encrypted vault
                     const token = localStorage.getItem("auth_token")
-                    // We might not have device_id here if coming fresh, so let's try to get one or use a dummy
-                    // In a real app we should use the hook, but for now we'll do raw fetch for simplicity
+                    const email = localStorage.getItem("user_email") || ""
                     let deviceId = localStorage.getItem("device_id")
                     if (!deviceId) deviceId = "recovery-device"
 
                     const userId = localStorage.getItem("user_id")
-                    // If no userId in local storage, we can try to decode token or just fail gracefully 
-                    // (Assuming userId is present after recovery/login)
-
+                    
+                    let vaultData = null
+                    
+                    // 1. Try Sync API first
+                    console.log("[ResetPassword] Trying Sync API for vault data...")
                     const pullResponse = await fetch(
                         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/sync/pull`, 
                         { 
@@ -86,49 +87,76 @@ export default function ResetPasswordPage() {
 
                     if (pullResponse.ok) {
                         const responseData = await pullResponse.json()
-                        // Backend returns { vaults: [...] }, get the latest one
-                        const vaultData = responseData.vaults && responseData.vaults.length > 0 ? responseData.vaults[0] : null
-                        
-                        if (vaultData && vaultData.ciphertext) {
-                             // B. Decrypt with OLD password
-                            const { decryptVault, createVaultEntry, encryptVault } = await import("@password-manager/crypto-engine")
-                            
-                            // Convert hex ciphertext/salt/iv/etc back to expected format if needed
-                            // The crypto engine expects specific formats. Let's look at how VaultEntry works.
-                            // Actually, decryptVault takes an EncryptedVault object.
-                            // The sync/pull returns { ciphertext, iv, salt, tag, ... } which matches mostly.
-                            
-                            const decryptionResult = await decryptVault(oldMasterPassword, {
-                                ciphertext: vaultData.ciphertext,
-                                iv: vaultData.iv,
-                                salt: vaultData.salt,
-                                tag: vaultData.tag || vaultData.authTag,
-                                algorithm: "AES-256-GCM",
-                                derivationAlgorithm: "Argon2id"
-                            })
-                            
-                            if (decryptionResult.success && decryptionResult.data) {
-                                // C. Encrypt with NEW password
-                                // decryptionResult.data is the VaultEntry (plaintext)
-                                
-                                const encryptionResult = await encryptVault(password, decryptionResult.data)
-                                
-                                // D. Prepare new vault blob for server (Backend expects authTag)
-                                newVaultBlob = {
-                                    ciphertext: encryptionResult.ciphertext,
-                                    iv: encryptionResult.iv,
-                                    salt: encryptionResult.salt,
-                                    authTag: encryptionResult.tag || "", // Map 'tag' from crypto-engine to 'authTag' for backend
-                                    version: vaultData.version + 1,
-                                    deviceId: deviceId
+                        if (responseData.vaults && responseData.vaults.length > 0) {
+                            vaultData = responseData.vaults[0]
+                            console.log("[ResetPassword] Found vault in Sync API")
+                        }
+                    }
+                    
+                    // 2. Fallback to Compatibility API (SimpleVault) if Sync API is empty
+                    if (!vaultData && email) {
+                        console.log("[ResetPassword] Sync API empty, trying Compatibility API...")
+                        const compatResponse = await fetch(
+                            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(email)}`,
+                            {
+                                method: "GET",
+                                headers: {
+                                    "Authorization": `Bearer ${token}`
                                 }
+                            }
+                        )
+                        
+                        if (compatResponse.ok) {
+                            const compatData = await compatResponse.json()
+                            // SimpleVault stores data inside a 'data' field
+                            if (compatData && compatData.ciphertext) {
+                                vaultData = compatData
+                                console.log("[ResetPassword] Found vault in Compatibility API")
+                            } else if (compatData && compatData.data && compatData.data.ciphertext) {
+                                vaultData = compatData.data
+                                console.log("[ResetPassword] Found vault in Compatibility API (nested data)")
                             }
                         }
                     }
+                    
+                    if (vaultData && vaultData.ciphertext) {
+                        // B. Decrypt with OLD password
+                        console.log("[ResetPassword] Decrypting vault with old password...")
+                        const { decryptVault, encryptVault } = await import("@password-manager/crypto-engine")
+                        
+                        const decryptionResult = await decryptVault(oldMasterPassword, {
+                            ciphertext: vaultData.ciphertext,
+                            iv: vaultData.iv,
+                            salt: vaultData.salt,
+                            tag: vaultData.tag || vaultData.authTag,
+                            algorithm: "AES-256-GCM",
+                            derivationAlgorithm: "Argon2id"
+                        })
+                        
+                        if (decryptionResult.success && decryptionResult.data) {
+                            // C. Encrypt with NEW password
+                            console.log("[ResetPassword] Re-encrypting vault with new password...")
+                            const encryptionResult = await encryptVault(password, decryptionResult.data)
+                            
+                            // D. Prepare new vault blob for server
+                            newVaultBlob = {
+                                ciphertext: encryptionResult.ciphertext,
+                                iv: encryptionResult.iv,
+                                salt: encryptionResult.salt,
+                                authTag: encryptionResult.tag || "",
+                                version: (vaultData.version || 0) + 1,
+                                deviceId: deviceId
+                            }
+                            console.log("[ResetPassword] Vault re-encrypted successfully!")
+                        } else {
+                            console.warn("[ResetPassword] Decryption failed:", decryptionResult)
+                        }
+                    } else {
+                        console.log("[ResetPassword] No vault data found to re-encrypt")
+                    }
                 } catch (reEncryptError) {
-                    console.error("Re-encryption failed:", reEncryptError)
-                    // We continue - if re-encryption fails, we just reset the password (data loss, but access regained)
-                    // Optionally we could warn the user.
+                    console.error("[ResetPassword] Re-encryption failed:", reEncryptError)
+                    toast.warning("Could not re-encrypt existing vault. Your old credentials may be lost.")
                 }
             }
 

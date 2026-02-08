@@ -740,7 +740,7 @@ export default function DashboardPage() {
         }}
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
-        activeView="all-items"
+        activeView="home"
         onEmergencyKit={() => setIsEmergencyKitOpen(true)}
       />
 
