@@ -38,7 +38,7 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
         setIsGenerating(true)
         try {
             const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/recovery/generate`,
+                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/recovery/generate`,
                 {
                     method: "POST",
                     headers: {
@@ -50,7 +50,8 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
             )
 
             if (!response.ok) {
-                throw new Error("Failed to generate recovery key")
+                const errorData = await response.json().catch(() => ({}))
+                throw new Error(errorData.error || "Failed to generate recovery key")
             }
 
             const data = await response.json()
@@ -59,7 +60,8 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
             toast.success("Recovery key generated!")
         } catch (error) {
             console.error("Error generating recovery key:", error)
-            toast.error("Failed to generate recovery key")
+            const message = error instanceof Error ? error.message : "Failed to generate recovery key"
+            toast.error(message)
         } finally {
             setIsGenerating(false)
         }
