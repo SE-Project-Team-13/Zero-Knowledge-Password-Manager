@@ -17,13 +17,17 @@
   - [Backend Environment](#backend-environment)
   - [Frontend Environment](#frontend-environment)
 - [Running the Project](#running-the-project)
-  - [Development Mode](#development-mode)
-  - [Production Build](#production-build)
+- [Usage Guide](#usage-guide)
+  - [1. Registering & Vault Creation](#1-registering--vault-creation)
+  - [2. Managing Passwords](#2-managing-passwords)
+  - [3. Emergency Kit](#3-emergency-kit)
+  - [4. Breach Detection](#4-breach-detection)
 - [Architecture Deep Dive](#architecture-deep-dive)
   - [Zero-Knowledge Encryption](#zero-knowledge-encryption)
   - [Breach Detection (k-Anonymity)](#breach-detection-k-anonymity)
   - [Blind Sync Protocol](#blind-sync-protocol)
 - [Troubleshooting](#troubleshooting)
+- [Uninstalling](#uninstalling)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -44,9 +48,17 @@
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
-- **Node.js**: v18.0.0 or higher (v20+ recommended).
-- **npm**: v9.0.0 or higher.
-- **MongoDB**: A running instance (local or Atlas) for the backend.
+
+*   **Node.js**: v18.0.0 or higher (v20+ recommended).
+    *   *Verify:* `node -v`
+*   **npm**: v9.0.0 or higher.
+    *   *Verify:* `npm -v`
+*   **MongoDB**: A running instance (local or Atlas).
+    *   *Verify:* `mongod --version` or check Atlas dashboard.
+*   **Build Tools** (Required for `node-gyp` compilation):
+    *   **Windows**: Visual Studio Build Tools (C++) and Python 3.11+.
+    *   **macOS**: Xcode Command Line Tools (`xcode-select --install`).
+    *   **Linux**: `build-essential` and `python3`.
 
 ## Dependencies & Technologies
 
@@ -156,6 +168,34 @@ npm run build -w backend
 npm start
 ```
 
+## Usage Guide
+
+Once the servers are running, follow these steps to use the application:
+
+### 1. Registering & Vault Creation
+1.  Navigate to `http://localhost:3000`.
+2.  Click **"Get Started"** or **"Register"**.
+3.  Enter your Email and a Strong Master Password.
+4.  **Important:** Your Master Password is *never* sent to the server. It generates your encryption keys locally.
+5.  Verification: Check your terminal (or email) for the OTP code.
+
+### 2. Managing Passwords
+*   **Add Item**: Click the "+" button in the dashboard to add a new login.
+*   **View Password**: Click the eye icon to decrypt and view a password.
+*   **Copy**: Use the copy icon to copy username/password to clipboard.
+*   **Edit/Delete**: Use the context menu on any item card.
+
+### 3. Emergency Kit
+1.  Go to **Settings** -> **Danger Zone**.
+2.  Click **"Generate Emergency Kit"**.
+3.  A PDF will be generated containing your **Recovery Key** and instructions.
+4.  **Save this PDF securely!** It is the *only* way to recover your account if you forget your Master Password.
+
+### 4. Breach Detection
+The system automatically checks your email against a mock breach database.
+*   **Manual Check**: The scheduled job runs every minute (in dev).
+*   **Simulate Breach**: Use the email `breached@example.com` during registration to see the Red Alert Banner on the dashboard.
+
 ## Architecture Deep Dive
 
 ### Zero-Knowledge Encryption
@@ -190,6 +230,19 @@ The server acts as a "dumb store". It handles versioning and conflict resolution
 ### "MongoDB Connection Failed"
 *   **Cause**: Local MongoDB service is not running or URI is wrong.
 *   **Fix**: Ensure `mongod` is running or check your Atlas IP whitelist.
+
+## Uninstalling
+
+To completely remove the application and its data:
+
+1.  **Stop Servers**: `Ctrl+C` in your terminals.
+2.  **Remove Directory**: `rm -rf Zero-Knowledge-Password-Manager`.
+3.  **Drop Database** (MongoDB Shell):
+    ```bash
+    mongosh
+    use vault
+    db.dropDatabase()
+    ```
 
 ## Contributing
 
