@@ -9,6 +9,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Trash2, Lock, ShieldAlert, Settings, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { EmergencyKitModal } from "@/components/EmergencyKitModal";
+import { PasswordWarningsModal } from "@/components/PasswordWarningsModal";
+import { usePasswordAging } from "@/hooks/usePasswordAging";
+import { EditCredentialModal } from "@/components/EditCredentialModal";
+import { useVault } from "@/context/VaultContext";
+import type { DecryptedEntry } from "@/context/VaultContext";
 
 export default function SettingsPage() {
     const [session, actions] = useVaultSync();
@@ -16,6 +22,16 @@ export default function SettingsPage() {
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+
+    // Sidebar Action States
+    const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
+    const [isAgingModalOpen, setIsAgingModalOpen] = useState(false);
+    const { agingEntries } = usePasswordAging();
+
+    // Edit Modal State (needed for PasswordWarningsModal onEdit)
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingEntry, setEditingEntry] = useState<DecryptedEntry | null>(null);
+    const { updateEntry } = useVault();
 
     // Initial auth check to prevent flash of content
     useEffect(() => {
@@ -69,6 +85,24 @@ export default function SettingsPage() {
         }
     };
 
+    // Handle Edits (for Password Warnings)
+    const handleEditEntry = (entry: DecryptedEntry) => {
+        setEditingEntry(entry);
+        setIsEditModalOpen(true);
+    };
+
+    const handleSaveEdit = async (updatedEntry: DecryptedEntry) => {
+        try {
+            await updateEntry(updatedEntry);
+            setIsEditModalOpen(false);
+            setEditingEntry(null);
+        } catch (error) {
+            console.error("Failed to update entry:", error);
+            // Toast handled in context or modal
+        }
+    };
+
+
     // If not authenticated (and sync finished), showing loading or redirect happens in hook/effect
     if (!session.isAuthenticated) {
         return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
@@ -86,7 +120,11 @@ export default function SettingsPage() {
                 }}
                 userEmail={session.email || undefined}
                 fullName={session.fullName}
-                // Optional props can be omitted or handled if needed
+                // Sidebar Actions
+                onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+                onChangePassword={() => setIsChangePasswordOpen(true)}
+                onPasswordAging={() => setIsAgingModalOpen(true)}
+                passwordAgingCount={agingEntries.length}
             />
 
             <main className={`flex-1 p-8 transition-all duration-300 ${isCollapsed ? "ml-20" : "ml-72"}`}>
@@ -163,6 +201,31 @@ export default function SettingsPage() {
             <ChangePasswordModal 
                 isOpen={isChangePasswordOpen} 
                 onClose={() => setIsChangePasswordOpen(false)} 
+            />
+
+            {/* Emergency Kit Modal */}
+            <EmergencyKitModal
+                isOpen={isEmergencyKitOpen}
+                onClose={() => setIsEmergencyKitOpen(false)}
+                email={session.email || ""}
+            />
+
+            {/* Password Warnings Modal */}
+            <PasswordWarningsModal
+                isOpen={isAgingModalOpen}
+                onClose={() => setIsAgingModalOpen(false)}
+                onEdit={(entry) => {
+                    setIsAgingModalOpen(false);
+                    handleEditEntry(entry);
+                }}
+            />
+
+            {/* Edit Credential Modal (for handling edits from warnings) */}
+            <EditCredentialModal
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                entry={editingEntry}
+                onSave={handleSaveEdit}
             />
         </div>
     );

@@ -138,7 +138,7 @@ export default function AuthPage() {
         try {
           const token = localStorage.getItem("auth_token")
           if (token) {
-            await generateAndDownloadRecoveryKey(email, password, token, fullName)
+            await generateAndDownloadRecoveryKey(email, password, token)
             toast.success("Emergency Kit downloaded! Keep it safe.")
           }
         } catch (recoveryErr) {
