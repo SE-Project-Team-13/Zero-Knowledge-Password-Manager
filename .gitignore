@@ -33,3 +33,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# testing
+coverage/
+**/coverage/
+.nyc_output/
+**/.nyc_output/
+*.lcov
+.jest-cache/
+**/.jest-cache/
