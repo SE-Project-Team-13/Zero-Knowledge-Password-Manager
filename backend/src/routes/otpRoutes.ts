@@ -4,7 +4,10 @@
 
 import { Router, type Request, type Response } from "express"
 import { sendOTP, verifyOTP } from "../services/otpService.js"
+import { validateSessionToken, markSessionOtpVerified } from "../services/authService.js"
 import type { ErrorResponse } from "../types/index.js"
+
+import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
 
 export function createOTPRouter(): Router {
   const router = Router()
@@ -13,7 +16,7 @@ export function createOTPRouter(): Router {
    * POST /otp/send
    * Send OTP to user's email
    */
-  router.post("/send", async (req: Request, res: Response) => {
+  router.post("/send", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       let { email } = req.body
       if (email) email = email.trim().toLowerCase()
@@ -83,6 +86,30 @@ export function createOTPRouter(): Router {
           code: "OTP_VERIFICATION_FAILED",
           message: result.message,
         } as ErrorResponse)
+      }
+
+      // Mark session as verified if token is present
+      const authHeader = req.headers.authorization
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        try {
+          const token = authHeader.substring(7).trim()
+          if (!token) {
+            console.warn("[OTP] Authorization header present but token is empty")
+          } else {
+            const session = await validateSessionToken(token)
+            if (session.valid) {
+              console.log(`[OTP] Marking session as OTP verified for user ${session.userId}`)
+              await markSessionOtpVerified(token)
+              console.log(`[OTP] Session marked as OTP verified successfully`)
+            } else {
+              console.warn(`[OTP] Session validation failed: ${session.error}`)
+            }
+          }
+        } catch (sessionError) {
+          console.error("[OTP] Error marking session as OTP verified:", sessionError)
+        }
+      } else {
+        console.warn("[OTP] No authorization header provided, session OTP verification skipped")
       }
 
       return res.status(200).json({

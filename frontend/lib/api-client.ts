@@ -62,13 +62,15 @@ class ApiClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const headers: HeadersInit = {
+    const headers = new Headers({
       "Content-Type": "application/json",
-      ...options.headers,
+    })
+    if (options.headers) {
+      new Headers(options.headers).forEach((value, key) => headers.set(key, value))
     }
 
     if (this.token) {
-      ; (headers as any)["Authorization"] = `Bearer ${this.token}`
+      headers.set("Authorization", `Bearer ${this.token}`)
     }
 
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
@@ -81,7 +83,7 @@ class ApiClient {
       throw new Error(error.message || `API error: ${response.statusText}`)
     }
 
-    return response.json()
+    return response.json() as Promise<T>
   }
 
   // Authentication Endpoints

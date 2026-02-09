@@ -8,7 +8,9 @@
     "activeTab"
   ],
   "host_permissions": [
-    "http://localhost:3001/*"
+    "http://localhost:3001/*",
+    "http://127.0.0.1:3001/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js",

@@ -64,8 +64,26 @@ export default function AuthenticatedLayout({
 
   // Auth check
   const [mounted, setMounted] = useState(false);
+  const [isOtpVerified, setIsOtpVerified] = useState(false);
+  
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Check OTP verification status
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const otpStatus = sessionStorage.getItem("otp_verified") === "true";
+      setIsOtpVerified(otpStatus);
+
+      // Listen for OTP verification event from dashboard
+      const handleOtpVerified = () => {
+        setIsOtpVerified(true);
+      };
+
+      window.addEventListener("otpVerified", handleOtpVerified);
+      return () => window.removeEventListener("otpVerified", handleOtpVerified);
+    }
   }, []);
 
   useEffect(() => {
@@ -73,6 +91,8 @@ export default function AuthenticatedLayout({
        // Also check local storage token manually to avoid flicker if session state lags slightly
        const hasToken = typeof window !== 'undefined' && localStorage.getItem("auth_token");
        if (!session.isAuthenticated && !hasToken) {
+           // Clear OTP verified state when logging out
+           setIsOtpVerified(false);
            router.push("/");
        }
     }
@@ -103,27 +123,30 @@ export default function AuthenticatedLayout({
 
   return (
     <div className="min-h-screen bg-background flex font-sans">
-      <Sidebar
-        activeView={getActiveView()}
-        isCollapsed={isCollapsed}
-        setIsCollapsed={setIsCollapsed}
-        onLogout={() => {
-          actions.logout();
-          window.location.href = "/";
-        }}
-        userEmail={session.email || undefined}
-        fullName={session.fullName}
-        // Sidebar Actions
-        onEmergencyKit={() => setIsEmergencyKitOpen(true)}
-        onPasswordAging={() => setIsAgingModalOpen(true)}
-        passwordAgingCount={agingEntries.length}
-      />
+      {/* Only show Sidebar if OTP is verified */}
+      {isOtpVerified && (
+        <Sidebar
+          activeView={getActiveView()}
+          isCollapsed={isCollapsed}
+          setIsCollapsed={setIsCollapsed}
+          onLogout={() => {
+            actions.logout();
+            window.location.href = "/";
+          }}
+          userEmail={session.email || undefined}
+          fullName={session.fullName}
+          // Sidebar Actions
+          onEmergencyKit={() => setIsEmergencyKitOpen(true)}
+          onPasswordAging={() => setIsAgingModalOpen(true)}
+          passwordAgingCount={agingEntries.length}
+        />
+      )}
 
       {/* Main Content Wrapper */}
       {/* Dynamic margin based on collapsed state handled here */}
       <main 
         className={`flex-1 transition-all duration-300 flex flex-col min-w-0 ${
-          isCollapsed ? "ml-20" : "ml-72" // Desktop
+          isOtpVerified && !isCollapsed ? "ml-72" : isOtpVerified && isCollapsed ? "ml-20" : "ml-0" // Desktop
         }`}
       >
         {/* Mobile toggle is handled inside Sidebar component which uses fixed positioning */}

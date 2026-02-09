@@ -8,6 +8,16 @@ import * as crypto from "crypto"
 import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount } from "../services/authService.js"
 import { User } from "../database/models.js"
 import type { RegisterRequest, LoginRequest, LoginResponse, ErrorResponse } from "../types/index.js"
+import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
+
+function extractBearerToken(authHeader?: string): string | null {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return null
+  }
+
+  const token = authHeader.substring(7).trim()
+  return token.length > 0 ? token : null
+}
 
 export function createAuthRouter(): Router {
   const router = Router()
@@ -49,8 +59,8 @@ export function createAuthRouter(): Router {
           salt: user.salt,
           sessionToken,
         })
-      } catch (dbError: any) {
-        if (dbError.code === 11000) {
+      } catch (dbError) {
+        if (typeof dbError === "object" && dbError !== null && "code" in dbError && (dbError as { code?: number }).code === 11000) {
           return res.status(409).json({
             error: "User already exists",
             code: "USER_EXISTS",
@@ -181,8 +191,8 @@ export function createAuthRouter(): Router {
    */
   router.post("/reset-password", async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      const token = extractBearerToken(req.headers.authorization)
+      if (!token) {
         const errorResponse: ErrorResponse = {
           error: "Unauthorized",
           code: "UNAUTHORIZED",
@@ -190,8 +200,6 @@ export function createAuthRouter(): Router {
         }
         return res.status(401).json(errorResponse)
       }
-
-      const token = authHeader.split(" ")[1]
       const sessionValidation = await validateSessionToken(token)
 
       if (!sessionValidation.valid || !sessionValidation.userId) {
@@ -234,22 +242,13 @@ export function createAuthRouter(): Router {
   /**
    * POST /auth/resolve-breach
    * Clears the breach flag for the authenticated user.
-   * Requires session token (handled by middleware usually, but here we pass userId in body or rely on context if we had one).
-   * Since we are stateless, we should probably verify session token, but for now we'll accept email?
-   * Actually, the secure way is to use the session token middleware.
-   * But our current architecture in authRoutes is open.
-   * We will implement it to accept { email } and clear it. 
-   * In a real app, this would be protected.
    */
-  router.post("/resolve-breach", async (req: Request, res: Response) => {
+  router.post("/resolve-breach", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { email } = req.body
+      const userId = req.userId
+      if (!userId) return res.status(401).json({ error: "Unauthorized" })
 
-      if (!email) {
-        return res.status(400).json({ error: "Email required" })
-      }
-
-      await User.findOneAndUpdate({ email }, { isBreached: false })
+      await User.findByIdAndUpdate(userId, { isBreached: false })
 
       return res.status(200).json({ success: true })
     } catch (error) {
@@ -264,12 +263,10 @@ export function createAuthRouter(): Router {
    */
   router.delete("/account", async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      const token = extractBearerToken(req.headers.authorization)
+      if (!token) {
         return res.status(401).json({ error: "Unauthorized" })
       }
-
-      const token = authHeader.split(" ")[1]
       const session = await validateSessionToken(token)
 
       if (!session.valid || !session.userId) {

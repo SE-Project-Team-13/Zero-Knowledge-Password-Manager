@@ -12,15 +12,41 @@ import { createAuthRouter } from "./routes/authRoutes.js"
 import { createSyncRouter } from "./routes/syncRoutes.js"
 import { createOTPRouter } from "./routes/otpRoutes.js"
 import { createRecoveryRouter } from "./routes/recoveryRoutes.js"
-import { initScheduledJobs } from "./services/cronService.js"; // Import cron service
+import { initScheduledJobs } from "./services/cronService.js"
+import helmet from "helmet"
+import { rateLimit } from "express-rate-limit"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3001
+const isProduction = process.env.NODE_ENV === "production"
+const isDebug = process.env.DEBUG === "true"
+
+// Logger helper
+const logger = {
+  info: (msg: string, ...args: any[]) => {
+    if (!isProduction || isDebug) console.log(`[VaultSync:Server] ${msg}`, ...args)
+  },
+  warn: (msg: string, ...args: any[]) => {
+    if (!isProduction || isDebug) console.warn(`[VaultSync:Server] ${msg}`, ...args)
+  },
+  error: (msg: string, ...args: any[]) => {
+    console.error(`[VaultSync:Server] ${msg}`, ...args)
+  }
+}
+
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/vault"
+
+function extractBearerToken(authHeader?: string): string | null {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return null
+  }
+  const token = authHeader.substring(7).trim()
+  return token.length > 0 ? token : null
+}
 
 async function start() {
   try {
-    console.log("[VaultSync] Starting blind synchronization backend with MongoDB...")
+    logger.info("Starting blind synchronization backend with MongoDB...")
 
     // Initialize database connection
     await connectToDatabase(MONGODB_URI)
@@ -28,141 +54,230 @@ async function start() {
     // Initialize scheduled jobs (Cron)
     initScheduledJobs()
 
-    // Create Express app instance
     const app = express()
 
-    // CORS Middleware: Allow requests from dashboard and extension
-    // In production, these should be restricted to specific origins
+    // Global Security Headers
+    app.use(helmet())
+
+    // CORS Middleware
     app.use((req, res, next) => {
       res.header("Access-Control-Allow-Origin", "*")
       res.header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS")
       res.header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-      if (req.method === "OPTIONS") {
-        return res.sendStatus(200)
-      }
+      if (req.method === "OPTIONS") return res.sendStatus(200)
       next()
     })
 
-    // JSON Body Parser middleware
+    // Rate Limiting
+    const generalLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100, // Limit each IP to 100 requests per windowMs
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: "Too many requests, please try again later." }
+    })
+
+    const authLimiter = rateLimit({
+      windowMs: 60 * 60 * 1000, // 1 hour
+      max: 20, // Limit each IP to 20 auth attempts per hour
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: "Too many authentication attempts, please try again in an hour." }
+    })
+
+    app.use("/api/", generalLimiter)
+    app.use("/auth/", authLimiter)
+    app.use("/otp/send", authLimiter)
+
     app.use(express.json())
 
-    // Simple request logging middleware
+    // Simple request logging
     app.use((req, res, next) => {
-      console.log(`[VaultSync] ${req.method} ${req.path}`)
+      logger.info(`${req.method} ${req.path}`)
       next()
     })
 
     // Standard API Routes
-    app.use("/auth", createAuthRouter()) // User registration and ZKP-based authentication
-    app.use("/sync", createSyncRouter()) // Blind vault synchronization (merging/versioning)
-    app.use("/otp", createOTPRouter())   // Email-based One-Time Passwords
-    app.use("/recovery", createRecoveryRouter()) // Recovery key management
+    app.use("/auth", createAuthRouter())
+    app.use("/sync", createSyncRouter())
+    app.use("/otp", createOTPRouter())
+    app.use("/recovery", createRecoveryRouter())
 
-    // Phase 3 compatibility routes for extension (Now using MongoDB)
+    // Phase 3 compatibility routes
     app.get("/api/vault/:userId", async (req, res) => {
+      const requestedUserId = req.params.userId?.trim()
       try {
-        let { userId } = req.params
-        if (userId) userId = userId.trim().toLowerCase()
+        const token = extractBearerToken(req.headers.authorization)
+        if (!token) return res.status(401).json({ error: "Unauthorized" })
+
+        let validateSessionToken;
+        try {
+          const authModule = await import("./services/authService.js");
+          validateSessionToken = authModule.validateSessionToken;
+        } catch (importErr) {
+          logger.error("Failed to load auth service:", importErr);
+          return res.status(500).json({ error: "Service unavailable", code: "IMPORT_ERROR", message: "Internal dependency failed to load" });
+        }
         
-        const vault = await SimpleVault.findOne({ userId })
-        if (!vault) return res.status(404).json({ error: "Vault not found" })
+        const session = await validateSessionToken(token)
+        
+        if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })
+
+        if (!session.isOtpVerified) {
+          return res.status(403).json({ error: "OTP verification required", code: "OTP_REQUIRED" })
+        }
+
+        if (!requestedUserId || session.userId !== requestedUserId) {
+          return res.status(403).json({ error: "Forbidden: Access denied" })
+        }
+        
+        let vault = await SimpleVault.findOne({ userId: requestedUserId })
+
+        if (!vault) {
+          try {
+            let User;
+            try {
+              const modelsModule = await import("./database/models.js");
+              User = modelsModule.User;
+            } catch (importErr) {
+              logger.error("Failed to load models for migration:", importErr);
+              throw importErr; // Caught by outer catch
+            }
+            const user = await User.findById(session.userId)
+            const legacyKey = user?.email?.toLowerCase()
+            if (legacyKey) {
+              const legacyVault = await SimpleVault.findOne({ userId: legacyKey })
+              if (legacyVault) {
+                legacyVault.userId = session.userId
+                await legacyVault.save()
+                vault = legacyVault
+              }
+            }
+          } catch (err) {
+            logger.error("Legacy migration failed:", err)
+          }
+        }
+
+        if (!vault) return res.json({ ciphertext: null })
         res.json(vault.data)
-      } catch (error) {
-        res.status(500).json({ error: "Failed to fetch vault" })
+      } catch (err) {
+        logger.error("GET vault error:", err)
+        res.status(500).json({ error: "Internal server error" })
       }
     })
 
     app.put("/api/vault/:userId", async (req, res) => {
-      let { userId } = req.params
-      if (userId) userId = userId.trim().toLowerCase()
-      
+      const requestedUserId = req.params.userId?.trim()
       try {
-        console.log(`[VaultSync] Extension saving vault for ${userId}...`)
+        const token = extractBearerToken(req.headers.authorization)
+        if (!token) return res.status(401).json({ error: "Unauthorized" })
 
-        // Extract data and labels (if provided)
+        let validateSessionToken;
+        try {
+          const authModule = await import("./services/authService.js");
+          validateSessionToken = authModule.validateSessionToken;
+        } catch (importErr) {
+          logger.error("Failed to load auth service:", importErr);
+          return res.status(500).json({ error: "Service unavailable", code: "IMPORT_ERROR", message: "Internal dependency failed to load" });
+        }
+        
+        const session = await validateSessionToken(token)
+        
+        if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })
+
+        if (!session.isOtpVerified) {
+          return res.status(403).json({ error: "OTP verification required", code: "OTP_REQUIRED" })
+        }
+
+        if (!requestedUserId || session.userId !== requestedUserId) {
+          return res.status(403).json({ error: "Forbidden: Update denied" })
+        }
+
         const { encryptedVault, labels } = req.body
+        const vaultData = encryptedVault || req.body
 
         const vault = await SimpleVault.findOneAndUpdate(
-          { userId },
+          { userId: requestedUserId },
           {
-            data: encryptedVault || req.body, // Fallback for old extension version
+            data: vaultData,
             labels: labels || [],
             updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
           },
           { upsert: true, new: true }
         )
 
-        console.log(`[VaultSync] Vault saved to MongoDB for ${userId} with ${labels?.length || 0} labels`)
+        logger.info(`Vault saved for ${requestedUserId}`)
         res.json({ success: true, updatedAt: vault?.updatedAt })
-      } catch (error) {
-        console.error(`[VaultSync] Failed to save vault for ${userId}:`, error)
+      } catch (err) {
+        logger.error("PUT vault error:", err)
         res.status(500).json({ error: "Failed to save vault" })
       }
     })
 
-    // DELETE vault (for resetting/debugging)
-    // WARNING: This endpoint should be protected with authentication in production
-    // or removed entirely. Currently useful for development and testing.
     app.delete("/api/vault/:userId", async (req, res) => {
+      const requestedUserId = req.params.userId?.trim()
       try {
-        let { userId } = req.params
-        if (userId) userId = userId.trim().toLowerCase()
+        const token = extractBearerToken(req.headers.authorization)
+        if (!token) return res.status(401).json({ error: "Unauthorized" })
+
+        let validateSessionToken;
+        try {
+          const authModule = await import("./services/authService.js");
+          validateSessionToken = authModule.validateSessionToken;
+        } catch (importErr) {
+          logger.error("Failed to load auth service:", importErr);
+          return res.status(500).json({ error: "Service unavailable", code: "IMPORT_ERROR", message: "Internal dependency failed to load" });
+        }
         
-        await SimpleVault.deleteOne({ userId })
-        console.log(`[VaultSync] Vault deleted for ${userId}`)
+        const session = await validateSessionToken(token)
+        
+        if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })
+
+        if (!session.isOtpVerified) {
+          return res.status(403).json({ error: "OTP verification required", code: "OTP_REQUIRED" })
+        }
+
+        if (!requestedUserId || session.userId !== requestedUserId) {
+          return res.status(403).json({ error: "Forbidden: Delete denied" })
+        }
+        
+        await SimpleVault.deleteOne({ userId: requestedUserId })
+        logger.info(`Vault deleted for ${requestedUserId}`)
         res.json({ success: true, message: "Vault deleted" })
-      } catch (error) {
-        console.error(`[VaultSync] Failed to delete vault:`, error)
+      } catch (err) {
+        logger.error("DELETE vault error:", err)
         res.status(500).json({ error: "Failed to delete vault" })
       }
     })
 
-    // Health check endpoint
     app.get("/health", (req, res) => {
-      res.json({
-        status: "ok",
-        db: "mongodb",
-        timestamp: new Date().toISOString()
-      })
+      res.json({ status: "ok", db: "mongodb", timestamp: new Date().toISOString() })
     })
 
-    // 404 handler
     app.use((req, res) => {
-      res.status(404).json({
-        error: "Not found",
-        code: "NOT_FOUND",
-        message: `Endpoint ${req.path} not found`,
-      })
+      res.status(404).json({ error: "Not found", code: "NOT_FOUND", message: `Endpoint ${req.path} not found` })
     })
 
-    // Error handler
-    app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      console.error("[VaultSync] Server error:", err)
-      res.status(500).json({
-        error: "Internal server error",
-        code: "INTERNAL_ERROR",
-      })
+    app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      logger.error("Global Server error:", err)
+      res.status(500).json({ error: "Internal server error", code: "INTERNAL_ERROR", message: err.message })
     })
 
-    // Start server
     const server = app.listen(PORT, () => {
-      console.log(`[VaultSync] Blind sync backend listening on port ${PORT}`)
+      logger.info(`Blind sync backend listening on port ${PORT}`)
     })
 
-    // Graceful shutdown
     const shutdown = async () => {
-      console.log("[VaultSync] Shutting down gracefully...")
+      logger.info("Shutting down gracefully...")
       server.close(async () => {
         await closeDatabase()
         process.exit(0)
       })
     }
-
     process.on("SIGTERM", shutdown)
     process.on("SIGINT", shutdown)
   } catch (error) {
-    console.error("[VaultSync] Failed to start server:", error)
+    console.error("[VaultSync:Server] Failed to start server:", error)
     process.exit(1)
   }
 }

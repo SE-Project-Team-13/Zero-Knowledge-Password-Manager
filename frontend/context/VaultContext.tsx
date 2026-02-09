@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useVaultSync } from "@/hooks/useVaultSync";
-import { deriveKey, DerivedKey, VaultEntry, EncryptedVault } from "@password-manager/crypto-engine"; // Using crypto-engine directly
+import { deriveKey, DerivedKey, EncryptedVault } from "@password-manager/crypto-engine"; // Using crypto-engine directly
 import { toast } from "sonner";
 
 // Define the DecryptedEntry type
@@ -35,6 +35,44 @@ interface VaultContextType {
 }
 
 const VaultContext = createContext<VaultContextType | undefined>(undefined);
+
+interface StorageVaultEntry {
+    id: string;
+    siteName: string;
+    siteUrl: string;
+    username: string;
+    password: string;
+    notes: string;
+    createdAt: string;
+    updatedAt: string;
+    reminderSnoozeUntil: string;
+}
+
+function parseHexToBytes(hex: string, fieldName: string): Uint8Array {
+    const chunks = hex.match(/.{1,2}/g);
+    if (!chunks) {
+        throw new Error(`Invalid ${fieldName} format`);
+    }
+    return new Uint8Array(chunks.map((byte) => parseInt(byte, 16)));
+}
+
+/**
+ * Helper function to convert DecryptedEntry to storage format
+ * Normalizes field names to use siteName and siteUrl for storage
+ */
+function toStorageFormat(entry: DecryptedEntry): StorageVaultEntry {
+    return {
+        id: entry.id,
+        siteName: entry.site,
+        siteUrl: entry.siteUrl,
+        username: entry.username,
+        password: entry.password,
+        notes: entry.notes,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
+        reminderSnoozeUntil: entry.reminderSnoozeUntil || "",
+    };
+}
 
 export function VaultProvider({ children }: { children: ReactNode }) {
     const [decryptedEntries, setDecryptedEntries] = useState<DecryptedEntry[]>([]);
@@ -76,9 +114,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 return;
             }
 
-            const saltBuffer = new Uint8Array(
-                salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
-            );
+            const saltBuffer = parseHexToBytes(salt, "salt");
 
             // Start parallel execution: Key Derivation (CPU) + Vault Fetch (Network)
             console.log('[VaultContext] Starting parallel unlock operations with stored password...')
@@ -87,7 +123,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
             // Fetch vault
             const vaultFetchPromise = (async () => {
-                 const email = session.email || localStorage.getItem("user_email") || "";
                  const userId = session.userId || localStorage.getItem("user_id") || "";
                  const token = localStorage.getItem("auth_token");
                  
@@ -108,14 +143,18 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                          
                          if (syncResponse.ok) {
                              const syncData = await syncResponse.json();
-                             // Sync API returns { vaults: [...], lastSyncTimestamp, currentVersion, success }
-                             if (syncData.vaults && syncData.vaults.length > 0) {
-                                 // Return the latest vault blob
-                                 return { ok: true, status: 200, json: async () => syncData.vaults[0] };
-                             } else {
-                                 // Empty vault from sync API
-                                 console.log("[VaultContext] Sync API empty, trying compatibility");
+                             
+                             // Robust validation of sync API response
+                             if (syncData && typeof syncData === "object" && 
+                                 "vaults" in syncData && Array.isArray(syncData.vaults) && 
+                                 syncData.vaults.length > 0) {
+                                 
+                                 const firstVault = syncData.vaults[0];
+                                 if (firstVault && typeof firstVault === "object" && "ciphertext" in firstVault) {
+                                     return { ok: true, status: 200, json: async () => firstVault };
+                                 }
                              }
+                             console.log("[VaultContext] Sync API empty or invalid format, trying compatibility");
                          } else if (syncResponse.status === 401) {
                              // Authentication failed, try compatibility layer
                              console.warn("[VaultContext] Sync API auth failed, trying compatibility layer");
@@ -128,18 +167,29 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                  }
 
                  // 2. Fallback to Compatibility API
-                 if (!email) throw new Error("No user email found");
-                 const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(email)}`, {
+                 if (!userId) throw new Error("No user ID found");
+                 const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(userId)}`, {
                     method: "GET",
                     headers: {
                         'Authorization': `Bearer ${token}`
-                    }
+                    },
+                    cache: "no-store"
                 });
                 
                 console.log("[VaultContext] Compatibility API status:", response.status);
                 if (response.ok) {
                     const data = await response.json();
-                    console.log("[VaultContext] Compatibility API data:", { hasData: !!data, hasCiphertext: !!data?.ciphertext });
+                    
+                    // Robust validation of compatibility API response
+                    if (!data || typeof data !== "object") {
+                        throw new Error("Invalid response from vault API: Expected object");
+                    }
+                    
+                    if (!("ciphertext" in data) && !("vaults" in data)) {
+                         console.warn("[VaultContext] Response object missing expected vault fields");
+                    }
+                    
+                    console.log("[VaultContext] Compatibility API data retrieved successfully");
                     return { ok: true, status: 200, json: async () => data };
                 }
                 
@@ -147,7 +197,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             })();
 
             const [keys, fetchResult] = await Promise.all([keyDerivationPromise, vaultFetchPromise]);
-
+            
             if (fetchResult.ok) {
                 const data = await fetchResult.json();
                 
@@ -164,9 +214,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                  if (data && data.ciphertext) {
                     const cryptoEngine = await import("@password-manager/crypto-engine");
 
-                    // Decrypt with fallback logic
-                    let decryptedEntry: any;
-                    let finalKeys = keys;
+                    // Decrypt with secure logic
+                    let decryptedEntry: unknown;
                     
                     // Standardize data tags (sync uses authTag, extension uses tag)
                     const vaultData = {
@@ -178,101 +227,75 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                         derivationAlgorithm: "Argon2id" as const
                     };
 
-                    // First try using the vault's own salt with decryptVault
-                    // This handles the case where password was reset and vault re-encrypted with new salt
+                    // SECURITY: Only decrypt using the master password with vault's salt
                     try {
-                        console.log("[VaultContext] Attempting decryption with vault's own salt...");
+                        console.log("[VaultContext] Attempting decryption with master password...");
                         const decryptResult = await cryptoEngine.decryptVault(sessionPassword, vaultData);
                         if (decryptResult.success && decryptResult.data) {
                             decryptedEntry = decryptResult.data;
-                            console.log("[VaultContext] Decryption succeeded with vault's salt");
+                            console.log("[VaultContext] Decryption succeeded");
                         } else {
                             throw new Error("Decryption failed");
                         }
-                    } catch (firstAttemptErr) {
-                        console.warn("[VaultContext] Vault salt decryption failed, trying with user salt...");
-                        
-                        // Fallback: Try with pre-derived keys (original approach)
-                        try {
-                            decryptedEntry = await cryptoEngine.decrypt(vaultData as any, keys);
-                            console.log("[VaultContext] Decryption succeeded with user salt");
-                        } catch (secondAttemptErr) {
-                            console.warn("[VaultContext] User salt decryption failed, trying email fallback...");
-                            
-                            // Last resort: Re-derive using email as password
-                            const email = session.email || localStorage.getItem("user_email") || "";
-                            try {
-                                const emailDecryptResult = await cryptoEngine.decryptVault(email, vaultData);
-                                if (emailDecryptResult.success && emailDecryptResult.data) {
-                                    decryptedEntry = emailDecryptResult.data;
-                                    console.log("[VaultContext] Decryption succeeded with email fallback");
-                                } else {
-                                    throw new Error("Email fallback failed");
-                                }
-                            } catch (finalErr) {
-                                console.warn("[VaultContext] All vault decryption attempts failed. User may have changed password without re-encryption.");
-                                toast.error("Failed to decrypt vault. Your data is unreadable due to the password change. You can start fresh by adding new credentials.");
-                                
-                                // Allow starting fresh with empty vault
-                                setDecryptedEntries([]);
-                                setDerivedKeys(keys);
-                                setIsUnlocked(true);
-                                setIsLoadingVault(false);
-                                return;
-                            }
-                        }
+                    } catch (decryptErr) {
+                        console.error("[VaultContext] Decryption failed:", decryptErr);
+                        toast.error("Failed to decrypt vault. Please ensure your password is correct.");
+                        setIsLoadingVault(false);
+                        return;
                     }
 
-                    setDerivedKeys(finalKeys);
+                    setDerivedKeys(keys);
 
                     // Parse entries (handle legacy formats)
-                    let entries: any[] = [];
+                    let entries: Array<Record<string, unknown>> = [];
                     if (Array.isArray(decryptedEntry)) {
-                        entries = decryptedEntry;
+                        entries = decryptedEntry as Array<Record<string, unknown>>;
                     } else if (decryptedEntry && typeof decryptedEntry === "object") {
                         // Check for wrapped password field
-                        if (decryptedEntry.password) {
+                        const decryptedObject = decryptedEntry as Record<string, unknown>;
+                        if (typeof decryptedObject.password === "string") {
                             try {
-                                const parsed = JSON.parse(decryptedEntry.password);
+                                const parsed = JSON.parse(decryptedObject.password);
                                 if (Array.isArray(parsed)) {
-                                    entries = parsed;
+                                    entries = parsed as Array<Record<string, unknown>>;
                                 }
-                            } catch { }
+                            } catch (parseErr) {
+                                console.error("[VaultContext] Failed to parse vault entries:", parseErr);
+                            }
                         }
 
                         // Check for array properties
                         if (entries.length === 0) {
-                            const possibleArrays = Object.values(decryptedEntry).filter(
+                            const possibleArrays = Object.values(decryptedObject).filter(
                                 (val) => Array.isArray(val),
                             );
                             if (possibleArrays.length > 0) {
-                                entries = possibleArrays[0] as any[];
+                                entries = possibleArrays[0] as Array<Record<string, unknown>>;
                             } else {
                                 // Treat as single object if it looks like an entry
-                                if (decryptedEntry.site || decryptedEntry.siteName) {
-                                    entries = [decryptedEntry];
+                                if (decryptedObject.site || decryptedObject.siteName) {
+                                    entries = [decryptedObject];
                                 }
                             }
                         }
                     }
 
                     const entriesWithVisibility = entries
-                        .filter((entry: any) => {
-                            const siteName = entry.siteName || entry.site || "";
+                        .filter((entry) => {
+                            const siteName = String(entry.siteName || entry.site || "");
                             return siteName !== "VAULT_ROOT" && siteName !== "SYSTEM";
                         })
-                        .map((entry: any) => ({
-                            id: entry.id || Math.random().toString(36).substring(7),
-                            site: entry.siteName || entry.site || "Unknown",
-                            username: entry.username || "",
-                            password: entry.password || "",
-                            siteUrl: entry.siteUrl || entry.url || "",
-                            siteName: entry.siteName || entry.site || "Unknown",
-                            notes: entry.notes || "",
-                            createdAt: entry.createdAt || new Date().toISOString(),
-                            updatedAt: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
-                            lastUpdated: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
-                            reminderSnoozeUntil: entry.reminderSnoozeUntil || "",
+                        .map((entry) => ({
+                            id: String(entry.id || Math.random().toString(36).substring(7)),
+                            site: String(entry.siteName || entry.site || "Unknown"),
+                            username: String(entry.username || ""),
+                            password: String(entry.password || ""),
+                            siteUrl: String(entry.siteUrl || entry.url || ""),
+                            notes: String(entry.notes || ""),
+                            createdAt: String(entry.createdAt || new Date().toISOString()),
+                            updatedAt: String(entry.updatedAt || entry.lastUpdated || new Date().toISOString()),
+                            lastUpdated: String(entry.updatedAt || entry.lastUpdated || new Date().toISOString()),
+                            reminderSnoozeUntil: String(entry.reminderSnoozeUntil || ""),
                             isPasswordVisible: false,
                         }));
 
@@ -297,13 +320,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                      setDecryptedEntries([]);
                      setIsUnlocked(true);
                  } else {
-                     console.error("[VaultContext] Failed to fetch vault:", fetchResult.status);
-                 }
+                     console.error("[VaultContext] Failed to fetch vault:", fetchResult.status);                     toast.error(`Failed to load vault (HTTP ${fetchResult.status})`);                 }
             }
 
         } catch (err) {
             console.error("[VaultContext] Unlock error:", err);
-            // toast.error("Failed to unlock vault");
+            toast.error("Failed to unlock vault: " + (err instanceof Error ? err.message : "Unknown error"));
         } finally {
             setIsLoadingVault(false);
         }
@@ -330,17 +352,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             };
 
             const updatedEntries = [
-                ...decryptedEntries.map((e) => ({
-                    id: e.id,
-                    siteName: e.site,
-                    siteUrl: e.siteUrl,
-                    username: e.username,
-                    password: e.password,
-                    notes: e.notes,
-                    createdAt: e.createdAt,
-                    updatedAt: e.updatedAt || e.lastUpdated || new Date().toISOString(),
-                    reminderSnoozeUntil: e.reminderSnoozeUntil || "",
-                })),
+                ...decryptedEntries.map((e) => toStorageFormat(e)),
                 newCredential,
             ];
 
@@ -384,17 +396,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     : e,
             );
 
-            const transportEntries = updatedEntries.map((e) => ({
-                id: e.id,
-                siteName: e.site,
-                siteUrl: e.siteUrl,
-                username: e.username,
-                password: e.password,
-                notes: e.notes,
-                createdAt: e.createdAt,
-                updatedAt: e.updatedAt || new Date().toISOString(),
-                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
-            }));
+            const transportEntries = updatedEntries.map((e) => toStorageFormat(e));
 
             await saveVault(transportEntries, derivedKeys);
             setDecryptedEntries(updatedEntries);
@@ -413,17 +415,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
         try {
             const updatedEntries = decryptedEntries.filter((e) => e.id !== id);
-            const transportEntries = updatedEntries.map((e) => ({
-                id: e.id,
-                siteName: e.site,
-                siteUrl: e.siteUrl,
-                username: e.username,
-                password: e.password,
-                notes: e.notes,
-                createdAt: e.createdAt,
-                updatedAt: e.updatedAt || new Date().toISOString(),
-                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
-            }));
+            const transportEntries = updatedEntries.map((e) => toStorageFormat(e));
 
             await saveVault(transportEntries, derivedKeys);
             setDecryptedEntries(updatedEntries);
@@ -445,17 +437,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     : e,
             );
 
-            const transportEntries = updatedEntries.map((e) => ({
-                id: e.id,
-                siteName: e.site,
-                siteUrl: e.siteUrl,
-                username: e.username,
-                password: e.password,
-                notes: e.notes,
-                createdAt: e.createdAt,
-                updatedAt: e.updatedAt || new Date().toISOString(),
-                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
-            }));
+            const transportEntries = updatedEntries.map((e) => toStorageFormat(e));
 
             await saveVault(transportEntries, derivedKeys);
             setDecryptedEntries(updatedEntries);
@@ -478,17 +460,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     : e,
             );
 
-            const transportEntries = updatedEntries.map((e) => ({
-                id: e.id,
-                siteName: e.site,
-                siteUrl: e.siteUrl,
-                username: e.username,
-                password: e.password,
-                notes: e.notes,
-                createdAt: e.createdAt,
-                updatedAt: e.updatedAt || new Date().toISOString(),
-                reminderSnoozeUntil: e.reminderSnoozeUntil || "",
-            }));
+            const transportEntries = updatedEntries.map((e) => toStorageFormat(e));
 
             await saveVault(transportEntries, derivedKeys);
             setDecryptedEntries(updatedEntries);
@@ -500,7 +472,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     };
 
     // Helper to encrypt and save
-    const saveVault = async (entries: any[], keys: DerivedKey) => {
+    const saveVault = async (entries: StorageVaultEntry[], keys: DerivedKey) => {
         const { encrypt } = await import("@password-manager/crypto-engine");
         const vaultEntry = {
             site: "VAULT_ROOT",
@@ -509,15 +481,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         };
 
         const encryptedVault = await encrypt(vaultEntry, keys);
-        const labels = entries.map((e) => (e.siteName || "").toLowerCase());
-        const email = session.email || localStorage.getItem("user_email") || "";
+        const labels = entries.map((e) => e.siteName.toLowerCase());
+        const userId = (session.userId || localStorage.getItem("user_id") || "").trim();
+        const token = localStorage.getItem("auth_token");
 
-        const response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(email)}`,
-            {
+        if (!userId) throw new Error("User ID not found for sync");
+
+        console.log(`[VaultContext] Saving vault for ${userId}...`);
+
+        // 1. Update Compatibility API (Legacy/Simple)
+        const compatUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(userId)}`;
+        const response = await fetch(compatUrl, {
                 method: "PUT",
                 headers: {
-                    Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                    Authorization: `Bearer ${token}`,
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
@@ -527,7 +504,50 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             },
         );
 
-        if (!response.ok) throw new Error("Failed to save to backend");
+        if (!response.ok) {
+            console.error(`[VaultContext] Compatibility API save failed: ${response.status}`);
+            throw new Error("Failed to save to compatibility backend");
+        }
+
+        console.log("[VaultContext] Compatibility API save successful");
+
+        // 2. Also push to Modern Sync API for consistency
+        const syncUserId = session.userId || localStorage.getItem("user_id");
+        const deviceId = localStorage.getItem("device_id") || "web-dashboard";
+        
+        if (syncUserId && deviceId && token) {
+            try {
+                const syncUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/sync/push`;
+                const syncResponse = await fetch(syncUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        userId: syncUserId,
+                        deviceId,
+                        vault: {
+                            ciphertext: encryptedVault.ciphertext,
+                            iv: encryptedVault.iv,
+                            salt: encryptedVault.salt,
+                            authTag: encryptedVault.tag,
+                            version: Date.now(), // Using timestamp as a simple version to ensure it's always "newer"
+                            timestamp: Date.now(),
+                            nonce: Math.random().toString(36).substring(7)
+                        }
+                    })
+                });
+                
+                if (syncResponse.ok) {
+                    console.log("[VaultContext] Sync API push successful");
+                } else {
+                    console.warn(`[VaultContext] Sync API push failed with status: ${syncResponse.status}`);
+                }
+            } catch (syncErr) {
+                console.warn("[VaultContext] Sync API push failed:", syncErr);
+            }
+        }
     };
 
     // Auto-unlock effect

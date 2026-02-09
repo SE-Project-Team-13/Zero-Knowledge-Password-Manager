@@ -3,14 +3,11 @@
 import type React from "react";
 import { useState, useEffect, useRef } from "react";
 import { useVaultSync } from "@/hooks/useVaultSync";
-import { useTheme } from "next-themes";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { usePasswordAging } from "@/hooks/usePasswordAging";
 import { useVault, type DecryptedEntry } from "@/context/VaultContext";
 import { EditCredentialModal } from "@/components/EditCredentialModal";
-import { formatDistanceToNow } from "date-fns";
-import { cn } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -36,17 +33,13 @@ import {
   Search,
   Copy,
   AlertCircle,
-  Plus,
   Loader2,
-  Trash2,
   Edit,
-  ExternalLink,
-  FileKey // Added
+  FileKey
 } from "lucide-react";
 import { toast } from "sonner";
 import { copyWithAutoClear } from "@/lib/clipboard";
 import { useRouter } from "next/navigation";
-
 // --- Helpers ---
 const calculatePasswordStrength = (password: string) => {
   if (!password) return { score: 0, label: "None", color: "bg-gray-200" };
@@ -75,7 +68,6 @@ export default function DashboardPage() {
     setDecryptedEntries,
     isUnlocked: isVaultUnlocked,
     unlockVault: contextUnlockVault,
-    isLoadingVault,
     addEntry,
     updateEntry,
     deleteEntry,
@@ -90,7 +82,8 @@ export default function DashboardPage() {
 
   // UI State
   const [isInitializing, setIsInitializing] = useState(true);
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  /* Local state removed - using isVaultUnlocked from context */
+
   const [otpCode, setOtpCode] = useState("");
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
@@ -162,7 +155,6 @@ export default function DashboardPage() {
           })
         } else {
           console.log('[Dashboard] No session password - showing empty dashboard')
-          setIsUnlocked(true)
           setIsInitializing(false)
         }
       } else {
@@ -196,13 +188,20 @@ export default function DashboardPage() {
   // Send OTP to user's email
   const sendOTPToUser = async () => {
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      
+      const token = typeof window !== 'undefined' && localStorage.getItem("auth_token");
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/otp/send`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
           body: JSON.stringify({ email: session.email }),
         },
       );
@@ -228,13 +227,20 @@ export default function DashboardPage() {
 
     setIsVerifyingOtp(true);
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      
+      const token = typeof window !== 'undefined' && localStorage.getItem("auth_token");
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/otp/verify`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
           body: JSON.stringify({
             email: session.email,
             code: otpCode,
@@ -245,6 +251,10 @@ export default function DashboardPage() {
       if (response.ok) {
         setOtpVerified(true);
         sessionStorage.setItem("otp_verified", "true"); // Persist verification
+        
+        // Dispatch custom event to notify layout about OTP verification
+        window.dispatchEvent(new Event("otpVerified"));
+        
         toast.success("OTP verified successfully!");
         // Automatically proceed to unlock vault
         await unlockVault();
@@ -269,7 +279,7 @@ export default function DashboardPage() {
 
   // Auto-logout on inactivity
   useEffect(() => {
-    if (!isUnlocked) return;
+    if (!isVaultUnlocked) return;
 
     const handleActivity = () => {
       lastActivityRef.current = Date.now();
@@ -291,7 +301,7 @@ export default function DashboardPage() {
       window.removeEventListener("keydown", handleActivity);
       clearInterval(checkInactivity);
     };
-  }, [isUnlocked, actions]);
+  }, [isVaultUnlocked, actions]);
 
   const unlockVault = async () => {
     setIsVerifyingOtp(true);
@@ -314,8 +324,8 @@ export default function DashboardPage() {
       sessionStorage.setItem("session_master_password", passwordToUse);
 
       await contextUnlockVault();
-
-      setIsUnlocked(true);
+      
+      // Removed setIsUnlocked(true) as we rely on context now
       toast.success("Vault unlocked successfully");
     } catch (err) {
       console.error("Unlock error:", err);
@@ -492,7 +502,7 @@ export default function DashboardPage() {
   }
 
   // --- Render OTP Verification & Lock State ---
-  if (!isUnlocked) {
+  if (!isVaultUnlocked) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4 relative">
         <div className="absolute top-4 right-4 z-50">
@@ -611,16 +621,6 @@ export default function DashboardPage() {
                   <AlertDescription className="text-xs">
                     <strong>Sending OTP...</strong> Please wait while we send
                     the verification code to your email.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {!otpVerified && otpSent && !process.env.NEXT_PUBLIC_SMTP_CONFIGURED && (
-                <Alert className="bg-primary/10 border-primary/20 text-primary">
-                  <AlertCircle className="h-4 w-4 text-primary" />
-                  <AlertDescription className="text-xs text-primary">
-                    <strong>Development Mode:</strong> Check the backend console
-                    for your OTP code.
                   </AlertDescription>
                 </Alert>
               )}

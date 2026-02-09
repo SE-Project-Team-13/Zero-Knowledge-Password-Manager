@@ -11,7 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Shield, Key, Loader2, AlertCircle, Eye, EyeOff, Lock, Check } from "lucide-react"
 import { toast } from "sonner"
 import { ThemeToggle } from "@/components/ThemeToggle"
-import { deriveKey } from "@password-manager/crypto-engine"
+import { deriveKey, generateVerifier } from "@password-manager/crypto-engine"
 
 export default function ResetPasswordPage() {
     const router = useRouter()
@@ -59,7 +59,6 @@ export default function ResetPasswordPage() {
                 try {
                     // A. Fetch the current encrypted vault
                     const token = localStorage.getItem("auth_token")
-                    const email = localStorage.getItem("user_email") || ""
                     let deviceId = localStorage.getItem("device_id")
                     if (!deviceId) deviceId = "recovery-device"
 
@@ -94,10 +93,10 @@ export default function ResetPasswordPage() {
                     }
                     
                     // 2. Fallback to Compatibility API (SimpleVault) if Sync API is empty
-                    if (!vaultData && email) {
+                    if (!vaultData && userId) {
                         console.log("[ResetPassword] Sync API empty, trying Compatibility API...")
                         const compatResponse = await fetch(
-                            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(email)}`,
+                            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(userId)}`,
                             {
                                 method: "GET",
                                 headers: {
@@ -170,13 +169,8 @@ export default function ResetPasswordPage() {
             // This is the heavy lifting part
             const { authKey } = await deriveKey(password, saltBuffer)
 
-            // 3. Create proof/verifier
-            const encoder = new TextEncoder()
-            const proofData = encoder.encode("auth-proof")
-            const verifierBuffer = await crypto.subtle.sign("HMAC", authKey, proofData)
-            const verifier = Array.from(new Uint8Array(verifierBuffer))
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join("")
+            // 3. Create proof/verifier using shared utility
+            const verifier = await generateVerifier(authKey)
 
             // 4. Send to backend (with optional new vault)
             console.log("[ResetPassword] Sending to backend:", { 

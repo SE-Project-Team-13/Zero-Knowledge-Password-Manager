@@ -1,5 +1,14 @@
 import { VaultBlob, SyncMetadata } from "../database/models.js"
 import type { VaultBlob as VaultBlobType } from "../types/index.js"
+import mongoose from "mongoose"
+
+interface SyncMetadataPayload {
+  userId: string
+  deviceId: string
+  lastUpdated: number
+  vaultVersion: number
+  nonce: string
+}
 
 /**
  * Pushes a new encrypted vault blob to the server.
@@ -41,9 +50,9 @@ export async function pushVault(
     await updateSyncMetadata(userId, deviceId, vault.version, vault.nonce)
 
     return { success: true, vaultId: blob._id.toString() }
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Detect potential replay attacks or duplicate submissions using the nonce
-    if (error.code === 11000) {
+    if (error && typeof error === "object" && "code" in error && error.code === 11000) {
       return { success: false, error: "Duplicate nonce - replay attack detected" }
     }
     const message = error instanceof Error ? error.message : "Unknown error"
@@ -65,7 +74,7 @@ export async function pullVaults(
   lastVersion?: number,
 ): Promise<{ success: boolean; vaults?: VaultBlobType[]; error?: string }> {
   try {
-    const filter: any = { userId }
+    const filter: Record<string, any> = { userId }
     if (lastVersion !== undefined) {
       filter.version = { $gt: lastVersion }
     }
@@ -89,7 +98,7 @@ export async function pullVaults(
     }))
 
     return { success: true, vaults }
-  } catch (error) {
+  } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error"
     return { success: false, error: message }
   }
@@ -107,7 +116,7 @@ async function updateSyncMetadata(
   deviceId: string,
   vaultVersion: number,
   nonce: string,
-): Promise<void> {
+ ): Promise<void> {
   const now = Date.now()
 
   await SyncMetadata.findOneAndUpdate(
@@ -132,7 +141,7 @@ async function updateSyncMetadata(
 export async function getSyncMetadata(
   userId: string,
   deviceId: string,
-): Promise<{ success: boolean; metadata?: any; error?: string }> {
+): Promise<{ success: boolean; metadata?: SyncMetadataPayload | null; error?: string }> {
   try {
     const metadata = await SyncMetadata.findOne({ userId, deviceId })
 
@@ -150,7 +159,7 @@ export async function getSyncMetadata(
         nonce: metadata.nonce,
       },
     }
-  } catch (error) {
+  } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error"
     return { success: false, error: message }
   }

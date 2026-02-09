@@ -6,13 +6,12 @@ import { checkEmailBreach } from "./breachService.js";
  * Initializes the scheduled jobs.
  */
 export function initScheduledJobs() {
-    console.log("[Cron] Initializing scheduled jobs...");
+    console.log("[VaultSync:Cron] Initializing scheduled jobs...");
 
     // Breach Detection Job
     // Schedule: Every week on Sunday at midnight (0 0 * * 0)
-    // FOR DEV: Running every minute (*/1 * * * *) to demonstrate functionality
-    cron.schedule("*/1 * * * *", async () => {
-        console.log("[Cron] Running scheduled Breach Detection check...");
+    cron.schedule("0 0 * * 0", async () => {
+        console.log("[VaultSync:Cron] Running scheduled Breach Detection check...");
         try {
             const users = await User.find({});
             let breachCount = 0;
@@ -34,7 +33,7 @@ export function initScheduledJobs() {
                         },
                         { runValidators: false }
                     );
-                    console.log(`[Cron] 🚨 Alert: User ${user.email} marked as breached.`);
+                    console.log(`[VaultSync:Cron] 🚨 Alert: User ${user.email} marked as breached.`);
                     breachCount++;
                 } else if (!isBreached && user.isBreached) {
                     // Status cleared (e.g. false positive or DB update)
@@ -51,19 +50,18 @@ export function initScheduledJobs() {
                 }
             }
 
-            console.log(`[Cron] Breach check complete. Scanned ${users.length} users. New breaches: ${breachCount}`);
+            console.log(`[VaultSync:Cron] Breach check complete. Scanned ${users.length} users. New breaches: ${breachCount}`);
         } catch (error) {
-            console.error("[Cron] Error running breach detection job:", error);
+            console.error("[VaultSync:Cron] Error running breach detection job:", error);
         }
     });
 
-    console.log("[Cron] Scheduled jobs started.");
+    console.log("[VaultSync:Cron] Scheduled jobs started.");
 
     // Cleanup Job
-    // Schedule: Every hour (0 * * * *)
-    // FOR DEV: Every 5 minutes (*/5 * * * *)
-    cron.schedule("*/5 * * * *", async () => {
-        console.log("[Cron] Running scheduled Cleanup job...");
+    // Schedule: Daily at 2:00 AM
+    cron.schedule("0 2 * * *", async () => {
+        console.log("[VaultSync:Cron] Running scheduled Cleanup job...");
         try {
             const { Session, OTP } = await import("../database/models.js");
             const now = new Date().toISOString().replace("T", " ").substring(0, 19);
@@ -71,16 +69,16 @@ export function initScheduledJobs() {
             // Cleanup expired sessions
             const sessionResult = await Session.deleteMany({ expiresAt: { $lt: now } });
             if (sessionResult.deletedCount > 0) {
-                 console.log(`[Cron] Cleaned up ${sessionResult.deletedCount} expired sessions.`);
+                 console.log(`[VaultSync:Cron] Cleaned up ${sessionResult.deletedCount} expired sessions.`);
             }
 
             // Cleanup expired OTPs
             const otpResult = await OTP.deleteMany({ expiresAt: { $lt: now } });
             if (otpResult.deletedCount > 0) {
-                console.log(`[Cron] Cleaned up ${otpResult.deletedCount} expired OTPs.`);
+                console.log(`[VaultSync:Cron] Cleaned up ${otpResult.deletedCount} expired OTPs.`);
             }
         } catch (error) {
-            console.error("[Cron] Error running cleanup job:", error);
+            console.error("[VaultSync:Cron] Error running cleanup job:", error);
         }
     });
 }
