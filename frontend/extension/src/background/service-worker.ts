@@ -56,7 +56,7 @@ let sessionState: SessionState = {
 // ============================================================================
 
 const AUTO_LOCK_TIMEOUT = 15 * 60 * 1000 // 15 minutes
-const BACKEND_URL = 'http://localhost:3001'
+const BACKEND_URL = 'http://127.0.0.1:3001'
 const EXTENSION_DEVICE_ID = 'extension-browser'
 
 // ============================================================================
@@ -95,7 +95,9 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
     headers['Authorization'] = `Bearer ${sessionToken}`
   }
 
-  const response = await fetch(`${BACKEND_URL}${endpoint}`, { ...options, headers })
+  const url = `${BACKEND_URL}${endpoint}`
+  console.log(`[Background] Fetching: ${url}`)
+  const response = await fetch(url, { ...options, headers })
 
   if (!response.ok) {
     let errorMessage = `Request failed: ${response.statusText}`
@@ -282,21 +284,36 @@ async function handleUnlockVault(message: UnlockVaultMessage): Promise<{ success
         ciphertext: data.ciphertext,
         iv: data.iv,
         salt: data.salt,
+        tag: data.tag || data.authTag, // Map both possible tag field names
         algorithm: 'AES-256-GCM',
         derivationAlgorithm: 'Argon2id'
       }
 
+      const { decryptVault } = await import('@password-manager/crypto-engine')
+
       try {
-        const decryptedRoot = await decrypt(encryptedVault, derivedKeys)
-        decryptedVault = JSON.parse(decryptedRoot.password)
+        console.log('[Background] Attempting decryption with master password...')
+        const decryptResult = await decryptVault(message.masterPassword, encryptedVault)
+        
+        if (decryptResult.success) {
+          decryptedVault = JSON.parse(decryptResult.data.password)
+          console.log('[Background] Decryption succeeded')
+        } else {
+          throw new Error(decryptResult.error)
+        }
       } catch (e) {
         console.warn('[Background] Decryption with master password failed, trying email-key fallback (Dashboard compatibility)')
         // Fallback to email as password (compatibility with Dashboard's current prototype state)
-        const fallbackKeys = await deriveKey(email, saltBuffer)
-        const decryptedRoot = await decrypt(encryptedVault, fallbackKeys)
-        decryptedVault = JSON.parse(decryptedRoot.password)
-        // Switch to fallback keys for this session
-        derivedKeys = fallbackKeys
+        const decryptResult = await decryptVault(email, encryptedVault)
+        
+        if (decryptResult.success && decryptResult.data) {
+          decryptedVault = JSON.parse(decryptResult.data.password)
+          console.log('[Background] Decryption succeeded with email fallback')
+          // Update derived keys for the session
+          derivedKeys = await deriveKey(email, saltBuffer)
+        } else {
+          throw new Error('Vault decryption failed. Please ensure your password is correct.')
+        }
       }
     }
 

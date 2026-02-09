@@ -1,7 +1,7 @@
 module.exports = {
-  preset: 'ts-jest/presets/default-esm', // Use ESM preset
+  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
-  testTimeout: 30000, // 30 seconds for crypto operations
+  testTimeout: 30000,
   moduleFileExtensions: ['ts', 'js'],
   testMatch: ['**/test/**/*.test.ts'],
   moduleNameMapper: {
@@ -15,5 +15,8 @@ module.exports = {
       },
     ],
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(@noble)/)',
+  ],
   extensionsToTreatAsEsm: ['.ts'],
 };

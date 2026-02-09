@@ -1,0 +1,34 @@
+﻿On branch ladda
+Your branch is up to date with 'origin/ladda'.
+
+Changes not staged for commit:
+  (use "git add/rm <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   backend/__tests__/services/authService.test.ts
+	modified:   backend/__tests__/services/syncService.test.ts
+	modified:   frontend/__tests__/components/EditCredentialModal.test.tsx
+	modified:   frontend/__tests__/components/PasswordWarningsModal.test.tsx
+	modified:   frontend/context/VaultContext.tsx
+	modified:   frontend/crypto-engine/jest.config.cjs
+	modified:   frontend/crypto-engine/package.json
+	deleted:    frontend/crypto-engine/test/security.test.ts
+	modified:   frontend/extension/public/manifest.json
+	modified:   frontend/extension/src/background/service-worker.ts
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	backend/__tests__/services/auth/
+	backend/__tests__/services/breachService.test.ts
+	backend/__tests__/services/cronService.test.ts
+	backend/__tests__/services/otpService.test.ts
+	backend/__tests__/services/recoveryService.test.ts
+	backend/__tests__/services/sync/
+	frontend/__tests__/hooks/
+	frontend/__tests__/lib/
+	frontend/crypto-engine/test/aes.test.ts
+	frontend/crypto-engine/test/argon2.test.ts
+	frontend/crypto-engine/test/vault.test.ts
+	git_status.txt
+	git_status_utf8.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")

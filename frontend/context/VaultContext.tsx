@@ -133,13 +133,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     method: "GET",
                     headers: {
                         'Authorization': `Bearer ${token}`
-                    }
+                    },
+                    cache: "no-store"
                 });
                 
                 console.log("[VaultContext] Compatibility API status:", response.status);
                 if (response.ok) {
                     const data = await response.json();
-                    console.log("[VaultContext] Compatibility API data:", { hasData: !!data, hasCiphertext: !!data?.ciphertext });
+                    console.log("[VaultContext] Compatibility API data retrieved success:", { hasCiphertext: !!data?.ciphertext, ciphertextLen: data?.ciphertext?.length });
                     return { ok: true, status: 200, json: async () => data };
                 }
                 
@@ -509,15 +510,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         };
 
         const encryptedVault = await encrypt(vaultEntry, keys);
-        const labels = entries.map((e) => (e.siteName || "").toLowerCase());
-        const email = session.email || localStorage.getItem("user_email") || "";
+        const labels = entries.map((e) => (e.site || e.siteName || "").toLowerCase());
+        const email = (session.email || localStorage.getItem("user_email") || "").trim().toLowerCase();
+        const token = localStorage.getItem("auth_token");
 
-        const response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(email)}`,
-            {
+        if (!email) throw new Error("User email not found for sync");
+
+        console.log(`[VaultContext] Saving vault for ${email}...`);
+
+        // 1. Update Compatibility API (Legacy/Simple)
+        const compatUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(email)}`;
+        const response = await fetch(compatUrl, {
                 method: "PUT",
                 headers: {
-                    Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                    Authorization: `Bearer ${token}`,
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
@@ -527,7 +533,50 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             },
         );
 
-        if (!response.ok) throw new Error("Failed to save to backend");
+        if (!response.ok) {
+            console.error(`[VaultContext] Compatibility API save failed: ${response.status}`);
+            throw new Error("Failed to save to compatibility backend");
+        }
+
+        console.log("[VaultContext] Compatibility API save successful");
+
+        // 2. Also push to Modern Sync API for consistency
+        const userId = session.userId || localStorage.getItem("user_id");
+        const deviceId = localStorage.getItem("device_id") || "web-dashboard";
+        
+        if (userId && deviceId && token) {
+            try {
+                const syncUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/sync/push`;
+                const syncResponse = await fetch(syncUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        userId,
+                        deviceId,
+                        vault: {
+                            ciphertext: encryptedVault.ciphertext,
+                            iv: encryptedVault.iv,
+                            salt: encryptedVault.salt,
+                            authTag: encryptedVault.tag,
+                            version: Date.now(), // Using timestamp as a simple version to ensure it's always "newer"
+                            timestamp: Date.now(),
+                            nonce: Math.random().toString(36).substring(7)
+                        }
+                    })
+                });
+                
+                if (syncResponse.ok) {
+                    console.log("[VaultContext] Sync API push successful");
+                } else {
+                    console.warn(`[VaultContext] Sync API push failed with status: ${syncResponse.status}`);
+                }
+            } catch (syncErr) {
+                console.warn("[VaultContext] Sync API push failed:", syncErr);
+            }
+        }
     };
 
     // Auto-unlock effect

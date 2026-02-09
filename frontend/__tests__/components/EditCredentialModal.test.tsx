@@ -36,6 +36,7 @@ const mockEntry: DecryptedEntry = {
 
 describe('EditCredentialModal', () => {
   it('renders correctly when open', () => {
+    console.log('Running: renders correctly when open');
     render(
       <EditCredentialModal
         isOpen={true}
@@ -47,9 +48,11 @@ describe('EditCredentialModal', () => {
 
     expect(screen.getByText('Edit Credential')).toBeInTheDocument();
     expect(screen.getByDisplayValue('GitHub')).toBeInTheDocument();
+    console.log('Result: Success - Modal title and entry data found');
   });
 
   it('calls onSave with updated data', async () => {
+    console.log('Running: calls onSave with updated data');
     const onSaveMock = jest.fn();
     render(
       <EditCredentialModal
@@ -71,9 +74,11 @@ describe('EditCredentialModal', () => {
         username: 'newuser',
       }));
     });
+    console.log('Result: Success - onSave called with new username "newuser"');
   });
 
   it('does not render when closed', () => {
+    console.log('Running: does not render when closed');
     const { container } = render(
       <EditCredentialModal
         isOpen={false}
@@ -84,5 +89,6 @@ describe('EditCredentialModal', () => {
     );
 
     expect(container).toBeEmptyDOMElement();
+    console.log('Result: Success - container is empty');
   });
 });
