@@ -138,7 +138,7 @@ export default function AuthPage() {
         try {
           const token = localStorage.getItem("auth_token")
           if (token) {
-            await generateAndDownloadRecoveryKey(email, password, token, fullName)
+            await generateAndDownloadRecoveryKey(email, password, token)
             toast.success("Emergency Kit downloaded! Keep it safe.")
           }
         } catch (recoveryErr) {
@@ -324,12 +324,7 @@ export default function AuthPage() {
               )}
 
               {/* Security Notice */}
-              <Alert className="bg-primary/5 border-primary/20">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                <AlertDescription className="text-xs text-primary/80">
-                  <strong>Zero-Knowledge Architecture:</strong> Your master password is used to derive encryption keys locally via Argon2id. The server never sees your plaintext password or decrypted data.
-                </AlertDescription>
-              </Alert>
+
             </CardContent>
 
             <CardFooter className="flex flex-col gap-4">

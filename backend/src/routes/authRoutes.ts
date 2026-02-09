@@ -5,7 +5,7 @@
 
 import { Router, type Request, type Response } from "express"
 import * as crypto from "crypto"
-import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists } from "../services/authService.js"
+import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount } from "../services/authService.js"
 import { User } from "../database/models.js"
 import type { RegisterRequest, LoginRequest, LoginResponse, ErrorResponse } from "../types/index.js"
 
@@ -255,6 +255,33 @@ export function createAuthRouter(): Router {
     } catch (error) {
       console.error("Error resolving breach:", error)
       return res.status(500).json({ error: "Internal error" })
+    }
+  })
+
+  /**
+   * DELETE /auth/account
+   * Permanently deletes the user account and all associated data.
+   */
+  router.delete("/account", async (req: Request, res: Response) => {
+    try {
+      const authHeader = req.headers.authorization
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Unauthorized" })
+      }
+
+      const token = authHeader.split(" ")[1]
+      const session = await validateSessionToken(token)
+
+      if (!session.valid || !session.userId) {
+        return res.status(401).json({ error: "Invalid or expired session" })
+      }
+
+      await deleteUserAccount(session.userId)
+
+      return res.status(200).json({ success: true, message: "Account deleted successfully" })
+    } catch (error) {
+      console.error("Delete account error:", error)
+      return res.status(500).json({ error: "Internal server error" })
     }
   })
 

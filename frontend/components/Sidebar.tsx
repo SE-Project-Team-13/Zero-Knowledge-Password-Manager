@@ -184,18 +184,20 @@ export function Sidebar({
               </button>
             )}
 
-            <button
-              id="change-master-password-button"
-              title={isCollapsed ? "Change Master Password" : undefined}
-              onClick={onChangePassword}
+            <Link
+              href="/settings"
+              title={isCollapsed ? "Settings" : undefined}
               className={cn(
-                "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-secondary hover:text-foreground",
-                isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3"
+                "w-full flex items-center rounded-xl text-sm font-medium transition-all group",
+                isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
+                 activeView === "settings"
+                  ? "bg-primary/10 text-primary border border-primary/10"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
               )}
             >
-              <Lock className="h-5 w-5 shrink-0 transition-transform group-hover:rotate-12" />
-              {!isCollapsed && <span className="truncate">Change Master Password</span>}
-            </button>
+              <Settings className={cn("h-5 w-5 shrink-0 transition-transform group-hover:rotate-90", activeView === "settings" && "text-primary")} />
+              {!isCollapsed && <span className="truncate">Settings</span>}
+            </Link>
 
             <button
               title={mounted && isCollapsed ? (resolvedTheme === 'dark' ? "Light Mode" : "Dark Mode") : undefined}
