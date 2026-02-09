@@ -188,13 +188,7 @@ export default function RecoveryLoginPage() {
                             </p>
                         </div>
 
-                        <Alert className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900">
-                            <AlertCircle className="h-4 w-4 text-amber-600" />
-                            <AlertDescription className="text-xs text-amber-800 dark:text-amber-200">
-                                <strong>Warning:</strong> Recovery allows you to access your account, but you must set a new master password.
-                                Since your vault is encrypted with your old password, existing data will be unreadable unless you have a backup.
-                            </AlertDescription>
-                        </Alert>
+
                     </CardContent>
 
                     <CardFooter className="flex flex-col gap-3">

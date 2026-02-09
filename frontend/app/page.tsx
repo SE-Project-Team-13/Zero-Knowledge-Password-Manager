@@ -324,12 +324,7 @@ export default function AuthPage() {
               )}
 
               {/* Security Notice */}
-              <Alert className="bg-primary/5 border-primary/20">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                <AlertDescription className="text-xs text-primary/80">
-                  <strong>Zero-Knowledge Architecture:</strong> Your master password is used to derive encryption keys locally via Argon2id. The server never sees your plaintext password or decrypted data.
-                </AlertDescription>
-              </Alert>
+
             </CardContent>
 
             <CardFooter className="flex flex-col gap-4">
