@@ -1,5 +1,5 @@
 import crypto from "crypto"
-import { User, Session, VaultBlob } from "../database/models.js"
+import { User, Session, VaultBlob, SyncMetadata, SimpleVault, OTP, RecoveryKey } from "../database/models.js"
 import { revokeAllRecoveryKeys } from "./recoveryService.js"
 import type { User as UserType } from "../types/index.js"
 
@@ -254,3 +254,33 @@ export async function updateUserCredentials(
     }
   }
 }
+
+/**
+ * Deletes a user account and all associated data permanently.
+ * @param userId - The ID of the user to delete.
+ */
+export async function deleteUserAccount(userId: string): Promise<void> {
+  const user = await User.findById(userId)
+  if (!user) return
+
+  // 1. Delete User Record
+  await User.findByIdAndDelete(userId)
+
+  // 2. Delete Sessions
+  await Session.deleteMany({ userId })
+
+  // 3. Delete Vault Blobs (Sync)
+  await VaultBlob.deleteMany({ userId })
+
+  // 4. Delete Sync Metadata
+  await SyncMetadata.deleteMany({ userId })
+
+  // 5. Delete Recovery Keys
+  await RecoveryKey.deleteMany({ userId })
+
+  // 6. Delete Simple Vault (Compatibility) and OTPs using email
+  const email = user.email.toLowerCase()
+  await SimpleVault.deleteMany({ userId: email })
+  await OTP.deleteMany({ email })
+}
+
