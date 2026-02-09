@@ -1,15 +1,13 @@
 "use client";
 
 import type React from "react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useVaultSync } from "@/hooks/useVaultSync";
 import { useTheme } from "next-themes";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Sidebar } from "@/components/Sidebar";
-import { EmergencyKitModal } from "@/components/EmergencyKitModal";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
-import { PasswordWarningsModal } from "@/components/PasswordWarningsModal";
 import { usePasswordAging } from "@/hooks/usePasswordAging";
+import { useVault, type DecryptedEntry } from "@/context/VaultContext";
 import { EditCredentialModal } from "@/components/EditCredentialModal";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -25,21 +23,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Shield,
   Lock,
-  Unlock,
-  Plus,
-  Key,
   Eye,
   EyeOff,
   LogOut,
@@ -50,21 +36,16 @@ import {
   Search,
   Copy,
   AlertCircle,
-  Trash2,
-  Sparkles,
-  Edit,
-  X,
-  Sun,
-  Moon,
+  Plus,
   Loader2,
-  Check, // Added
+  Trash2,
+  Edit,
+  ExternalLink,
   FileKey // Added
 } from "lucide-react";
 import { toast } from "sonner";
 import { copyWithAutoClear } from "@/lib/clipboard";
-
-// --- Types ---
-import { useVault, type DecryptedEntry } from "@/context/VaultContext";
+import { useRouter } from "next/navigation";
 
 // --- Helpers ---
 const calculatePasswordStrength = (password: string) => {
@@ -85,18 +66,13 @@ const calculatePasswordStrength = (password: string) => {
 
 /**
  * DashboardPage: The main authenticated view for managing vault entries.
- * Responsibilities:
- * - Session and idle timeout management.
- * - OTP-based vault unlocking.
- * - Local encryption/decryption of vault items.
- * - CRUD operations for vault entries with live synchronization.
  */
 export default function DashboardPage() {
   const [session, actions] = useVaultSync();
+  const router = useRouter();
   const {
     decryptedEntries,
     setDecryptedEntries,
-    derivedKeys,
     isUnlocked: isVaultUnlocked,
     unlockVault: contextUnlockVault,
     isLoadingVault,
@@ -104,10 +80,8 @@ export default function DashboardPage() {
     updateEntry,
     deleteEntry,
     snoozeEntry,
-    setEntryLastUpdated
   } = useVault();
 
-  const { setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -124,10 +98,7 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes in seconds
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(true);
-  const [isEmergencyKitOpen, setIsEmergencyKitOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
-  const [isAgingModalOpen, setIsAgingModalOpen] = useState(false);
 
   // Vault Data (Managed by Context)
   const [masterPassword, setMasterPassword] = useState("");
@@ -157,19 +128,15 @@ export default function DashboardPage() {
   // Send OTP on component mount and handle initialization
   useEffect(() => {
     // 1. Check if user is theoretically logged in (has token)
-    // We check window to stay safe with SSR, though "use client" blocks most issues
     const hasToken = typeof window !== 'undefined' && localStorage.getItem("auth_token")
 
     if (!hasToken) {
-      // No token, so we are definitely not logged in.
-      // Stop loading, show login screen.
       setIsInitializing(false)
       return
     }
 
     // 2. If has token, wait for useVaultSync to verify it and set isAuthenticated
     if (!session.isAuthenticated) {
-      // Still waiting for hook to sync
       return
     }
 
@@ -181,7 +148,6 @@ export default function DashboardPage() {
 
     // 4. User is authenticated. Check OTP status.
     if (!otpSent) {
-      // Only run if we haven't processed OTP yet in this component lifecycle
       const isVerified = sessionStorage.getItem("otp_verified") === "true"
       if (isVerified) {
         setOtpVerified(true)
@@ -190,13 +156,11 @@ export default function DashboardPage() {
         // Check if we have master password in session
         const sessionPassword = sessionStorage.getItem("session_master_password")
         if (sessionPassword) {
-          // Have password - fetch and decrypt vault (works for both first login and refresh)
           setMasterPassword(sessionPassword)
           unlockVault().finally(() => {
             setIsInitializing(false)
           })
         } else {
-          // No password - show empty dashboard
           console.log('[Dashboard] No session password - showing empty dashboard')
           setIsUnlocked(true)
           setIsInitializing(false)
@@ -204,13 +168,9 @@ export default function DashboardPage() {
       } else {
         // Not verified
         sendOTPToUser()
-        // Show OTP screen immediately
         setIsInitializing(false)
       }
     } else {
-      // OTP already sent state. 
-      // If we reached here without going through the above block (e.g. re-render),
-      // ensure loading is off.
       setIsInitializing(false)
     }
   }, [session.isAuthenticated, session.email, otpSent]);
@@ -333,17 +293,6 @@ export default function DashboardPage() {
     };
   }, [isUnlocked, actions]);
 
-  /**
-   * Performs the multi-step vault unlocking process:
-   * 1. Derives the Master Key from user input.
-   * 2. Fetches encrypted vault blobs from the server.
-   * 3. Decrypts blobs locally using the derived key.
-   * 4. Populates the application state with decrypted entries.
-   */
-  /**
-   * Performs the multi-step vault unlocking process:
-   * Delegates to VaultContext
-   */
   const unlockVault = async () => {
     setIsVerifyingOtp(true);
     try {
@@ -362,7 +311,6 @@ export default function DashboardPage() {
         }
       }
 
-      // Context unlock reads from session storage, so ensure it's set
       sessionStorage.setItem("session_master_password", passwordToUse);
 
       await contextUnlockVault();
@@ -392,10 +340,6 @@ export default function DashboardPage() {
     toast.success("Strong password generated");
   };
 
-  /**
-   * Handles the addition of a new vault entry.
-   * Delegates to VaultContext.
-   */
   const handleAddEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
@@ -431,8 +375,6 @@ export default function DashboardPage() {
       // Context shows success toast
     } catch (err) {
       console.error("[Dashboard] Add entry error:", err);
-      // Context shows error toast usually, but duplicate here just in case? 
-      // Context handles toast.error
     } finally {
       setIsAddingEntry(false);
     }
@@ -482,8 +424,8 @@ export default function DashboardPage() {
     );
   };
 
-  /* Legacy: helper functions moved to usePasswordAging hook */
-  const { agingEntries, isPasswordOld, isSnoozed, getLastUpdatedMs } = usePasswordAging();
+  // Helper functions moved to usePasswordAging hook
+  const { isPasswordOld, isSnoozed } = usePasswordAging();
 
   const copyToClipboard = (text: string) => {
     void copyWithAutoClear(text);
@@ -734,37 +676,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background flex font-sans">
-      <Sidebar
-        onLogout={() => {
-          setIsLoggingOut(true);
-          actions.logout();
-          window.location.href = "/";
-        }}
-        userEmail={session.email || ""}
-        isCollapsed={isCollapsed}
-        setIsCollapsed={setIsCollapsed}
-        activeView="home"
-        onEmergencyKit={() => setIsEmergencyKitOpen(true)}
-        onChangePassword={() => setIsChangePasswordOpen(true)}
-        fullName={session.fullName}
-        onPasswordAging={() => setIsAgingModalOpen(true)}
-        passwordAgingCount={agingEntries.length}
-      />
-
-      {/* Change Password Modal */}
-      <ChangePasswordModal 
-        isOpen={isChangePasswordOpen}
-        onClose={() => setIsChangePasswordOpen(false)}
-      />
-
-      {/* Emergency Kit Modal */}
-      <EmergencyKitModal
-        isOpen={isEmergencyKitOpen}
-        onClose={() => setIsEmergencyKitOpen(false)}
-        email={session.email || ""}
-      />
-
+    <div className="p-8 max-w-7xl mx-auto space-y-8 w-full">
       {/* Breach Alert Banner */}
       {session.isBreached && (
         <div className="bg-destructive/10 border-l-4 border-destructive p-4 m-6 mb-0 rounded-r flex items-start gap-4">
@@ -798,296 +710,166 @@ export default function DashboardPage() {
                     await actions.resolveBreach();
                     toast.success("Breach alert dismissed.");
                   } catch (err) {
-                    toast.error("Failed to dismiss alert.");
+                    toast.error("Failed to dismiss breach alert.");
                   }
                 }}
               >
-                Dismiss Alert
+                Dismiss
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      <PasswordWarningsModal
-        isOpen={isAgingModalOpen}
-        onClose={() => setIsAgingModalOpen(false)}
-        onEdit={(entry) => {
-          setIsAgingModalOpen(false);
-          handleEditEntry(entry);
-        }}
+      {/* Header and Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Card className="col-span-1 md:col-span-2 lg:col-span-1 border-primary/20 bg-card/50 backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <ShieldCheck className="w-32 h-32 text-primary" />
+          </div>
+          <CardHeader>
+            <CardTitle className="text-3xl font-bold text-foreground font-heading">
+              Secure Vault
+            </CardTitle>
+            <CardDescription className="text-muted-foreground flex items-center gap-2">
+              <span className="inline-flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+              Encrypted & Synced
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Lock className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Credentials</p>
+                <p className="text-2xl font-bold font-mono">
+                  {decryptedEntries.length}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+      </div>
+
+      {/* Main Content Area: Search & List */}
+      <Card className="border-border bg-card/50 backdrop-blur-sm min-h-[500px]">
+        <CardHeader>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-xl">My Passwords</CardTitle>
+              <CardDescription>
+                Manage your encrypted credentials
+              </CardDescription>
+            </div>
+            <div className="relative w-full md:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search..."
+                className="pl-9 bg-background/50"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {filteredEntries.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <FileKey className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                <p>No credentials</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {filteredEntries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl border border-border bg-card hover:border-primary/50 transition-all hover:shadow-sm gap-4"
+                  >
+                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 font-bold text-primary">
+                        {entry.site.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-semibold truncate">{entry.site}</h4>
+                        {/* Show siteUrl if it exists */}
+                        <div className="text-xs text-blue-500 hover:text-blue-600 truncate mt-0.5">
+                            <span className="text-muted-foreground mr-1">URL:</span>
+                            {entry.siteUrl}
+                        </div>
+                        <p className="text-sm font-mono mt-0.5 text-foreground">
+                          <span className="text-muted-foreground mr-1 font-sans">Username:</span>
+                          {entry.username}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                      <div className="relative group/pass">
+                        <div className="h-9 px-3 min-w-[120px] bg-secondary/50 rounded-md flex items-center font-mono text-sm">
+                          {entry.isPasswordVisible
+                            ? entry.password
+                            : "••••••••••••"}
+                        </div>
+                      </div>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => togglePasswordVisibility(entry.id)}
+                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                      >
+                        {entry.isPasswordVisible ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => copyToClipboard(entry.password)}
+                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+
+                      <div className="h-4 w-px bg-border mx-1" />
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => router.push(`/password-manager?edit=${entry.id}`)}
+                        className="h-9 w-9 text-muted-foreground hover:text-primary"
+                        title="Edit in Password Manager"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Change Password Modal - still useful if we want to trigger it from dashboard alerts */}
+      <ChangePasswordModal 
+         isOpen={isChangePasswordOpen}
+         onClose={() => setIsChangePasswordOpen(false)}
       />
 
-      <div className={cn("flex-1 transition-all duration-300 flex flex-col min-w-0 lg:pl-20")}>
-        {/* Top bar for mobile only / breadcrumbs? */}
-        <header className="lg:hidden bg-background/80 backdrop-blur-md border-b border-border sticky top-0 z-30 p-4 pl-16">
-          <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold text-foreground font-heading">
-              Vault
-            </h1>
-            <div className="flex items-center bg-green-500/10 text-green-500 px-3 py-1 rounded-full text-[10px] font-medium border border-green-500/20">
-              <Unlock className="h-3 w-3 mr-1" />
-              Unlocked
-            </div>
-          </div>
-        </header>
-
-        <main className="flex-1 p-4 lg:p-8 space-y-8 max-w-7xl mx-auto w-full">
-          {/* Statistics & Info Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="bg-gradient-to-br from-primary/80 to-blue-900 border-none shadow-lg text-white relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/20 rounded-full blur-3xl -mr-10 -mt-10"></div>
-              <CardHeader className="pb-2">
-                <CardDescription className="text-white/70">
-                  Stored Credentials
-                </CardDescription>
-                <CardTitle className="text-4xl font-bold tracking-tighter">
-                  {decryptedEntries.length}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center text-xs text-white/60">
-                  <Clock className="h-3 w-3 mr-1" />
-                  Updated just now
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-2">
-                <CardDescription className="text-muted-foreground">
-                  Security Status
-                </CardDescription>
-                <CardTitle className="text-lg flex items-center gap-2 text-foreground font-heading">
-                  <ShieldCheck className="h-5 w-5 text-green-500" />
-                  AES-256-GCM
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground/80">
-                Keys are never stored in browser memory across sessions.
-              </CardContent>
-            </Card>
-
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-2">
-                <CardDescription className="text-muted-foreground">
-                  Auto-Logout
-                </CardDescription>
-                <CardTitle className="text-lg flex items-center gap-2 text-foreground font-heading">
-                  <Clock className="h-5 w-5 text-amber-500" />5 Minutes
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground/80">
-                You will be logged out automatically if no activity is detected.
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 gap-8">
-            {/* Vault Listing - Full Width */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-foreground font-heading">
-                  Stored Credentials
-                </h2>
-                <div className="flex-1 max-w-sm relative ml-4">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search credentials..."
-                    className="pl-9 h-10 bg-card border-border focus:border-primary transition-all rounded-xl"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {filteredEntries.length === 0 ? (
-                <div className="text-center py-20 px-6 bg-card border border-dashed border-border rounded-3xl">
-                  <div className="bg-secondary p-4 rounded-full w-fit mx-auto mb-4">
-                    <ShieldAlert className="h-10 w-10 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-foreground">
-                    No credentials found
-                  </h3>
-                  <p className="text-muted-foreground max-w-xs mx-auto mt-2">
-                    {searchQuery
-                      ? "No entries match your search."
-                      : "Start by adding your first secure credential using the form."}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4">
-                  {filteredEntries.map((entry) => (
-                    <Card
-                      key={entry.id}
-                      className="group hover:border-primary/50 transition-all duration-200 bg-card border-border"
-                    >
-                      <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                          <div className="bg-secondary p-2.5 rounded-xl text-foreground font-bold uppercase text-xs w-10 h-10 flex items-center justify-center border border-border group-hover:border-primary/30 transition-colors">
-                            {entry.site[0]}
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-foreground text-lg">
-                              {entry.site}
-                            </h4>
-                            <p className="text-sm text-muted-foreground">
-                              {entry.username}
-                            </p>
-                            {/* Password Strength Indicator */}
-                            {(() => {
-                              const strength = calculatePasswordStrength(
-                                entry.password,
-                              );
-                              return (
-                                <div className="flex items-center gap-2 mt-1">
-                                  <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden w-20">
-                                    <div
-                                      className={`h-full ${strength.color} transition-all duration-300`}
-                                      style={{ width: `${strength.score}%` }}
-                                    />
-                                  </div>
-                                  <span
-                                    className={`text-[10px] font-semibold ${strength.label === "Strong"
-                                      ? "text-green-600"
-                                      : strength.label === "Moderate"
-                                        ? "text-yellow-600"
-                                        : "text-red-600"
-                                      }`}
-                                  >
-                                    {strength.label}
-                                  </span>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-6 w-full sm:w-auto">
-                          <div className="flex-1 sm:w-48 bg-secondary/30 px-3 py-2 rounded-lg border border-border flex items-center justify-between">
-                            <code className="text-sm font-mono text-foreground/90">
-                              {entry.isPasswordVisible
-                                ? entry.password
-                                : "••••••••••••"}
-                            </code>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
-                                onClick={() => togglePasswordVisibility(entry.id)}
-                              >
-                                {entry.isPasswordVisible ? (
-                                  <EyeOff className="h-4 w-4" />
-                                ) : (
-                                  <Eye className="h-4 w-4" />
-                                )}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
-                                onClick={() => copyToClipboard(entry.password)}
-                              >
-                                <Copy className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-
-                          {isPasswordOld(entry) && !isSnoozed(entry) && (
-                            <div className="flex items-center gap-2 text-xs text-amber-600">
-                              <AlertCircle className="h-4 w-4 text-amber-500" />
-                              <span>Password is over 365 days old</span>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2 text-[10px]"
-                                onClick={() => snoozeEntry(entry.id)}
-                              >
-                                Snooze 7 days
-                              </Button>
-                            </div>
-                          )}
-
-
-
-                          <div className="flex items-center gap-4">
-                            <div className="text-[10px] text-muted-foreground flex flex-col items-end">
-                              <span className="uppercase font-bold tracking-wider">
-                                Updated
-                              </span>
-                              <span>
-                                {formatDistanceToNow(
-                                  new Date(entry.lastUpdated),
-                                  { addSuffix: true },
-                                )}
-                              </span>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                              onClick={() => handleEditEntry(entry)}
-                              title="Edit credential"
-                            >
-                              <Edit className="h-5 w-5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => handleDeleteEntry(entry.id)}
-                              title="Delete credential"
-                            >
-                              <Trash2 className="h-5 w-5" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-
-
-            </div>
-          </div>
-        </main>
-
-        {/* Edit Modal */}
-        {/* Edit Modal */}
-        <EditCredentialModal
-          isOpen={isEditModalOpen}
-          onClose={() => {
-            setIsEditModalOpen(false);
-            setEditingEntry(null);
-          }}
-          entry={editingEntry}
-          onSave={handleSaveEdit}
-        />
-
-        <footer className="bg-background/80 backdrop-blur border-t border-border py-6 px-8 mt-auto">
-          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
-            <p>
-              © 2026 ZeroKnowledge Password Manager.
-            </p>
-            <div className="flex items-center gap-6 opacity-80">
-              <span className="flex items-center">
-                <ShieldCheck className="h-3 w-3 mr-1 text-green-500" />
-                End-to-end Encrypted
-              </span>
-              <span className="flex items-center">
-                <Lock className="h-3 w-3 mr-1 text-indigo-500" />
-                Argon2id KDF
-              </span>
-              <span className="flex items-center">
-                <Unlock className="h-3 w-3 mr-1 text-amber-500" />
-                AES-256-GCM
-              </span>
-            </div>
-          </div>
-        </footer>
-      </div>
+      {/* Edit Credential Modal */}
+      <EditCredentialModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        entry={editingEntry}
+        onSave={handleSaveEdit}
+      />
     </div>
   );
 }
