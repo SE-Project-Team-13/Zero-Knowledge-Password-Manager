@@ -3,6 +3,9 @@ import { User, Session, VaultBlob, SyncMetadata, SimpleVault, OTP, RecoveryKey }
 import { revokeAllRecoveryKeys } from "./recoveryService.js"
 import type { User as UserType } from "../types/index.js"
 
+const isProduction = process.env.NODE_ENV === "production"
+const isDebug = process.env.DEBUG === "true"
+
 /**
  * Verifies the client's cryptographic proof against the server's verifier.
  * Uses SHA-256 for proof generation and timing-safe comparison.
@@ -18,6 +21,15 @@ function verifyClientProof(verifier: string, clientChallenge: string, clientProo
     .digest("hex")
 
   return crypto.timingSafeEqual(Buffer.from(clientProof), Buffer.from(expectedProof))
+}
+ 
+/**
+ * Hashes a session token for secure storage.
+ * @param token - The raw session token.
+ * @returns Hashed token.
+ */
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex")
 }
 
 /**
@@ -72,7 +84,10 @@ export async function authenticateUser(
     if (!isValid) {
       return { success: false, error: "Authentication failed" }
     }
-  } catch (error) {
+  } catch (error: unknown) {
+    if (!isProduction || isDebug) {
+      console.error("[VaultSync:Auth] Authentication verification failed:", error)
+    }
     return { success: false, error: "Authentication verification failed" }
   }
 
@@ -107,7 +122,7 @@ export async function generateSessionToken(
 
   const session = new Session({
     userId,
-    token,
+    token: hashToken(token),
     expiresAt,
   })
 
@@ -122,16 +137,42 @@ export async function generateSessionToken(
  */
 export async function validateSessionToken(
   token: string,
-): Promise<{ valid: boolean; userId?: string; error?: string }> {
+): Promise<{ valid: boolean; userId?: string; error?: string; isOtpVerified?: boolean }> {
   // ISO string comparison works lexicographically
   const now = new Date().toISOString().replace("T", " ").substring(0, 19)
-  const session = await Session.findOne({ token, expiresAt: { $gt: now } })
+  const hashedToken = hashToken(token)
+  const session = await Session.findOne({ token: hashedToken, expiresAt: { $gt: now } })
 
   if (!session) {
+    if (!isProduction || isDebug) {
+      console.warn("[VaultSync:Auth] Session not found or expired for token:", token.substring(0, 20) + "...")
+    }
     return { valid: false, error: "Invalid or expired token" }
   }
 
-  return { valid: true, userId: session.userId.toString() }
+  if (!isProduction || isDebug) {
+    console.log("[VaultSync:Auth] Session validated successfully. isOtpVerified:", session.isOtpVerified)
+  }
+  return { valid: true, userId: session.userId.toString(), isOtpVerified: session.isOtpVerified }
+}
+
+/**
+ * Marks a session as OTP verified.
+ * @param token - The session token.
+ */
+export async function markSessionOtpVerified(token: string): Promise<void> {
+  if (!isProduction || isDebug) {
+    console.log("[VaultSync:Auth] Updating session OTP verification for token:", token.substring(0, 20) + "...")
+  }
+  const hashedToken = hashToken(token)
+  const result = await Session.updateOne({ token: hashedToken }, { isOtpVerified: true })
+  if (result.modifiedCount === 0) {
+    if (!isProduction || isDebug) {
+      console.warn("[VaultSync:Auth] Warning: No session found to update with token:", token.substring(0, 20) + "...")
+    }
+  } else if (!isProduction || isDebug) {
+    console.log("[VaultSync:Auth] Session marked as OTP verified successfully")
+  }
 }
 
 /**
@@ -139,7 +180,8 @@ export async function validateSessionToken(
  * @param token - The token to invalidate.
  */
 export async function invalidateSessionToken(token: string): Promise<void> {
-  await Session.deleteOne({ token })
+  const hashedToken = hashToken(token)
+  await Session.deleteOne({ token: hashedToken })
 }
 
 /**
@@ -219,7 +261,7 @@ export async function updateUserCredentials(
       console.log(`[AuthService] Updating SimpleVault for ${normalizedEmail} with re-encrypted data`);
       // Map local sync format to simple vault format for compatibility
       await SimpleVault.findOneAndUpdate(
-        { userId: normalizedEmail },
+        { $or: [{ userId: userId }, { userId: normalizedEmail }] },
         {
           data: {
             ciphertext: encryptedVault.ciphertext,
@@ -250,7 +292,7 @@ export async function updateUserCredentials(
     const user = await User.findById(userId);
     if (user) {
       const normalizedEmail = user.email.trim().toLowerCase();
-      await SimpleVault.deleteMany({ userId: normalizedEmail });
+      await SimpleVault.deleteMany({ $or: [{ userId: userId }, { userId: normalizedEmail }] });
     }
   }
 }
@@ -280,7 +322,7 @@ export async function deleteUserAccount(userId: string): Promise<void> {
 
   // 6. Delete Simple Vault (Compatibility) and OTPs using email
   const email = user.email.toLowerCase()
-  await SimpleVault.deleteMany({ userId: email })
+  await SimpleVault.deleteMany({ $or: [{ userId: userId }, { userId: email }] })
   await OTP.deleteMany({ email })
 }
 

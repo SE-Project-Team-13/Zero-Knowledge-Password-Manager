@@ -21,6 +21,12 @@ export {
   createVaultEntry,
 } from "./vault"
 
+export {
+  generateVerifier,
+  generateClientProof,
+  generateChallenge,
+} from "./auth"
+
 export type {
   DerivedKey,
   VaultEntry,

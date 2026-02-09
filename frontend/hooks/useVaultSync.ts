@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react"
 import { apiClient, type VaultEntry, type SyncPayload } from "@/lib/api-client"
 import { v4 as uuidv4 } from "uuid"
-import { deriveKey } from "@password-manager/crypto-engine"
+import { deriveKey, generateVerifier, generateClientProof, generateChallenge } from "@password-manager/crypto-engine"
 
 export interface UseVaultSyncState {
   userId: string | null
@@ -30,6 +30,14 @@ export interface UseVaultSyncActions {
 }
 
 export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
+  const parseHexToUint8Array = (hex: string): Uint8Array => {
+    const matches = hex.match(/.{1,2}/g)
+    if (!matches) {
+      throw new Error("Invalid salt format from server")
+    }
+    return new Uint8Array(matches.map((byte) => parseInt(byte, 16)))
+  }
+
   const [state, setState] = useState<UseVaultSyncState>({
     userId: null,
     email: null,
@@ -95,13 +103,8 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       // Derive keys using Argon2id
       const { authKey } = await deriveKey(masterPassword, saltBuffer)
 
-      // Create proof by computing HMAC of a known string
-      const encoder = new TextEncoder()
-      const proofData = encoder.encode("auth-proof")
-      const proof = await crypto.subtle.sign("HMAC", authKey, proofData)
-      const proofHex = Array.from(new Uint8Array(proof))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
+      // Create proof using shared utility
+      const proofHex = await generateVerifier(authKey)
 
       // Register with server
       const response = await apiClient.register(email, fullName, proofHex, salt)
@@ -134,32 +137,19 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       const { salt } = await apiClient.getSalt(email)
 
       // Convert salt hex to buffer
-      const saltBuffer = new Uint8Array(salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)))
+      const saltBuffer = parseHexToUint8Array(salt)
 
       // 2. Derive keys using Argon2id (same as during registration)
       const { authKey } = await deriveKey(masterPassword, saltBuffer)
 
-      // 3. Re-compute verifier (proof of knowledge of password)
-      const encoder = new TextEncoder()
-      const proofData = encoder.encode("auth-proof")
-      const verifierBuffer = await crypto.subtle.sign("HMAC", authKey, proofData)
-      const verifier = Array.from(new Uint8Array(verifierBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
+      // 3. Re-compute verifier using shared utility
+      const verifier = await generateVerifier(authKey)
 
-      // 4. Generate random challenge
-      const challengeBuffer = crypto.getRandomValues(new Uint8Array(16))
-      const challenge = Array.from(challengeBuffer)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
+      // 4. Generate random challenge using shared utility
+      const challenge = generateChallenge()
 
-      // 5. Compute client proof = SHA-256(verifier + challenge)
-      // This proves we have the verifier without sending it over the wire
-      const combined = new TextEncoder().encode(verifier + challenge)
-      const clientProofBuffer = await crypto.subtle.digest("SHA-256", combined)
-      const clientProof = Array.from(new Uint8Array(clientProofBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
+      // 5. Compute client proof using shared utility
+      const clientProof = await generateClientProof(verifier, challenge)
 
       // 6. Send login request
       const response = await apiClient.login(email, challenge, clientProof)

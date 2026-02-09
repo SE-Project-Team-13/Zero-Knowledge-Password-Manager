@@ -34,6 +34,7 @@ export interface ISession extends Document {
   userId: mongoose.Types.ObjectId
   token: string
   expiresAt: string
+  isOtpVerified: boolean
   createdAt: string
 }
 
@@ -41,6 +42,7 @@ const SessionSchema = new Schema<ISession>({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
   token: { type: String, required: true, unique: true },
   expiresAt: { type: String, required: true },
+  isOtpVerified: { type: Boolean, default: false },
   createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
 })
 

@@ -12,7 +12,7 @@
  * This script is intentionally minimal to maintain security boundaries.
  */
 
-console.log('[Content Script] Password Manager content script loaded')
+console.log('[VaultSync:Extension] Content script loaded')
 
 function shouldInject(): boolean {
   // Avoid mutating Next.js/React apps before hydration
@@ -26,7 +26,7 @@ function shouldInject(): boolean {
 
 const canInject = shouldInject()
 if (!canInject) {
-  console.log('[Content Script] Skipping injection on app page')
+  console.log('[VaultSync:Extension] Skipping injection on app page')
 }
 
 // ============================================================================
@@ -41,7 +41,7 @@ function detectLoginForms() {
     const usernameInputs = form.querySelectorAll('input[type="text"], input[type="email"]')
 
     if (passwordInputs.length > 0 && usernameInputs.length > 0) {
-      console.log('[Content Script] Login form detected')
+      console.log('[VaultSync:Extension] Login form detected')
       addAutofillButton(form, usernameInputs[0] as HTMLInputElement, passwordInputs[0] as HTMLInputElement)
     }
   })
@@ -142,7 +142,7 @@ function addAutofillButton(form: HTMLFormElement, usernameInput: HTMLInputElemen
   const currentUrl = window.location.href
   chrome.runtime.sendMessage({ type: 'CHECK_URL_MATCH', url: currentUrl }, (response) => {
     const isSafe = Boolean(response && response.success && response.match)
-    console.log('[Content Script] URL match check:', {
+    console.log('[VaultSync:Extension] URL match check:', {
       currentUrl,
       currentNormalized: response?.currentNormalized,
       sampleEntries: response?.sampleEntries,

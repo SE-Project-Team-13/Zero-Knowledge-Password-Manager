@@ -20,6 +20,14 @@ export default function RecoveryLoginPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
 
+    const parseHexBytes = (hex: string, fieldName: string): Uint8Array => {
+        const chunks = hex.match(/.{1,2}/g);
+        if (!chunks) {
+            throw new Error(`Invalid ${fieldName} format`);
+        }
+        return new Uint8Array(chunks.map((byte: string) => parseInt(byte, 16)));
+    };
+
     const handleRecoveryLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
@@ -72,8 +80,8 @@ export default function RecoveryLoginPage() {
                 try {
                     // Decrypt the master password using the recovery key
                     const encryptedObj = JSON.parse(data.encryptedVaultKey)
-                    const iv = new Uint8Array(encryptedObj.iv.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)))
-                    const ciphertext = new Uint8Array(encryptedObj.ciphertext.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)))
+                    const iv = parseHexBytes(encryptedObj.iv, "iv")
+                    const ciphertext = parseHexBytes(encryptedObj.ciphertext, "ciphertext")
                     
                     const cleanRecoveryKey = recoveryKey.replace(/[\s-]/g, "").trim();
                     const binaryKeyString = atob(cleanRecoveryKey)
