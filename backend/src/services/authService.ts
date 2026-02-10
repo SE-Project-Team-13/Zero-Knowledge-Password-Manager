@@ -20,7 +20,12 @@ function verifyClientProof(verifier: string, clientChallenge: string, clientProo
     .update(verifier + clientChallenge)
     .digest("hex")
 
-  return crypto.timingSafeEqual(Buffer.from(clientProof), Buffer.from(expectedProof))
+  const bufferA = Buffer.from(clientProof)
+  const bufferB = Buffer.from(expectedProof)
+
+  if (bufferA.length !== bufferB.length) return false
+
+  return crypto.timingSafeEqual(bufferA, bufferB)
 }
  
 /**
