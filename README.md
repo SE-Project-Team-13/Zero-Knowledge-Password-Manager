@@ -13,6 +13,8 @@ This repository contains the source code for the **Zero-Knowledge Password Manag
 ## 🔗 Quick Links
 
 - **[Installation](#installation)**
+- **[Verifying Installation](#verifying-installation)**
+- **[Running Tests](#running-tests)**
 - **[Usage Guide](#usage-guide)**
 - **[Architecture](#architecture-deep-dive)**
 
@@ -28,6 +30,8 @@ This repository contains the source code for the **Zero-Knowledge Password Manag
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Running the Project](#running-the-project)
+- [Verifying Installation](#verifying-installation)
+- [Running Tests](#running-tests)
 - [Usage Guide](#usage-guide)
   - [Registering & Vault Creation](#registering--vault-creation)
   - [Managing Passwords](#managing-passwords)
