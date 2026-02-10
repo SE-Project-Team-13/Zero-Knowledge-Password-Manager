@@ -64,8 +64,6 @@ async function start() {
     const ALLOWED_ORIGINS = [
       "http://localhost:3000",
       "http://localhost:3001",
-      // Add your Chrome extension ID here when known
-      // "chrome-extension://<YOUR_EXTENSION_ID>"
     ]
 
     app.use((req, res, next) => {
