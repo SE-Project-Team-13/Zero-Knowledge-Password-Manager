@@ -158,11 +158,13 @@ export async function generateLoginChallenge(
  * Generates a random session token for an authenticated user.
  * @param userId - The ID of the user.
  * @param expirationMinutes - Token validity duration (default: 24h).
+ * @param isOtpVerified - Initial OTP verification status (default: false).
  * @returns The generated session token.
  */
 export async function generateSessionToken(
   userId: string,
   expirationMinutes: number = 24 * 60,
+  isOtpVerified: boolean = false,
 ): Promise<string> {
   const token = crypto.randomBytes(32).toString("hex")
   const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
@@ -171,6 +173,7 @@ export async function generateSessionToken(
     userId,
     token: hashToken(token),
     expiresAt,
+    isOtpVerified,
   })
 
   await session.save()

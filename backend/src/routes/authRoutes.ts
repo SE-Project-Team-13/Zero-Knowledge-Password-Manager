@@ -51,7 +51,9 @@ export function createAuthRouter(): Router {
 
       try {
         const user = await registerUser(email, fullName, salt, verifier)
-        const sessionToken = await generateSessionToken(user.id)
+        // Newly registered users are implicitly verified for their first session
+        // so they can generate their recovery key immediately.
+        const sessionToken = await generateSessionToken(user.id, 24 * 60, true)
 
         return res.status(201).json({
           userId: user.id,

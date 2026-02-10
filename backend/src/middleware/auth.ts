@@ -44,7 +44,7 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
     const isOtpRoute = req.originalUrl.includes("/otp/send") || req.originalUrl.includes("/otp/verify");
 
     if (!validation.isOtpVerified && !isOtpRoute) {
-       console.warn(`[VaultSync:Auth] OTP verification required for user ${validation.userId}`)
+       console.warn(`[VaultSync:Auth] Blocked: OTP verification required for user ${validation.userId} at ${req.originalUrl}`)
        return res.status(403).json({
          error: "OTP verification required",
          code: "OTP_REQUIRED",

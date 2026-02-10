@@ -288,7 +288,7 @@ export default function ResetPasswordPage() {
                                 <Input
                                     id="password"
                                     type={showPassword ? "text" : "password"}
-                                    placeholder="••••••••••••••••"
+                                    placeholder="Enter your new password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="pl-10 pr-10 bg-secondary/50 font-mono"
@@ -314,7 +314,7 @@ export default function ResetPasswordPage() {
                                 <Input
                                     id="confirm-password"
                                     type={showPassword ? "text" : "password"}
-                                    placeholder="••••••••••••••••"
+                                    placeholder="Enter your new password again"
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                     className="pl-10 bg-secondary/50 font-mono"
@@ -325,7 +325,7 @@ export default function ResetPasswordPage() {
                         </div>
                     </CardContent>
 
-                    <CardFooter>
+                    <CardFooter className="flex flex-col gap-3 pt-6">
                         <Button
                             type="submit"
                             className="w-full h-12 font-semibold shadow-lg shadow-primary/20"
