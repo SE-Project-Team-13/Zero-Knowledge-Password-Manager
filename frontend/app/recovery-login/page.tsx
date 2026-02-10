@@ -92,16 +92,16 @@ export default function RecoveryLoginPage() {
 
                     const wrappingKey = await window.crypto.subtle.importKey(
                         "raw",
-                        keyBytes,
+                        keyBytes as any,
                         { name: "AES-GCM" },
                         false,
                         ["decrypt"]
                     )
 
                     const decryptedBuffer = await window.crypto.subtle.decrypt(
-                        { name: "AES-GCM", iv },
+                        { name: "AES-GCM", iv: iv as any },
                         wrappingKey,
-                        ciphertext
+                        ciphertext as any
                     )
 
                     const masterPassword = new TextDecoder().decode(decryptedBuffer)
@@ -169,7 +169,7 @@ export default function RecoveryLoginPage() {
                             <Input
                                 id="email"
                                 type="email"
-                                placeholder="your@email.com"
+                                placeholder="Enter your email address"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="bg-secondary/50 border-input focus:border-primary"
@@ -183,23 +183,19 @@ export default function RecoveryLoginPage() {
                             </Label>
                             <textarea
                                 id="recovery-key"
-                                placeholder="Paste your recovery key from the Emergency Kit PDF"
+                                placeholder="Enter your 24-character recovery key"
                                 value={recoveryKey}
                                 onChange={(e) => setRecoveryKey(e.target.value)}
                                 rows={3}
                                 className="w-full px-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-secondary/50 text-foreground placeholder-muted-foreground font-mono"
                                 required
                             />
-                            <p className="text-xs text-muted-foreground">
-                                The recovery key can be found in your Emergency Kit PDF.
-                                It can be entered with or without dashes.
-                            </p>
                         </div>
 
 
                     </CardContent>
 
-                    <CardFooter className="flex flex-col gap-3">
+                    <CardFooter className="flex flex-col gap-3 pt-6">
                         <Button
                             type="submit"
                             className="w-full h-12 font-semibold shadow-lg shadow-primary/20 transition-all font-heading tracking-wide"

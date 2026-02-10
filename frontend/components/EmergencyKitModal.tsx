@@ -74,7 +74,7 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
 
             const wrappingKey = await window.crypto.subtle.importKey(
                 "raw",
-                keyBytes,
+                keyBytes as any,
                 { name: "AES-GCM" },
                 false,
                 ["encrypt"]
@@ -83,9 +83,9 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
             const iv = window.crypto.getRandomValues(new Uint8Array(12))
             const encoder = new TextEncoder()
             const encryptedBuffer = await window.crypto.subtle.encrypt(
-                { name: "AES-GCM", iv },
+                { name: "AES-GCM", iv: iv as any },
                 wrappingKey,
-                encoder.encode(masterPassword)
+                encoder.encode(masterPassword) as any
             )
 
             const encryptedVaultKey = JSON.stringify({
@@ -95,7 +95,7 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
 
             // 3. Hash the key for server authentication
             const keyData = encoder.encode(recoveryKey)
-            const hashBuffer = await window.crypto.subtle.digest("SHA-256", keyData)
+            const hashBuffer = await window.crypto.subtle.digest("SHA-256", keyData as any)
             const keyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("")
 
             // 4. Activate the key on the server

@@ -17,7 +17,7 @@
 export async function generateVerifier(authKey: CryptoKey): Promise<string> {
   const encoder = new TextEncoder();
   const proofData = encoder.encode("auth-proof");
-  const verifierBuffer = await crypto.subtle.sign("HMAC", authKey, proofData);
+  const verifierBuffer = await crypto.subtle.sign("HMAC", authKey, proofData as any);
   return Array.from(new Uint8Array(verifierBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -37,7 +37,7 @@ export async function generateClientProof(
 ): Promise<string> {
   const encoder = new TextEncoder();
   const combined = encoder.encode(verifierHex + challengeHex);
-  const clientProofBuffer = await crypto.subtle.digest("SHA-256", combined);
+  const clientProofBuffer = await crypto.subtle.digest("SHA-256", combined as any);
   return Array.from(new Uint8Array(clientProofBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");

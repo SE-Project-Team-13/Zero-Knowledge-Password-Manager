@@ -7,14 +7,15 @@ import express from "express"
 import path from "path"
 import { fileURLToPath } from "url"
 import { connectToDatabase, closeDatabase } from "./database/index.js"
-import { SimpleVault } from "./database/models.js"
+import helmet from "helmet"
+import { rateLimit } from "express-rate-limit"
+import { validateSessionToken } from "./services/authService.js"
+import { User, SimpleVault } from "./database/models.js"
 import { createAuthRouter } from "./routes/authRoutes.js"
 import { createSyncRouter } from "./routes/syncRoutes.js"
 import { createOTPRouter } from "./routes/otpRoutes.js"
 import { createRecoveryRouter } from "./routes/recoveryRoutes.js"
 import { initScheduledJobs } from "./services/cronService.js"
-import helmet from "helmet"
-import { rateLimit } from "express-rate-limit"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3001
@@ -60,8 +61,20 @@ async function start() {
     app.use(helmet())
 
     // CORS Middleware
+    const ALLOWED_ORIGINS = [
+      "http://localhost:3000",
+      "http://localhost:3001",
+    ]
+
     app.use((req, res, next) => {
-      res.header("Access-Control-Allow-Origin", "*")
+      const origin = req.headers.origin
+      if (origin && ALLOWED_ORIGINS.includes(origin)) {
+        res.header("Access-Control-Allow-Origin", origin)
+      } else if (!origin && !isProduction) {
+        // Allow requests without origin (like direct browser hits) in development
+        res.header("Access-Control-Allow-Origin", "*")
+      }
+      
       res.header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS")
       res.header("Access-Control-Allow-Headers", "Content-Type, Authorization")
       if (req.method === "OPTIONS") return res.sendStatus(200)
@@ -110,15 +123,6 @@ async function start() {
         const token = extractBearerToken(req.headers.authorization)
         if (!token) return res.status(401).json({ error: "Unauthorized" })
 
-        let validateSessionToken;
-        try {
-          const authModule = await import("./services/authService.js");
-          validateSessionToken = authModule.validateSessionToken;
-        } catch (importErr) {
-          logger.error("Failed to load auth service:", importErr);
-          return res.status(500).json({ error: "Service unavailable", code: "IMPORT_ERROR", message: "Internal dependency failed to load" });
-        }
-        
         const session = await validateSessionToken(token)
         
         if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })
@@ -135,14 +139,7 @@ async function start() {
 
         if (!vault) {
           try {
-            let User;
-            try {
-              const modelsModule = await import("./database/models.js");
-              User = modelsModule.User;
-            } catch (importErr) {
-              logger.error("Failed to load models for migration:", importErr);
-              throw importErr; // Caught by outer catch
-            }
+
             const user = await User.findById(session.userId)
             const legacyKey = user?.email?.toLowerCase()
             if (legacyKey) {
@@ -172,15 +169,6 @@ async function start() {
         const token = extractBearerToken(req.headers.authorization)
         if (!token) return res.status(401).json({ error: "Unauthorized" })
 
-        let validateSessionToken;
-        try {
-          const authModule = await import("./services/authService.js");
-          validateSessionToken = authModule.validateSessionToken;
-        } catch (importErr) {
-          logger.error("Failed to load auth service:", importErr);
-          return res.status(500).json({ error: "Service unavailable", code: "IMPORT_ERROR", message: "Internal dependency failed to load" });
-        }
-        
         const session = await validateSessionToken(token)
         
         if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })
@@ -220,15 +208,6 @@ async function start() {
         const token = extractBearerToken(req.headers.authorization)
         if (!token) return res.status(401).json({ error: "Unauthorized" })
 
-        let validateSessionToken;
-        try {
-          const authModule = await import("./services/authService.js");
-          validateSessionToken = authModule.validateSessionToken;
-        } catch (importErr) {
-          logger.error("Failed to load auth service:", importErr);
-          return res.status(500).json({ error: "Service unavailable", code: "IMPORT_ERROR", message: "Internal dependency failed to load" });
-        }
-        
         const session = await validateSessionToken(token)
         
         if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })

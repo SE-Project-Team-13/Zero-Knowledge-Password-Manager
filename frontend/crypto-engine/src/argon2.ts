@@ -67,7 +67,7 @@ export async function deriveKey(
   // Import for AES-GCM (Encryption)
   const encryptionKey = await crypto.subtle.importKey(
     "raw",
-    derivedKeyMaterial.slice(0, mergedOptions.hashLength),
+    derivedKeyMaterial.slice(0, mergedOptions.hashLength) as any,
     { name: "AES-GCM" },
     false, // non-extractable
     ["encrypt", "decrypt"],
@@ -76,7 +76,7 @@ export async function deriveKey(
   // Import for HMAC-SHA256 (Authentication Proofs)
   const authKey = await crypto.subtle.importKey(
     "raw",
-    derivedKeyMaterial.slice(0, mergedOptions.hashLength),
+    derivedKeyMaterial.slice(0, mergedOptions.hashLength) as any,
     { name: "HMAC", hash: "SHA-256" },
     false, // non-extractable
     ["sign", "verify"],
