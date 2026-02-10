@@ -198,6 +198,165 @@ npm run build -w backend
 npm start
 ```
 
+## Verifying Installation
+
+After installation, verify that everything is set up correctly:
+
+### 1. Check Node.js and npm Versions
+
+```bash
+node -v  # Should be v18.0.0 or higher
+npm -v   # Should be v9.0.0 or higher
+```
+
+### 2. Verify MongoDB Connection
+
+```bash
+# If using local MongoDB
+mongosh --eval "db.version()"
+
+# Or check if MongoDB is running
+# Windows: Check Services for "MongoDB"
+# macOS/Linux: sudo systemctl status mongod
+```
+
+### 3. Verify Dependencies Installation
+
+```bash
+# Check if all workspaces installed correctly
+npm list --depth=0
+```
+
+Expected output should show:
+- `@password-manager/backend`
+- `@password-manager/crypto-engine`
+- `password-manager` (frontend)
+
+### 4. Verify Crypto Engine Build
+
+```bash
+# Check if crypto engine compiled successfully
+ls frontend/crypto-engine/dist/
+```
+
+You should see: `index.js`, `index.d.ts`, `aes.js`, `argon2.js`, `vault.js`, and corresponding `.d.ts` files.
+
+### 5. Test Backend Server
+
+```bash
+npm run dev:backend
+```
+
+**Expected output:**
+```
+[VaultSync] Blind sync backend listening on port 3001
+[VaultSync] MongoDB connected successfully
+[BreachDetection] Scheduled job initialized
+```
+
+If you see these messages, the backend is running correctly. Press `Ctrl+C` to stop.
+
+### 6. Test Frontend Server
+
+```bash
+npm run dev
+```
+
+**Expected output:**
+```
+▲ Next.js 16.0.10
+- Local:        http://localhost:3000
+✓ Ready in 2.5s
+```
+
+Open `http://localhost:3000` in your browser. You should see the login/registration page.
+
+## Running Tests
+
+The project includes comprehensive unit tests for both backend and frontend components.
+
+### Backend Tests
+
+Run all backend tests:
+
+```bash
+cd backend
+npm test
+```
+
+**Test Coverage Includes:**
+- Authentication service tests
+- Crypto proof validation
+- Session management
+- Account management
+- Breach detection service
+- Recovery key generation
+
+**Expected output:**
+```
+PASS  __tests__/services/auth/registration.test.ts
+PASS  __tests__/services/auth/sessions.test.ts
+PASS  __tests__/services/auth/cryptoProofs.test.ts
+...
+Test Suites: X passed, X total
+Tests:       X passed, X total
+```
+
+### Frontend Tests
+
+Run crypto engine tests:
+
+```bash
+cd frontend/crypto-engine
+npm test
+```
+
+**Test Coverage Includes:**
+- AES-256-GCM encryption/decryption
+- Argon2id key derivation
+- Vault encryption/decryption
+- Data integrity validation
+
+**Expected output:**
+```
+✓ AES encryption produces different ciphertext for same plaintext
+✓ Argon2id key derivation is deterministic
+✓ Vault encryption includes metadata
+...
+```
+
+Run frontend component tests:
+
+```bash
+cd frontend
+npm test
+```
+
+**Test Coverage Includes:**
+- PDF service (Emergency Kit generation)
+- Clipboard utilities
+- Recovery key validation
+
+### Running Specific Tests
+
+```bash
+# Backend: Run specific test file
+npm test -- authService.test.ts
+
+# Frontend: Run specific test suite
+npm test -- aes.test.ts
+```
+
+### Test in Watch Mode
+
+```bash
+# Backend
+npm test -- --watch
+
+# Frontend crypto-engine
+npm test -- --watch
+```
+
 ## Usage Guide
 
 Once the servers are running, follow these steps to use the application:
