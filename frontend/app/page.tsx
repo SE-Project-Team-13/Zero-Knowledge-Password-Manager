@@ -236,7 +236,7 @@ export default function AuthPage() {
                     id="email"
                     type="email"
                     className="pl-10 bg-secondary/50 border-input focus:border-primary transition-colors"
-                    placeholder="you@example.com"
+                    placeholder="Enter your email address"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={isSubmitting}
@@ -271,7 +271,7 @@ export default function AuthPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     className="pl-10 pr-10 bg-secondary/50 border-input focus:border-primary transition-colors font-mono"
-                    placeholder="••••••••••••••••"
+                    placeholder="Enter your master password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isSubmitting}
@@ -303,7 +303,7 @@ export default function AuthPage() {
                       id="confirm-password"
                       type={showPassword ? "text" : "password"}
                       className="pl-10 bg-secondary/50 border-input focus:border-primary transition-colors font-mono"
-                      placeholder="••••••••••••••••"
+                      placeholder="Confirm your master password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       disabled={isSubmitting}
@@ -331,7 +331,7 @@ export default function AuthPage() {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full h-11 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all font-heading tracking-wide"
+                className="w-full h-11 mt-4 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all font-heading tracking-wide"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
