@@ -127,10 +127,6 @@ async function start() {
         
         if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })
 
-        if (!session.isOtpVerified) {
-          return res.status(403).json({ error: "OTP verification required", code: "OTP_REQUIRED" })
-        }
-
         if (!requestedUserId || session.userId !== requestedUserId) {
           return res.status(403).json({ error: "Forbidden: Access denied" })
         }
@@ -171,11 +167,7 @@ async function start() {
 
         const session = await validateSessionToken(token)
         
-        if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })
-
-        if (!session.isOtpVerified) {
-          return res.status(403).json({ error: "OTP verification required", code: "OTP_REQUIRED" })
-        }
+        if (!session.userId) return res.status(401).json({ error: "Invalid session" })
 
         if (!requestedUserId || session.userId !== requestedUserId) {
           return res.status(403).json({ error: "Forbidden: Update denied" })
@@ -210,11 +202,7 @@ async function start() {
 
         const session = await validateSessionToken(token)
         
-        if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })
-
-        if (!session.isOtpVerified) {
-          return res.status(403).json({ error: "OTP verification required", code: "OTP_REQUIRED" })
-        }
+        if (!session.userId) return res.status(401).json({ error: "Invalid session" })
 
         if (!requestedUserId || session.userId !== requestedUserId) {
           return res.status(403).json({ error: "Forbidden: Delete denied" })
