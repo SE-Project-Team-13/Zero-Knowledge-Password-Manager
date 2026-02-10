@@ -5,7 +5,7 @@
 
 import { Router, type Request, type Response } from "express"
 import * as crypto from "crypto"
-import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount } from "../services/authService.js"
+import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount, generateLoginChallenge } from "../services/authService.js"
 import { User } from "../database/models.js"
 import type { RegisterRequest, LoginRequest, LoginResponse, ErrorResponse } from "../types/index.js"
 import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
@@ -144,6 +144,7 @@ export function createAuthRouter(): Router {
       let { email } = req.params
       if (email) email = email.trim().toLowerCase()
       const salt = await getUserSalt(email)
+      const challenge = await generateLoginChallenge(email)
 
       if (!salt) {
         return res.status(404).json({
@@ -153,7 +154,7 @@ export function createAuthRouter(): Router {
         } as ErrorResponse)
       }
 
-      return res.status(200).json({ salt })
+      return res.status(200).json({ salt, challenge })
     } catch (error) {
       console.error("[VaultSync] Salt fetch error:", error)
       return res.status(500).json({

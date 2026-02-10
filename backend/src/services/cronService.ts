@@ -63,7 +63,7 @@ export function initScheduledJobs() {
     cron.schedule("0 2 * * *", async () => {
         console.log("[VaultSync:Cron] Running scheduled Cleanup job...");
         try {
-            const { Session, OTP } = await import("../database/models.js");
+            const { Session, OTP, LoginChallenge } = await import("../database/models.js");
             const now = new Date().toISOString().replace("T", " ").substring(0, 19);
             
             // Cleanup expired sessions
@@ -76,6 +76,12 @@ export function initScheduledJobs() {
             const otpResult = await OTP.deleteMany({ expiresAt: { $lt: now } });
             if (otpResult.deletedCount > 0) {
                 console.log(`[VaultSync:Cron] Cleaned up ${otpResult.deletedCount} expired OTPs.`);
+            }
+
+            // Cleanup expired login challenges
+            const challengeResult = await LoginChallenge.deleteMany({ expiresAt: { $lt: now } });
+            if (challengeResult.deletedCount > 0) {
+                console.log(`[VaultSync:Cron] Cleaned up ${challengeResult.deletedCount} expired login challenges.`);
             }
         } catch (error) {
             console.error("[VaultSync:Cron] Error running cleanup job:", error);

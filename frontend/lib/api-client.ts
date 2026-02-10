@@ -2,7 +2,7 @@ export interface VaultEntry {
   site: string
   username: string
   password: string
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, any>
 }
 
 export interface SyncPayload {
@@ -87,8 +87,8 @@ class ApiClient {
   }
 
   // Authentication Endpoints
-  async getSalt(email: string): Promise<{ salt: string }> {
-    return this.request<{ salt: string }>(`/auth/salt/${encodeURIComponent(email)}`)
+  async getSalt(email: string): Promise<{ salt: string, challenge: string }> {
+    return this.request<{ salt: string, challenge: string }>(`/auth/salt/${encodeURIComponent(email)}`)
   }
 
   async checkEmail(email: string): Promise<{ exists: boolean }> {
@@ -109,10 +109,21 @@ class ApiClient {
     })
   }
 
+  async verifyOtp(email: string, code: string): Promise<AuthResponse> {
+    return this.request<AuthResponse>("/otp/verify", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    })
+  }
+
+  async checkBreach(email: string): Promise<{ isBreached: boolean }> {
+    return this.request<{ isBreached: boolean }>(`/auth/check-breach/${encodeURIComponent(email)}`)
+  }
+
   async resolveBreach(email: string): Promise<{ success: boolean }> {
+    // email is not sent in body to preserve privacy; backend uses session token
     return this.request<{ success: boolean }>("/auth/resolve-breach", {
       method: "POST",
-      body: JSON.stringify({ email }),
     })
   }
 

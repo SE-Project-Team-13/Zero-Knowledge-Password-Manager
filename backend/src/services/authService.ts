@@ -1,5 +1,5 @@
 import crypto from "crypto"
-import { User, Session, VaultBlob, SyncMetadata, SimpleVault, OTP, RecoveryKey } from "../database/models.js"
+import { User, Session, VaultBlob, SyncMetadata, SimpleVault, OTP, RecoveryKey, LoginChallenge } from "../database/models.js"
 import { revokeAllRecoveryKeys } from "./recoveryService.js"
 import type { User as UserType } from "../types/index.js"
 
@@ -63,8 +63,10 @@ export async function registerUser(email: string, fullName: string, salt: string
 
 /**
  * Authenticates a user using the ZKP proof provided.
+ * Verifies that the challenge provided by the client matches the fresh server-generated challenge.
+ * 
  * @param email - User's email.
- * @param clientChallenge - The challenge for this authentication session.
+ * @param clientChallenge - The challenge provided by the client (must match server's stored challenge).
  * @param clientProof - The proof derived by the client.
  * @returns Success status and user object or error message.
  */
@@ -73,12 +75,34 @@ export async function authenticateUser(
   clientChallenge: string,
   clientProof: string,
 ): Promise<{ success: boolean; user?: UserType; error?: string }> {
-  const user = await User.findOne({ email: email.trim().toLowerCase() })
+  const normalizedEmail = email.trim().toLowerCase()
+  const user = await User.findOne({ email: normalizedEmail })
 
   if (!user) {
     return { success: false, error: "User not found" }
   }
 
+  // 1. Verify Challenge Freshness (Replay Protection)
+  const storedChallenge = await LoginChallenge.findOne({ email: normalizedEmail })
+  if (!storedChallenge) {
+    return { success: false, error: "Authentication challenge expired or not found. Please request a new salt/challenge." }
+  }
+
+  // Check TTL (ISO comparison)
+  const now = new Date().toISOString().replace("T", " ").substring(0, 19)
+  if (storedChallenge.expiresAt < now) {
+    await LoginChallenge.deleteOne({ _id: storedChallenge._id })
+    return { success: false, error: "Authentication challenge expired. Please try again." }
+  }
+
+  if (storedChallenge.challenge !== clientChallenge) {
+    return { success: false, error: "Invalid authentication challenge." }
+  }
+
+  // 2. Clear challenge once used (single-use)
+  await LoginChallenge.deleteOne({ _id: storedChallenge._id })
+
+  // 3. Verify Proof
   try {
     const isValid = verifyClientProof(user.verifier, clientChallenge, clientProof)
     if (!isValid) {
@@ -105,6 +129,29 @@ export async function authenticateUser(
       lastBreachCheck: user.lastBreachCheck,
     },
   }
+}
+
+/**
+ * Generates and stores a fresh authentication challenge for a user.
+ * 
+ * @param email - User's email.
+ * @param ttlMinutes - Challenge validity duration (e.g., 5 mins).
+ * @returns Hex-encoded challenge.
+ */
+export async function generateLoginChallenge(
+  email: string,
+  ttlMinutes: number = 5
+): Promise<string> {
+  const challenge = crypto.randomBytes(16).toString("hex")
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
+
+  await LoginChallenge.findOneAndUpdate(
+    { email: email.trim().toLowerCase() },
+    { challenge, expiresAt },
+    { upsert: true }
+  )
+
+  return challenge
 }
 
 /**
@@ -254,7 +301,6 @@ export async function updateUserCredentials(
     )
 
     // Update Compatibility Vault (SimpleVault)
-    const { SimpleVault } = await import("../database/models.js");
     const user = await User.findById(userId);
     if (user) {
       const normalizedEmail = user.email.trim().toLowerCase();
@@ -285,7 +331,6 @@ export async function updateUserCredentials(
     await VaultBlob.deleteMany({ userId });
     
     // Clear Sync Metadata
-    const { SyncMetadata, SimpleVault } = await import("../database/models.js");
     await SyncMetadata.deleteMany({ userId });
     
     // Clear Simple Vault (compatibility layer used by dashboard)
