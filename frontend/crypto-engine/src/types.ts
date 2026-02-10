@@ -22,11 +22,7 @@ export interface VaultEntry {
   site: string
   username: string
   password: string
-  metadata?: {
-    createdAt?: string
-    updatedAt?: string
-    [key: string]: any
-  }
+  metadata?: Record<string, any>
 }
 
 /**

@@ -171,6 +171,23 @@ const RecoveryKeySchema = new Schema<IRecoveryKey>({
 // Index for fast lookup by userId
 RecoveryKeySchema.index({ userId: 1 })
 
+/**
+ * LoginChallenge Schema: Stores temporary challenges for secure authentication.
+ * Used to prevent replay attacks by ensuring each login attempt uses a fresh, 
+ * server-generated challenge.
+ */
+export interface ILoginChallenge extends Document {
+  email: string
+  challenge: string
+  expiresAt: string
+}
+
+const LoginChallengeSchema = new Schema<ILoginChallenge>({
+  email: { type: String, required: true, unique: true },
+  challenge: { type: String, required: true },
+  expiresAt: { type: String, required: true },
+})
+
 // Export Mongoose Models
 export const User = mongoose.model<IUser>("User", UserSchema)
 export const Session = mongoose.model<ISession>("Session", SessionSchema)
@@ -179,4 +196,5 @@ export const SyncMetadata = mongoose.model<ISyncMetadata>("SyncMetadata", SyncMe
 export const SimpleVault = mongoose.model<ISimpleVault>("SimpleVault", SimpleVaultSchema)
 export const OTP = mongoose.model<IOTP>("OTP", OTPSchema)
 export const RecoveryKey = mongoose.model<IRecoveryKey>("RecoveryKey", RecoveryKeySchema)
+export const LoginChallenge = mongoose.model<ILoginChallenge>("LoginChallenge", LoginChallengeSchema)
 

@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react"
 import { apiClient, type VaultEntry, type SyncPayload } from "@/lib/api-client"
 import { v4 as uuidv4 } from "uuid"
-import { deriveKey, generateVerifier, generateClientProof, generateChallenge } from "@password-manager/crypto-engine"
+import { deriveKey, generateVerifier, generateClientProof } from "@password-manager/crypto-engine"
 
 export interface UseVaultSyncState {
   userId: string | null
@@ -133,8 +133,8 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
   const login = useCallback(async (email: string, masterPassword: string) => {
     setState((prev) => ({ ...prev, isLoading: true, error: null }))
     try {
-      // 1. Get salt from server
-      const { salt } = await apiClient.getSalt(email)
+      // 1. Get salt and fresh challenge from server (to prevent replay attacks)
+      const { salt, challenge } = await apiClient.getSalt(email)
 
       // Convert salt hex to buffer
       const saltBuffer = parseHexToUint8Array(salt)
@@ -142,16 +142,13 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       // 2. Derive keys using Argon2id (same as during registration)
       const { authKey } = await deriveKey(masterPassword, saltBuffer)
 
-      // 3. Re-compute verifier using shared utility
+      // 3. Re-compute verifier
       const verifier = await generateVerifier(authKey)
 
-      // 4. Generate random challenge using shared utility
-      const challenge = generateChallenge()
-
-      // 5. Compute client proof using shared utility
+      // 4. Compute client proof using server-provided challenge
       const clientProof = await generateClientProof(verifier, challenge)
 
-      // 6. Send login request
+      // 5. Send login request
       const response = await apiClient.login(email, challenge, clientProof)
 
       apiClient.setToken(response.sessionToken)
