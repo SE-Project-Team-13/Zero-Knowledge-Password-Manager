@@ -244,7 +244,7 @@ async function handleUnlockVault(message: UnlockVaultMessage): Promise<{ success
     const email = message.userId
 
     // Step 1: Get user salt from backend
-    const { salt: saltHex } = await apiRequest<{ salt: string }>(`/auth/salt/${encodeURIComponent(email)}`)
+    const { salt: saltHex, challenge: challengeHex } = await apiRequest<{ salt: string, challenge: string }>(`/auth/salt/${encodeURIComponent(email)}`)
     const saltChunks = saltHex.match(/.{1,2}/g)
     if (!saltChunks) {
       throw new Error('Invalid salt format returned by server')
@@ -259,7 +259,6 @@ async function handleUnlockVault(message: UnlockVaultMessage): Promise<{ success
     // Step 3: Login to get session token using ZKP auth utilities
     
     const verifierHex = await generateVerifier(derivedKeys.authKey)
-    const challengeHex = generateChallenge()
     const clientProof = await generateClientProof(verifierHex, challengeHex)
 
     const authResponse = await apiRequest<{ sessionToken: string; userId: string }>('/auth/login', {
