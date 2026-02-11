@@ -42,7 +42,7 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
     // SECURITY: Standardized OTP check for all protected routes
     // Skip OTP check for OTP-related routes to avoid deadlocks during the verification process
     const allowedOtpPaths = ["/otp/send", "/otp/verify"];
-    const isOtpRoute = allowedOtpPaths.some(path => req.path.endsWith(path));
+    const isOtpRoute = allowedOtpPaths.some(path => req.originalUrl.split("?")[0].endsWith(path));
 
     if (!validation.isOtpVerified && !isOtpRoute) {
        console.warn(`[VaultSync:Auth] Blocked: OTP verification required for user ${validation.userId} at ${req.originalUrl}`)
