@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: password-manager-backend
+    env: node
+    buildCommand: npm install && npm run build -w backend
+    startCommand: npm start -w backend
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        sync: false
+
+  - type: web
+    name: password-manager-frontend
+    env: node
+    buildCommand: npm install && npm run crypto:build && npm run build -w frontend
+    startCommand: npm start -w frontend
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: password-manager-backend
+          property: url
+      - key: NODE_ENV
+        value: production
