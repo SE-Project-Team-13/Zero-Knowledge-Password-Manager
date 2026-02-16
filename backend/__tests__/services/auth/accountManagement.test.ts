@@ -1,97 +1,77 @@
 
 import { jest, describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
+import mongoose from 'mongoose';
+import { User, OTP, Session, LoginChallenge, RecoveryKey } from '../../../src/database/models.js';
 
-// ------------------------------------------------------------------
-// 1. Define Mocks
-// ------------------------------------------------------------------
-const mockDelete = jest.fn();
-const mockUpdate = jest.fn();
-const mockFindById = jest.fn();
-const mockFindByIdAndUpdate = jest.fn();
-
-const MockUser = jest.fn().mockImplementation((data: any) => ({ ...data }));
-(MockUser as any).findById = mockFindById;
-(MockUser as any).findByIdAndDelete = mockDelete;
-(MockUser as any).findByIdAndUpdate = mockFindByIdAndUpdate;
-
-const MockOther = jest.fn();
-(MockOther as any).deleteMany = mockDelete;
-(MockOther as any).findOneAndUpdate = jest.fn();
-(MockOther as any).updateOne = jest.fn();
-
-const mockRevokeKeys = jest.fn();
-
-// ------------------------------------------------------------------
-// 2. Register Unstable Mocks
-// ------------------------------------------------------------------
-jest.unstable_mockModule('../../../src/database/models.js', () => ({
-    User: MockUser,
-    Session: MockOther,
-    VaultBlob: MockOther,
-    SyncMetadata: MockOther,
-    RecoveryKey: MockOther,
-    SimpleVault: MockOther,
-    OTP: MockOther,
-    LoginChallenge: MockOther
-}));
-
-jest.unstable_mockModule('../../../src/services/recoveryService.js', () => ({
-    revokeAllRecoveryKeys: mockRevokeKeys
-}));
-
-// ------------------------------------------------------------------
-// 3. Test Suite
-// ------------------------------------------------------------------
 describe('AuthService - Account Management Tests', () => {
-    let  deleteUserAccount: any;
+    let deleteUserAccount: any;
     let updateUserCredentials: any;
 
     beforeAll(async () => {
+        // Real service, real models
         const authService = await import('../../../src/services/authService.js');
         deleteUserAccount = authService.deleteUserAccount;
         updateUserCredentials = authService.updateUserCredentials;
     });
 
-    beforeEach(() => {
+    beforeEach(async () => {
         jest.clearAllMocks();
-        console.log('\n---------------------------------------------------');
+        // DB cleanup handled by jest.setup.js
     });
 
     it('deleteUserAccount: should delete all user data', async () => {
-        const userId = 'user-to-delete-123';
+        const userId = new mongoose.Types.ObjectId();
+        const email = 'delete@test.com';
+
         console.log(`Test Case 1: Deleting User ${userId}`);
-        
-        // Setup Mocks
-        mockFindById.mockResolvedValue({ _id: userId, email: 'delete@test.com' } as never);
-        
-        await deleteUserAccount(userId);
-        
+
+        // Setup: Create all related data to ensure cascade delete works
+        await User.create({ _id: userId, email, fullName: 'Del', salt: 's', verifier: 'v' });
+        await Session.create({ userId, token: 't', expiresAt: new Date().toISOString() });
+        await RecoveryKey.create({ userId, keyHash: 'k', encryptedVaultKey: 'e' });
+        // OTP and LoginChallenge use email
+        await OTP.create({ email, code: '123456', expiresAt: 'future' });
+        await LoginChallenge.create({ email, challenge: 'c', expiresAt: 'future' });
+
+        await deleteUserAccount(userId.toString());
+
         console.log('[Output] Deletion process completed.');
-        
-        expect(mockDelete).toHaveBeenCalledWith(userId); // User.findByIdAndDelete
-        expect(mockDelete).toHaveBeenCalledWith({ userId }); // Other models deleteMany
-        expect(mockDelete).toHaveBeenCalledWith({ email: 'delete@test.com' }); // OTP deleteMany
-        
+
+        // Verify deletion
+        expect(await User.findById(userId)).toBeNull();
+        expect(await Session.findOne({ userId })).toBeNull();
+        expect(await RecoveryKey.findOne({ userId })).toBeNull();
+        expect(await OTP.findOne({ email })).toBeNull();
+        expect(await LoginChallenge.findOne({ email })).toBeNull();
+
         console.log('Result: Success - All user data purged.');
     });
 
     it('updateUserCredentials: should update user record and revoke recovery keys', async () => {
-        const userId = 'user-update-456';
+        const userId = new mongoose.Types.ObjectId();
         const salt = 'new-salt';
         const verifier = 'new-verifier';
-        
+
         console.log(`Test Case 2: Updating credentials for User ${userId}`);
-        
-        // Mock User
-        mockFindByIdAndUpdate.mockResolvedValue({ _id: userId } as never);
-        
-        await updateUserCredentials(userId, salt, verifier);
-        
+
+        // Setup
+        await User.create({ _id: userId, email: 'update@test.com', fullName: 'Up', salt: 'old', verifier: 'old' });
+        // Create active recovery key
+        await RecoveryKey.create({ userId, keyHash: 'hash', encryptedVaultKey: 'evk', isRevoked: false });
+
+        await updateUserCredentials(userId.toString(), salt, verifier);
+
         console.log('[Output] User credentials updated.');
-        
-        expect(mockFindByIdAndUpdate).toHaveBeenCalledWith(userId, { salt, verifier });
-        expect(mockRevokeKeys).toHaveBeenCalledWith(userId);
-        
+
+        // Verify User updated
+        const user = await User.findById(userId);
+        expect(user?.salt).toBe(salt);
+        expect(user?.verifier).toBe(verifier);
+
+        // Verify Recovery Key revoked
+        const key = await RecoveryKey.findOne({ userId });
+        expect(key?.isRevoked).toBe(true);
+
         console.log('Result: Success - Credentials updated and recovery keys revoked.');
     });
 });
