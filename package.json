@@ -13,7 +13,7 @@
     "dev:backend": "npm run dev -w backend",
     "build": "npm run crypto:build && npm run build -w frontend",
     "start": "npm run start -w frontend",
-    "lint": "npm run lint -w frontend",
+    "lint": "npm run --workspace=frontend lint",
     "extension:build": "npm run crypto:build && npm run build -w frontend/extension",
     "extension:watch": "npm run crypto:build && npm run watch -w frontend/extension",
     "crypto:build": "npm run build -w frontend/crypto-engine"
