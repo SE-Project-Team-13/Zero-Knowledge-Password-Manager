@@ -1,28 +1,43 @@
-/**
- * Cryptographic Proof Verification Tests (ZKP Phase)
- */
 
+import { jest } from '@jest/globals';
+import { verifyClientProof } from '../../../src/services/authService.js';
 import crypto from 'crypto';
 
-describe('Auth Service - Cryptographic Proofs', () => {
-    describe('verifyClientProof', () => {
-        it('should verify a valid SHA-256 proof', () => {
-            console.log('Running: should verify a valid SHA-256 proof');
-            const verifier = 'stored-verifier-hash';
-            const clientChallenge = 'random-challenge-xyz';
-            const expectedProof = crypto.createHash('sha256').update(verifier + clientChallenge).digest('hex');
-            const clientProof = expectedProof;
-            const isMatch = crypto.timingSafeEqual(Buffer.from(clientProof), Buffer.from(expectedProof));
-            expect(isMatch).toBe(true);
-            console.log('Result: Success - proof verified: ' + isMatch);
-        });
+describe('AuthService - Proof Verification Tests', () => {
+    it('verifyClientProof: should return true for valid proof', () => {
+        console.log('Test Case 1: Verifying generated proof');
+        
+        const verifier = 'verifier-hash-123';
+        const clientChallenge = 'server-challenge-xyz-456';
+        
+        // Generate expected proof manually using the same logic the client uses
+        // Protocol: SHA256(verifier + challenge)
+        const expectedProof = crypto.createHash('sha256').update(verifier + clientChallenge).digest('hex');
+        
+        console.log(`[Input] Verifier: ${verifier}`);
+        console.log(`[Input] Challenge: ${clientChallenge}`);
+        console.log(`[Input] Client Proof: ${expectedProof}`);
+        
+        const isValid = verifyClientProof(verifier, clientChallenge, expectedProof);
+        
+        console.log(`[Output] Verification Result: ${isValid}`);
+        
+        expect(isValid).toBe(true);
+        console.log('Result: Success - Valid proof accepted.');
+    });
 
-        it('should use timing-safe comparison', () => {
-            console.log('Running: should use timing-safe comparison');
-            const buf1 = Buffer.from('a'.repeat(64));
-            const buf2 = Buffer.from('a'.repeat(64));
-            expect(crypto.timingSafeEqual(buf1, buf2)).toBe(true);
-            console.log('Result: Success - timingSafeEqual works as expected');
-        });
+    it('verifyClientProof: should return false for invalid proof', () => {
+        console.log('Test Case 2: Rejecting invalid proof');
+        
+        const verifier = 'verifier-hash-123';
+        const clientChallenge = 'server-challenge-xyz-456';
+        const invalidProof = 'invalid-fake-proof';
+        
+        const isValid = verifyClientProof(verifier, clientChallenge, invalidProof);
+        
+        console.log(`[Output] Verification Result: ${isValid}`);
+        
+        expect(isValid).toBe(false);
+        console.log('Result: Success - Invalid proof rejected.');
     });
 });
