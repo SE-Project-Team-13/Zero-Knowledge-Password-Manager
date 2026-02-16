@@ -64,20 +64,24 @@ async function start() {
     const ALLOWED_ORIGINS = [
       "http://localhost:3000",
       "http://localhost:3001",
-    ]
+      process.env.FRONTEND_URL || ""
+    ].filter(Boolean)
 
     app.use((req, res, next) => {
       const origin = req.headers.origin
       if (origin && ALLOWED_ORIGINS.includes(origin)) {
         res.header("Access-Control-Allow-Origin", origin)
       } else if (!origin && !isProduction) {
-        // Allow requests without origin (like direct browser hits) in development
+        /* Allow requests without origin (like direct browser hits) in development */
         res.header("Access-Control-Allow-Origin", "*")
       }
-      
+
       res.header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS")
       res.header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-      if (req.method === "OPTIONS") return res.sendStatus(200)
+
+      if (req.method === "OPTIONS") {
+        return res.sendStatus(200)
+      }
       next()
     })
 
@@ -124,13 +128,13 @@ async function start() {
         if (!token) return res.status(401).json({ error: "Unauthorized" })
 
         const session = await validateSessionToken(token)
-        
+
         if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })
 
         if (!requestedUserId || session.userId !== requestedUserId) {
           return res.status(403).json({ error: "Forbidden: Access denied" })
         }
-        
+
         let vault = await SimpleVault.findOne({ userId: requestedUserId })
 
         if (!vault) {
@@ -166,7 +170,7 @@ async function start() {
         if (!token) return res.status(401).json({ error: "Unauthorized" })
 
         const session = await validateSessionToken(token)
-        
+
         if (!session.userId) return res.status(401).json({ error: "Invalid session" })
 
         if (!requestedUserId || session.userId !== requestedUserId) {
@@ -201,13 +205,13 @@ async function start() {
         if (!token) return res.status(401).json({ error: "Unauthorized" })
 
         const session = await validateSessionToken(token)
-        
+
         if (!session.userId) return res.status(401).json({ error: "Invalid session" })
 
         if (!requestedUserId || session.userId !== requestedUserId) {
           return res.status(403).json({ error: "Forbidden: Delete denied" })
         }
-        
+
         await SimpleVault.deleteOne({ userId: requestedUserId })
         logger.info(`Vault deleted for ${requestedUserId}`)
         res.json({ success: true, message: "Vault deleted" })
