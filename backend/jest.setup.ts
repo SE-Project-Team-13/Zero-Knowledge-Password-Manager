@@ -5,6 +5,12 @@ import { jest, beforeAll, afterAll, afterEach } from '@jest/globals';
 
 let mongoServer: MongoMemoryServer;
 
+// Mock Environment Variables for testing
+process.env.SMTP_USER = 'test_user';
+process.env.SMTP_PASS = 'test_pass';
+process.env.SMTP_HOST = 'smtp.test.com';
+process.env.SMTP_PORT = '587';
+
 // Start in-memory MongoDB instance
 beforeAll(async () => {
     jest.setTimeout(120000); // Allow time for download
