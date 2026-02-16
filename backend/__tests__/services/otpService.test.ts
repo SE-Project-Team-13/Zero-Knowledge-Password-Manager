@@ -2,13 +2,11 @@
 import { jest, describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
 import { OTP } from '../../src/database/models.js';
 
-// Mock Nodemailer only
-const mockSendMail = jest.fn().mockImplementation(() => Promise.resolve({ messageId: 'test-message-id' }));
-const mockCreateTransport = jest.fn().mockReturnValue({ sendMail: mockSendMail });
+// Mock emailSender
+const mockSendEmail = jest.fn().mockImplementation(() => Promise.resolve());
 
-jest.unstable_mockModule('nodemailer', () => ({
-    default: { createTransport: mockCreateTransport },
-    createTransport: mockCreateTransport
+jest.unstable_mockModule('../../src/utils/emailSender.js', () => ({
+    sendEmail: mockSendEmail
 }));
 
 describe('OTPService Integration Tests', () => {
@@ -16,6 +14,10 @@ describe('OTPService Integration Tests', () => {
     let verifyOTP: any;
 
     beforeAll(async () => {
+        // Setup mock env vars for email testing
+        process.env.SMTP_USER = 'test_user';
+        process.env.SMTP_PASS = 'test_pass';
+
         const otpService = await import('../../src/services/otpService.js');
         sendOTP = otpService.sendOTP;
         verifyOTP = otpService.verifyOTP;
@@ -35,7 +37,8 @@ describe('OTPService Integration Tests', () => {
         console.log('[Output] sendOTP Result:', result);
 
         expect(result.success).toBe(true);
-        expect(mockSendMail).toHaveBeenCalled();
+        expect(result.success).toBe(true);
+        expect(mockSendEmail).toHaveBeenCalled();
 
         // Verify in DB
         const storedOTP = await OTP.findOne({ email });
