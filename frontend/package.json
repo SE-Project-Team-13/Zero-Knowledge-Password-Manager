@@ -68,6 +68,10 @@
         "vaul": "^1.1.2",
         "zod": "3.25.76"
     },
+    "optionalDependencies": {
+        "@next/swc-linux-x64-gnu": "16.0.10",
+        "@next/swc-linux-x64-musl": "16.0.10"
+    },
     "devDependencies": {
         "@tailwindcss/postcss": "^4.1.9",
         "@testing-library/jest-dom": "^6.9.1",
