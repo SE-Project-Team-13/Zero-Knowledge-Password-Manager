@@ -81,7 +81,7 @@ export default function DashboardPage() {
   }, []);
 
   // UI State
-  const [isInitializing, setIsInitializing] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(!isVaultUnlocked);
   /* Local state removed - using isVaultUnlocked from context */
 
   const [otpCode, setOtpCode] = useState("");
@@ -133,6 +133,14 @@ export default function DashboardPage() {
       return
     }
 
+    // NEW: Check if vault is already unlocked to prevent re-initialization loops
+    if (isVaultUnlocked) {
+      setOtpVerified(true);
+      setOtpSent(true);
+      setIsInitializing(false);
+      return;
+    }
+
     // 3. Check if there's a temp password from login (first-time login flow)
     const tempPassword = sessionStorage.getItem("temp_master_password")
     if (tempPassword && !masterPassword) {
@@ -165,7 +173,7 @@ export default function DashboardPage() {
     } else {
       setIsInitializing(false)
     }
-  }, [session.isAuthenticated, session.email, otpSent]);
+  }, [session.isAuthenticated, session.email, otpSent, isVaultUnlocked]);
 
   // Countdown timer for OTP expiration
   useEffect(() => {

@@ -14,7 +14,7 @@ const isDebug = process.env.DEBUG === "true"
  * @param clientProof - The proof provided by the client.
  * @returns boolean indicating if the proof is valid.
  */
-function verifyClientProof(verifier: string, clientChallenge: string, clientProof: string): boolean {
+export function verifyClientProof(verifier: string, clientChallenge: string, clientProof: string): boolean {
   const expectedProof = crypto
     .createHash("sha256")
     .update(verifier + clientChallenge)
