@@ -1,6 +1,6 @@
 import crypto from "crypto"
 import { OTP } from "../database/models.js"
-import { sendEmail } from "./emailSender.service.js"
+import { sendEmail } from "./emailService.js"
 
 const isProduction = process.env.NODE_ENV === "production"
 const isDebug = process.env.DEBUG === "true"
