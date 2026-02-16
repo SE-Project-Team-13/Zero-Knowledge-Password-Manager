@@ -1,6 +1,6 @@
 import crypto from "crypto"
 import { OTP } from "../database/models.js"
-import { sendEmail } from "../utils/emailSender.js"
+import { sendEmail } from "./emailSender.service.js"
 
 const isProduction = process.env.NODE_ENV === "production"
 const isDebug = process.env.DEBUG === "true"
@@ -17,10 +17,15 @@ function generateOTPCode(): string {
   return crypto.randomInt(100000, 999999).toString()
 }
 
+// Define email sender type matches the imported function signature
+type EmailSender = typeof sendEmail;
+
 /**
  * Generates and sends an OTP to the user's registered email address.
+ * @param email User's email
+ * @param emailSender Optional email sender function for dependency injection (testing)
  */
-export async function sendOTP(email: string): Promise<{ success: boolean; message: string }> {
+export async function sendOTP(email: string, emailSender: EmailSender = sendEmail): Promise<{ success: boolean; message: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase()
     await OTP.deleteMany({ email: normalizedEmail })
@@ -69,7 +74,7 @@ export async function sendOTP(email: string): Promise<{ success: boolean; messag
 
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
-        await sendEmail(mailOptions, 'OTP')
+        await emailSender(mailOptions, 'OTP')
       } catch (emailError: unknown) {
         // Fallback logging handled by sendEmail or here if needed to suppress error?
         // Original code suppressed error and logged fallback log.

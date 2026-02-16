@@ -5,10 +5,6 @@ import { OTP } from '../../src/database/models.js';
 // Mock emailSender
 const mockSendEmail = jest.fn().mockImplementation(() => Promise.resolve());
 
-jest.unstable_mockModule('../../src/utils/emailSender.js', () => ({
-    sendEmail: mockSendEmail
-}));
-
 describe('OTPService Integration Tests', () => {
     let sendOTP: any;
     let verifyOTP: any;
@@ -32,7 +28,7 @@ describe('OTPService Integration Tests', () => {
         const email = 'otp-test@example.com';
         console.log(`Test Case 1: Sending OTP to ${email}`);
 
-        const result = await sendOTP(email);
+        const result = await sendOTP(email, mockSendEmail);
 
         console.log('[Output] sendOTP Result:', result);
 
