@@ -42,10 +42,10 @@ export async function encrypt(entry: VaultEntry, derivedKey: DerivedKey): Promis
   const encryptedBuffer = await crypto.subtle.encrypt(
     {
       name: ALGORITHM,
-      iv,
+      iv: iv as any,
     },
     derivedKey.encryptionKey,
-    plaintextBytes,
+    plaintextBytes as any,
   )
 
   // Split ciphertext and tag (Web Crypto API appends tag at the end)

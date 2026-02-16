@@ -1,7 +1,10 @@
 import crypto from "crypto"
-import { User, Session, VaultBlob } from "../database/models.js"
+import { User, Session, VaultBlob, SyncMetadata, SimpleVault, OTP, RecoveryKey, LoginChallenge } from "../database/models.js"
 import { revokeAllRecoveryKeys } from "./recoveryService.js"
 import type { User as UserType } from "../types/index.js"
+
+const isProduction = process.env.NODE_ENV === "production"
+const isDebug = process.env.DEBUG === "true"
 
 /**
  * Verifies the client's cryptographic proof against the server's verifier.
@@ -11,13 +14,27 @@ import type { User as UserType } from "../types/index.js"
  * @param clientProof - The proof provided by the client.
  * @returns boolean indicating if the proof is valid.
  */
-function verifyClientProof(verifier: string, clientChallenge: string, clientProof: string): boolean {
+export function verifyClientProof(verifier: string, clientChallenge: string, clientProof: string): boolean {
   const expectedProof = crypto
     .createHash("sha256")
     .update(verifier + clientChallenge)
     .digest("hex")
 
-  return crypto.timingSafeEqual(Buffer.from(clientProof), Buffer.from(expectedProof))
+  const bufferA = Buffer.from(clientProof)
+  const bufferB = Buffer.from(expectedProof)
+
+  if (bufferA.length !== bufferB.length) return false
+
+  return crypto.timingSafeEqual(bufferA, bufferB)
+}
+ 
+/**
+ * Hashes a session token for secure storage.
+ * @param token - The raw session token.
+ * @returns Hashed token.
+ */
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex")
 }
 
 /**
@@ -51,8 +68,10 @@ export async function registerUser(email: string, fullName: string, salt: string
 
 /**
  * Authenticates a user using the ZKP proof provided.
+ * Verifies that the challenge provided by the client matches the fresh server-generated challenge.
+ * 
  * @param email - User's email.
- * @param clientChallenge - The challenge for this authentication session.
+ * @param clientChallenge - The challenge provided by the client (must match server's stored challenge).
  * @param clientProof - The proof derived by the client.
  * @returns Success status and user object or error message.
  */
@@ -61,18 +80,43 @@ export async function authenticateUser(
   clientChallenge: string,
   clientProof: string,
 ): Promise<{ success: boolean; user?: UserType; error?: string }> {
-  const user = await User.findOne({ email: email.trim().toLowerCase() })
+  const normalizedEmail = email.trim().toLowerCase()
+  const user = await User.findOne({ email: normalizedEmail })
 
   if (!user) {
     return { success: false, error: "User not found" }
   }
 
+  // 1. Verify Challenge Freshness (Replay Protection)
+  const storedChallenge = await LoginChallenge.findOne({ email: normalizedEmail })
+  if (!storedChallenge) {
+    return { success: false, error: "Authentication challenge expired or not found. Please request a new salt/challenge." }
+  }
+
+  // Check TTL (ISO comparison)
+  const now = new Date().toISOString().replace("T", " ").substring(0, 19)
+  if (storedChallenge.expiresAt < now) {
+    await LoginChallenge.deleteOne({ _id: storedChallenge._id })
+    return { success: false, error: "Authentication challenge expired. Please try again." }
+  }
+
+  if (storedChallenge.challenge !== clientChallenge) {
+    return { success: false, error: "Invalid authentication challenge." }
+  }
+
+  // 2. Clear challenge once used (single-use)
+  await LoginChallenge.deleteOne({ _id: storedChallenge._id })
+
+  // 3. Verify Proof
   try {
     const isValid = verifyClientProof(user.verifier, clientChallenge, clientProof)
     if (!isValid) {
       return { success: false, error: "Authentication failed" }
     }
-  } catch (error) {
+  } catch (error: unknown) {
+    if (!isProduction || isDebug) {
+      console.error("[VaultSync:Auth] Authentication verification failed:", error)
+    }
     return { success: false, error: "Authentication verification failed" }
   }
 
@@ -93,22 +137,48 @@ export async function authenticateUser(
 }
 
 /**
+ * Generates and stores a fresh authentication challenge for a user.
+ * 
+ * @param email - User's email.
+ * @param ttlMinutes - Challenge validity duration (e.g., 5 mins).
+ * @returns Hex-encoded challenge.
+ */
+export async function generateLoginChallenge(
+  email: string,
+  ttlMinutes: number = 5
+): Promise<string> {
+  const challenge = crypto.randomBytes(16).toString("hex")
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
+
+  await LoginChallenge.findOneAndUpdate(
+    { email: email.trim().toLowerCase() },
+    { challenge, expiresAt },
+    { upsert: true }
+  )
+
+  return challenge
+}
+
+/**
  * Generates a random session token for an authenticated user.
  * @param userId - The ID of the user.
  * @param expirationMinutes - Token validity duration (default: 24h).
+ * @param isOtpVerified - Initial OTP verification status (default: false).
  * @returns The generated session token.
  */
 export async function generateSessionToken(
   userId: string,
   expirationMinutes: number = 24 * 60,
+  isOtpVerified: boolean = false,
 ): Promise<string> {
   const token = crypto.randomBytes(32).toString("hex")
-  const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000)
+  const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
 
   const session = new Session({
     userId,
-    token,
+    token: hashToken(token),
     expiresAt,
+    isOtpVerified,
   })
 
   await session.save()
@@ -122,14 +192,42 @@ export async function generateSessionToken(
  */
 export async function validateSessionToken(
   token: string,
-): Promise<{ valid: boolean; userId?: string; error?: string }> {
-  const session = await Session.findOne({ token, expiresAt: { $gt: new Date() } })
+): Promise<{ valid: boolean; userId?: string; error?: string; isOtpVerified?: boolean }> {
+  // ISO string comparison works lexicographically
+  const now = new Date().toISOString().replace("T", " ").substring(0, 19)
+  const hashedToken = hashToken(token)
+  const session = await Session.findOne({ token: hashedToken, expiresAt: { $gt: now } })
 
   if (!session) {
+    if (!isProduction || isDebug) {
+      console.warn("[VaultSync:Auth] Session not found or expired for token:", token.substring(0, 20) + "...")
+    }
     return { valid: false, error: "Invalid or expired token" }
   }
 
-  return { valid: true, userId: session.userId.toString() }
+  if (!isProduction || isDebug) {
+    console.log("[VaultSync:Auth] Session validated successfully. isOtpVerified:", session.isOtpVerified)
+  }
+  return { valid: true, userId: session.userId.toString(), isOtpVerified: session.isOtpVerified }
+}
+
+/**
+ * Marks a session as OTP verified.
+ * @param token - The session token.
+ */
+export async function markSessionOtpVerified(token: string): Promise<void> {
+  if (!isProduction || isDebug) {
+    console.log("[VaultSync:Auth] Updating session OTP verification for token:", token.substring(0, 20) + "...")
+  }
+  const hashedToken = hashToken(token)
+  const result = await Session.updateOne({ token: hashedToken }, { isOtpVerified: true })
+  if (result.modifiedCount === 0) {
+    if (!isProduction || isDebug) {
+      console.warn("[VaultSync:Auth] Warning: No session found to update with token:", token.substring(0, 20) + "...")
+    }
+  } else if (!isProduction || isDebug) {
+    console.log("[VaultSync:Auth] Session marked as OTP verified successfully")
+  }
 }
 
 /**
@@ -137,7 +235,8 @@ export async function validateSessionToken(
  * @param token - The token to invalidate.
  */
 export async function invalidateSessionToken(token: string): Promise<void> {
-  await Session.deleteOne({ token })
+  const hashedToken = hashToken(token)
+  await Session.deleteOne({ token: hashedToken })
 }
 
 /**
@@ -204,20 +303,19 @@ export async function updateUserCredentials(
         version: encryptedVault.version,
         timestamp: Date.now(),
         nonce: crypto.randomBytes(12).toString("hex"), // New nonce
-        updatedAt: new Date()
+        updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
       },
       { upsert: true }
     )
 
     // Update Compatibility Vault (SimpleVault)
-    const { SimpleVault } = await import("../database/models.js");
     const user = await User.findById(userId);
     if (user) {
       const normalizedEmail = user.email.trim().toLowerCase();
       console.log(`[AuthService] Updating SimpleVault for ${normalizedEmail} with re-encrypted data`);
       // Map local sync format to simple vault format for compatibility
       await SimpleVault.findOneAndUpdate(
-        { userId: normalizedEmail },
+        { $or: [{ userId: userId }, { userId: normalizedEmail }] },
         {
           data: {
             ciphertext: encryptedVault.ciphertext,
@@ -226,7 +324,7 @@ export async function updateUserCredentials(
             tag: encryptedVault.authTag, // Compatibility layer uses 'tag'
             version: encryptedVault.version
           },
-          updatedAt: new Date()
+          updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
         },
         { upsert: true }
       );
@@ -241,14 +339,43 @@ export async function updateUserCredentials(
     await VaultBlob.deleteMany({ userId });
     
     // Clear Sync Metadata
-    const { SyncMetadata, SimpleVault } = await import("../database/models.js");
     await SyncMetadata.deleteMany({ userId });
     
     // Clear Simple Vault (compatibility layer used by dashboard)
     const user = await User.findById(userId);
     if (user) {
       const normalizedEmail = user.email.trim().toLowerCase();
-      await SimpleVault.deleteMany({ userId: normalizedEmail });
+      await SimpleVault.deleteMany({ $or: [{ userId: userId }, { userId: normalizedEmail }] });
     }
   }
 }
+
+/**
+ * Deletes a user account and all associated data permanently.
+ * @param userId - The ID of the user to delete.
+ */
+export async function deleteUserAccount(userId: string): Promise<void> {
+  const user = await User.findById(userId)
+  if (!user) return
+
+  // 1. Delete User Record
+  await User.findByIdAndDelete(userId)
+
+  // 2. Delete Sessions
+  await Session.deleteMany({ userId })
+
+  // 3. Delete Vault Blobs (Sync)
+  await VaultBlob.deleteMany({ userId })
+
+  // 4. Delete Sync Metadata
+  await SyncMetadata.deleteMany({ userId })
+
+  // 5. Delete Recovery Keys
+  await RecoveryKey.deleteMany({ userId })
+
+  // 6. Delete Simple Vault (Compatibility) and OTPs using email
+  const email = user.email.toLowerCase()
+  await SimpleVault.deleteMany({ $or: [{ userId: userId }, { userId: email }] })
+  await OTP.deleteMany({ email })
+}
+

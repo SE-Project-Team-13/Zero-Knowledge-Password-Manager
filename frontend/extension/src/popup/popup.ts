@@ -92,6 +92,13 @@ const displayUserEmail = document.getElementById(
 let currentVault: PasswordEntry[] = [];
 let currentUserId = "";
 
+interface PopupResponse {
+  success?: boolean;
+  error?: string;
+  vault?: PasswordEntry[];
+  isLocked?: boolean;
+}
+
 // ============================================================================
 // Initialization
 // ============================================================================
@@ -188,8 +195,9 @@ if (unlockForm) {
           (response && response.error) || "Failed to unlock vault",
         );
       }
-    } catch (error: any) {
-      showError(unlockError, error.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to unlock vault";
+      showError(unlockError, message);
     } finally {
       if (unlockBtn) unlockBtn.disabled = false;
       if (unlockLoading) unlockLoading.classList.add("hidden");
@@ -268,8 +276,9 @@ if (registerForm) {
           (response && response.error) || "Failed to register",
         );
       }
-    } catch (error: any) {
-      showError(registerError, error.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to register";
+      showError(registerError, message);
     } finally {
       if (registerBtn) registerBtn.disabled = false;
       if (registerLoading) registerLoading.classList.add("hidden");
@@ -286,7 +295,7 @@ async function loadVault() {
     const response = await sendMessage({ type: "GET_VAULT" });
 
     if (response && response.success) {
-      currentVault = response.vault;
+      currentVault = response.vault || [];
       renderVault(currentVault);
     } else {
       showError(
@@ -305,7 +314,7 @@ async function loadVault() {
 
 function renderVault(entries: PasswordEntry[]) {
   if (!vaultList) return;
-  vaultList.innerHTML = "";
+  vaultList.replaceChildren();
 
   if (entries.length === 0) {
     if (emptyState) emptyState.classList.remove("hidden");
@@ -314,29 +323,49 @@ function renderVault(entries: PasswordEntry[]) {
 
   if (emptyState) emptyState.classList.add("hidden");
 
-  entries.forEach((entry, index) => {
-    const item = createVaultItem(entry, index);
+  entries.forEach((entry) => {
+    const item = createVaultItem(entry);
     vaultList.appendChild(item);
   });
 }
 
-function createVaultItem(entry: PasswordEntry, index: number) {
+function createVaultItem(entry: PasswordEntry) {
   const div = document.createElement("div");
   div.className = "vault-item";
 
-  div.innerHTML = `
-    <div class="vault-item-content">
-      <div class="vault-item-title">${escapeHtml(entry.siteName)}</div>
-      <div class="vault-item-url">${escapeHtml(entry.username)}</div>
-    </div>
-    <div class="vault-item-actions">
-      <button class="action-btn delete-btn delete">Delete</button>
-      <button class="copy-btn">Copy</button>
-    </div>
-  `;
+  const content = document.createElement("div");
+  content.className = "vault-item-content";
+
+  const title = document.createElement("div");
+  title.className = "vault-item-title";
+  title.textContent = entry.siteName;
+
+  const user = document.createElement("div");
+  user.className = "vault-item-url";
+  user.textContent = entry.username;
+
+  content.appendChild(title);
+  content.appendChild(user);
+
+  const actions = document.createElement("div");
+  actions.className = "vault-item-actions";
+
+  const deleteBtnElement = document.createElement("button");
+  deleteBtnElement.className = "action-btn delete-btn delete";
+  deleteBtnElement.textContent = "Delete";
+
+  const copyBtnElement = document.createElement("button");
+  copyBtnElement.className = "copy-btn";
+  copyBtnElement.textContent = "Copy";
+
+  actions.appendChild(deleteBtnElement);
+  actions.appendChild(copyBtnElement);
+
+  div.appendChild(content);
+  div.appendChild(actions);
 
   // Add copy functionality
-  const copyBtn = div.querySelector(".copy-btn") as HTMLButtonElement;
+  const copyBtn = copyBtnElement;
   if (copyBtn) {
     copyBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -345,7 +374,7 @@ function createVaultItem(entry: PasswordEntry, index: number) {
   }
 
   // Add delete functionality
-  const deleteBtn = div.querySelector(".delete-btn") as HTMLButtonElement;
+  const deleteBtn = deleteBtnElement;
   if (deleteBtn) {
     deleteBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -405,8 +434,9 @@ async function handleDelete(entryId: string) {
     } else {
       alert((response && response.error) || "Failed to delete password");
     }
-  } catch (error: any) {
-    alert(error.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to delete password";
+    alert(message);
   }
 }
 
@@ -460,20 +490,21 @@ chrome.runtime.onMessage.addListener((message) => {
 // Helper Functions
 // ============================================================================
 
-async function sendMessage(message: any): Promise<any> {
+async function sendMessage(message: unknown): Promise<PopupResponse> {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(message, (response) => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
       } else {
+        const typedResponse = (response || {}) as PopupResponse;
         // Automatic redirection if vault is locked
-        if (response && response.error === "Vault is locked") {
+        if (typedResponse.error === "Vault is locked") {
           console.warn("[Popup] Vault is locked, redirecting to unlock screen");
           currentVault = [];
           showScreen("unlock");
           if (masterPasswordInput) masterPasswordInput.value = "";
         }
-        resolve(response);
+        resolve(typedResponse);
       }
     });
   });
@@ -487,12 +518,6 @@ function showError(element: HTMLElement | null, message: string) {
   setTimeout(() => {
     element.classList.add("hidden");
   }, 5000);
-}
-
-function escapeHtml(text: string) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 async function copyToClipboard(text: string, button: HTMLButtonElement) {

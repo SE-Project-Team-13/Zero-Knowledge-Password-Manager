@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Shield, Key, Loader2, AlertCircle, Eye, EyeOff, Lock, Check } from "lucide-react"
 import { toast } from "sonner"
-import { deriveKey } from "@password-manager/crypto-engine"
+import { deriveKey, generateVerifier } from "@password-manager/crypto-engine"
 
 interface ChangePasswordModalProps {
     isOpen: boolean
@@ -74,7 +74,6 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
 
         try {
             const token = localStorage.getItem("auth_token")
-            const email = localStorage.getItem("user_email") || ""
             const userId = localStorage.getItem("user_id")
             let deviceId = localStorage.getItem("device_id") || "default-device"
 
@@ -110,9 +109,9 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
             }
 
             // Fallback to SimpleVault if Sync API is empty
-            if (!vaultData && email) {
+            if (!vaultData && userId) {
                 const compatResponse = await fetch(
-                    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(email)}`,
+                    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(userId)}`,
                     {
                         method: "GET",
                         headers: { "Authorization": `Bearer ${token}` }
@@ -159,10 +158,7 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
             const salt = Array.from(saltBuffer).map((b) => b.toString(16).padStart(2, "0")).join("")
             const { authKey } = await deriveKey(newPassword, saltBuffer)
             
-            const encoder = new TextEncoder()
-            const proofData = encoder.encode("auth-proof")
-            const verifierBuffer = await crypto.subtle.sign("HMAC", authKey, proofData)
-            const verifier = Array.from(new Uint8Array(verifierBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("")
+            const verifier = await generateVerifier(authKey)
 
             // 5. Update server
             const response = await fetch(

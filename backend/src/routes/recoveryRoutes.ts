@@ -13,6 +13,7 @@ import {
 } from "../services/recoveryService.js"
 import { User } from "../database/models.js"
 import { generateSessionToken } from "../services/authService.js"
+import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
 
 export function createRecoveryRouter(): Router {
     const router = Router()
@@ -22,7 +23,7 @@ export function createRecoveryRouter(): Router {
      * Generate a new recovery key for the authenticated user.
      * Returns the raw key (only time it's shown) and stores the hash.
      */
-    router.post("/generate", async (req: Request, res: Response) => {
+    router.post("/generate", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
         try {
             let { email } = req.body
 
@@ -30,6 +31,7 @@ export function createRecoveryRouter(): Router {
                 return res.status(400).json({
                     error: "Missing email",
                     code: "INVALID_REQUEST",
+                    message: "User email is required for recovery key generation",
                 })
             }
             
@@ -41,6 +43,7 @@ export function createRecoveryRouter(): Router {
                 return res.status(404).json({
                     error: "User not found",
                     code: "USER_NOT_FOUND",
+                    message: "No account associated with this email address",
                 })
             }
 
@@ -60,6 +63,7 @@ export function createRecoveryRouter(): Router {
             return res.status(500).json({
                 error: "Failed to generate recovery key",
                 code: "INTERNAL_ERROR",
+                message: "An error occurred while generating your recovery key",
             })
         }
     })
@@ -69,28 +73,21 @@ export function createRecoveryRouter(): Router {
      * Stored the hashed recovery key and the encrypted master password blob.
      * This must be called after /generate to actually enable recovery.
      */
-    router.post("/activate", async (req: Request, res: Response) => {
+    router.post("/activate", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
         try {
-            let { email, keyHash, encryptedVaultKey } = req.body
+            const userId = req.userId
+            const { keyHash, encryptedVaultKey } = req.body
 
-            if (!email || !keyHash || !encryptedVaultKey) {
+            if (!userId || !keyHash || !encryptedVaultKey) {
                 return res.status(400).json({
                     error: "Missing required fields",
                     code: "INVALID_REQUEST",
-                })
-            }
-            
-            email = email.trim().toLowerCase()
-
-            const user = await User.findOne({ email })
-            if (!user) {
-                return res.status(404).json({
-                    error: "User not found",
-                    code: "USER_NOT_FOUND",
+                    message: "keyHash and encryptedVaultKey are required",
                 })
             }
 
-            await storeRecoveryKeyHash(user._id.toString(), keyHash, encryptedVaultKey)
+            // We use the userId from the authenticated session for security
+            await storeRecoveryKeyHash(userId, keyHash, encryptedVaultKey)
 
             return res.status(200).json({
                 success: true,
@@ -101,6 +98,7 @@ export function createRecoveryRouter(): Router {
             return res.status(500).json({
                 error: "Failed to activate recovery key",
                 code: "INTERNAL_ERROR",
+                message: "An unexpected error occurred during activation",
             })
         }
     })
@@ -117,6 +115,7 @@ export function createRecoveryRouter(): Router {
                 return res.status(400).json({
                     error: "Missing email or recovery key",
                     code: "INVALID_REQUEST",
+                    message: "Email and recovery key are required for verification",
                 })
             }
             
@@ -129,8 +128,9 @@ export function createRecoveryRouter(): Router {
 
             if (!result.success) {
                 return res.status(401).json({
-                    error: result.error,
+                    error: result.error || "Invalid key",
                     code: "INVALID_KEY",
+                    message: "The provided recovery key is incorrect or has expired",
                 })
             }
 
@@ -143,6 +143,7 @@ export function createRecoveryRouter(): Router {
             return res.status(500).json({
                 error: "Verification failed",
                 code: "INTERNAL_ERROR",
+                message: "An error occurred while verifying the recovery key",
             })
         }
     })
@@ -160,6 +161,7 @@ export function createRecoveryRouter(): Router {
                 return res.status(400).json({
                     error: "Missing email or recovery key",
                     code: "INVALID_REQUEST",
+                    message: "Email and recovery key must be provided",
                 })
             }
             
@@ -174,6 +176,7 @@ export function createRecoveryRouter(): Router {
                 return res.status(401).json({
                     error: result.error || "Invalid recovery key",
                     code: "INVALID_KEY",
+                    message: "Authentication failed with the provided recovery key",
                 })
             }
 
@@ -198,6 +201,7 @@ export function createRecoveryRouter(): Router {
             return res.status(500).json({
                 error: "Recovery login failed",
                 code: "INTERNAL_ERROR",
+                message: "A server error occurred during recovery login",
             })
         }
     })
@@ -219,6 +223,7 @@ export function createRecoveryRouter(): Router {
                 return res.status(404).json({
                     error: "User not found",
                     code: "USER_NOT_FOUND",
+                    message: "Could not find account to check status",
                 })
             }
 
@@ -232,6 +237,7 @@ export function createRecoveryRouter(): Router {
             return res.status(500).json({
                 error: "Failed to check recovery key status",
                 code: "INTERNAL_ERROR",
+                message: "Error communicating with the database",
             })
         }
     })

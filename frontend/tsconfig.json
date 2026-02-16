@@ -30,7 +30,8 @@
                                           "@password-manager/crypto-engine":  [
                                                                                   "./crypto-engine/src/index.ts"
                                                                               ]
-                                      }
+                                      },
+                            "types": ["jest", "@testing-library/jest-dom"]
                         },
     "include":  [
                     "next-env.d.ts",
@@ -40,7 +41,8 @@
                     ".next/dev/types/**/*.ts"
                 ],
     "exclude":  [
-                    "node_modules"
+                    "node_modules",
+                    "crypto-engine/test",
+                    "crypto-engine/dist"
                 ]
 }
-

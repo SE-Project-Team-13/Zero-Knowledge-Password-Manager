@@ -3,42 +3,9 @@
  */
 
 import { Router, type Request, type Response } from "express"
-import { validateSessionToken } from "../services/authService.js"
+import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
 import { pushVault, pullVaults, getSyncMetadata } from "../services/syncService.js"
 import type { SyncPushRequest, SyncPullRequest, SyncPullResponse, ErrorResponse } from "../types/index.js"
-
-async function authMiddleware(req: Request, res: Response, next: Function) {
-  try {
-    const authHeader = req.headers.authorization
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
-        error: "Missing authorization",
-        code: "NO_AUTH",
-        message: "Authorization header with Bearer token required",
-      } as ErrorResponse)
-    }
-
-    const token = authHeader.substring(7)
-    const validation = await validateSessionToken(token)
-
-    if (!validation.valid) {
-      return res.status(401).json({
-        error: "Invalid or expired token",
-        code: "INVALID_TOKEN",
-        message: validation.error,
-      } as ErrorResponse)
-    }
-    ;(req as any).userId = validation.userId
-    next()
-  } catch (error) {
-    console.error("[VaultSync] Auth middleware error:", error)
-    return res.status(500).json({
-      error: "Auth validation failed",
-      code: "INTERNAL_ERROR",
-      message: "An error occurred during authentication",
-    } as ErrorResponse)
-  }
-}
 
 export function createSyncRouter(): Router {
   const router = Router()
@@ -47,10 +14,10 @@ export function createSyncRouter(): Router {
    * POST /sync/push
    * Push encrypted vault to server.
    */
-  router.post("/push", authMiddleware, async (req: Request, res: Response) => {
+  router.post("/push", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, deviceId, vault } = req.body as SyncPushRequest
-      const requestingUserId = (req as any).userId
+      const requestingUserId = req.userId
 
       if (userId !== requestingUserId) {
         return res.status(403).json({
@@ -87,10 +54,10 @@ export function createSyncRouter(): Router {
    * POST /sync/pull
    * Pull encrypted vaults from server.
    */
-  router.post("/pull", authMiddleware, async (req: Request, res: Response) => {
+  router.post("/pull", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, deviceId, lastVersion } = req.body as SyncPullRequest
-      const requestingUserId = (req as any).userId
+      const requestingUserId = req.userId
 
       if (userId !== requestingUserId) {
         return res.status(403).json({

@@ -20,6 +20,14 @@ export default function RecoveryLoginPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
 
+    const parseHexBytes = (hex: string, fieldName: string): Uint8Array => {
+        const chunks = hex.match(/.{1,2}/g);
+        if (!chunks) {
+            throw new Error(`Invalid ${fieldName} format`);
+        }
+        return new Uint8Array(chunks.map((byte: string) => parseInt(byte, 16)));
+    };
+
     const handleRecoveryLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
@@ -72,8 +80,8 @@ export default function RecoveryLoginPage() {
                 try {
                     // Decrypt the master password using the recovery key
                     const encryptedObj = JSON.parse(data.encryptedVaultKey)
-                    const iv = new Uint8Array(encryptedObj.iv.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)))
-                    const ciphertext = new Uint8Array(encryptedObj.ciphertext.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)))
+                    const iv = parseHexBytes(encryptedObj.iv, "iv")
+                    const ciphertext = parseHexBytes(encryptedObj.ciphertext, "ciphertext")
                     
                     const cleanRecoveryKey = recoveryKey.replace(/[\s-]/g, "").trim();
                     const binaryKeyString = atob(cleanRecoveryKey)
@@ -84,16 +92,16 @@ export default function RecoveryLoginPage() {
 
                     const wrappingKey = await window.crypto.subtle.importKey(
                         "raw",
-                        keyBytes,
+                        keyBytes as any,
                         { name: "AES-GCM" },
                         false,
                         ["decrypt"]
                     )
 
                     const decryptedBuffer = await window.crypto.subtle.decrypt(
-                        { name: "AES-GCM", iv },
+                        { name: "AES-GCM", iv: iv as any },
                         wrappingKey,
-                        ciphertext
+                        ciphertext as any
                     )
 
                     const masterPassword = new TextDecoder().decode(decryptedBuffer)
@@ -161,7 +169,7 @@ export default function RecoveryLoginPage() {
                             <Input
                                 id="email"
                                 type="email"
-                                placeholder="your@email.com"
+                                placeholder="Enter your email address"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="bg-secondary/50 border-input focus:border-primary"
@@ -175,29 +183,19 @@ export default function RecoveryLoginPage() {
                             </Label>
                             <textarea
                                 id="recovery-key"
-                                placeholder="Paste your recovery key from the Emergency Kit PDF"
+                                placeholder="Enter your 24-character recovery key"
                                 value={recoveryKey}
                                 onChange={(e) => setRecoveryKey(e.target.value)}
                                 rows={3}
                                 className="w-full px-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-secondary/50 text-foreground placeholder-muted-foreground font-mono"
                                 required
                             />
-                            <p className="text-xs text-muted-foreground">
-                                The recovery key can be found in your Emergency Kit PDF.
-                                It can be entered with or without dashes.
-                            </p>
                         </div>
 
-                        <Alert className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900">
-                            <AlertCircle className="h-4 w-4 text-amber-600" />
-                            <AlertDescription className="text-xs text-amber-800 dark:text-amber-200">
-                                <strong>Warning:</strong> Recovery allows you to access your account, but you must set a new master password.
-                                Since your vault is encrypted with your old password, existing data will be unreadable unless you have a backup.
-                            </AlertDescription>
-                        </Alert>
+
                     </CardContent>
 
-                    <CardFooter className="flex flex-col gap-3">
+                    <CardFooter className="flex flex-col gap-3 pt-6">
                         <Button
                             type="submit"
                             className="w-full h-12 font-semibold shadow-lg shadow-primary/20 transition-all font-heading tracking-wide"

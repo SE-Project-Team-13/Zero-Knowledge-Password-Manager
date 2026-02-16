@@ -5,9 +5,19 @@
 
 import { Router, type Request, type Response } from "express"
 import * as crypto from "crypto"
-import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists } from "../services/authService.js"
+import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount, generateLoginChallenge } from "../services/authService.js"
 import { User } from "../database/models.js"
 import type { RegisterRequest, LoginRequest, LoginResponse, ErrorResponse } from "../types/index.js"
+import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
+
+function extractBearerToken(authHeader?: string): string | null {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return null
+  }
+
+  const token = authHeader.substring(7).trim()
+  return token.length > 0 ? token : null
+}
 
 export function createAuthRouter(): Router {
   const router = Router()
@@ -41,7 +51,9 @@ export function createAuthRouter(): Router {
 
       try {
         const user = await registerUser(email, fullName, salt, verifier)
-        const sessionToken = await generateSessionToken(user.id)
+        // Newly registered users are implicitly verified for their first session
+        // so they can generate their recovery key immediately.
+        const sessionToken = await generateSessionToken(user.id, 24 * 60, true)
 
         return res.status(201).json({
           userId: user.id,
@@ -49,8 +61,8 @@ export function createAuthRouter(): Router {
           salt: user.salt,
           sessionToken,
         })
-      } catch (dbError: any) {
-        if (dbError.code === 11000) {
+      } catch (dbError) {
+        if (typeof dbError === "object" && dbError !== null && "code" in dbError && (dbError as { code?: number }).code === 11000) {
           return res.status(409).json({
             error: "User already exists",
             code: "USER_EXISTS",
@@ -93,7 +105,7 @@ export function createAuthRouter(): Router {
         return res.status(401).json({
           error: "Authentication failed",
           code: "AUTH_FAILED",
-          message: "Invalid email or password",
+          message: authResult.error || "Invalid email or password",
         } as ErrorResponse)
       }
 
@@ -134,6 +146,7 @@ export function createAuthRouter(): Router {
       let { email } = req.params
       if (email) email = email.trim().toLowerCase()
       const salt = await getUserSalt(email)
+      const challenge = await generateLoginChallenge(email)
 
       if (!salt) {
         return res.status(404).json({
@@ -143,7 +156,7 @@ export function createAuthRouter(): Router {
         } as ErrorResponse)
       }
 
-      return res.status(200).json({ salt })
+      return res.status(200).json({ salt, challenge })
     } catch (error) {
       console.error("[VaultSync] Salt fetch error:", error)
       return res.status(500).json({
@@ -181,8 +194,8 @@ export function createAuthRouter(): Router {
    */
   router.post("/reset-password", async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      const token = extractBearerToken(req.headers.authorization)
+      if (!token) {
         const errorResponse: ErrorResponse = {
           error: "Unauthorized",
           code: "UNAUTHORIZED",
@@ -190,8 +203,6 @@ export function createAuthRouter(): Router {
         }
         return res.status(401).json(errorResponse)
       }
-
-      const token = authHeader.split(" ")[1]
       const sessionValidation = await validateSessionToken(token)
 
       if (!sessionValidation.valid || !sessionValidation.userId) {
@@ -234,27 +245,43 @@ export function createAuthRouter(): Router {
   /**
    * POST /auth/resolve-breach
    * Clears the breach flag for the authenticated user.
-   * Requires session token (handled by middleware usually, but here we pass userId in body or rely on context if we had one).
-   * Since we are stateless, we should probably verify session token, but for now we'll accept email?
-   * Actually, the secure way is to use the session token middleware.
-   * But our current architecture in authRoutes is open.
-   * We will implement it to accept { email } and clear it. 
-   * In a real app, this would be protected.
    */
-  router.post("/resolve-breach", async (req: Request, res: Response) => {
+  router.post("/resolve-breach", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { email } = req.body
+      const userId = req.userId
+      if (!userId) return res.status(401).json({ error: "Unauthorized" })
 
-      if (!email) {
-        return res.status(400).json({ error: "Email required" })
-      }
-
-      await User.findOneAndUpdate({ email }, { isBreached: false })
+      await User.findByIdAndUpdate(userId, { isBreached: false })
 
       return res.status(200).json({ success: true })
     } catch (error) {
       console.error("Error resolving breach:", error)
       return res.status(500).json({ error: "Internal error" })
+    }
+  })
+
+  /**
+   * DELETE /auth/account
+   * Permanently deletes the user account and all associated data.
+   */
+  router.delete("/account", async (req: Request, res: Response) => {
+    try {
+      const token = extractBearerToken(req.headers.authorization)
+      if (!token) {
+        return res.status(401).json({ error: "Unauthorized" })
+      }
+      const session = await validateSessionToken(token)
+
+      if (!session.valid || !session.userId) {
+        return res.status(401).json({ error: "Invalid or expired session" })
+      }
+
+      await deleteUserAccount(session.userId)
+
+      return res.status(200).json({ success: true, message: "Account deleted successfully" })
+    } catch (error) {
+      console.error("Delete account error:", error)
+      return res.status(500).json({ error: "Internal server error" })
     }
   })
 

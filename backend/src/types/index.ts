@@ -9,10 +9,10 @@ export interface User {
   fullName: string // User's display name
   salt: string // Random salt for Argon2id derivation
   verifier: string // SRP-style password verifier (never derives master password)
-  createdAt: Date
-  updatedAt: Date
+  createdAt: string
+  updatedAt: string
   isBreached?: boolean
-  lastBreachCheck?: Date
+  lastBreachCheck?: string
 }
 
 export interface Device {
@@ -20,8 +20,8 @@ export interface Device {
   userId: string
   deviceName: string
   deviceFingerprint: string
-  createdAt: Date
-  lastSyncedAt: Date
+  createdAt: string
+  lastSyncedAt: string
 }
 
 export interface VaultBlob {
@@ -35,8 +35,8 @@ export interface VaultBlob {
   version: number // Vault version/revision number
   timestamp: number // Unix timestamp of creation
   nonce: string // Random nonce to prevent replay attacks
-  createdAt: Date
-  updatedAt: Date
+  createdAt: string
+  updatedAt: string
 }
 
 export interface SyncMetadata {
@@ -68,7 +68,7 @@ export interface LoginResponse {
   salt: string // Echo back for client verification
   serverProof: string // Server proof (demonstrates server knows verifier)
   isBreached?: boolean
-  lastBreachCheck?: Date
+  lastBreachCheck?: string
 }
 
 /**

@@ -138,7 +138,7 @@ export default function AuthPage() {
         try {
           const token = localStorage.getItem("auth_token")
           if (token) {
-            await generateAndDownloadRecoveryKey(email, password, token, fullName)
+            await generateAndDownloadRecoveryKey(email, password, token)
             toast.success("Emergency Kit downloaded! Keep it safe.")
           }
         } catch (recoveryErr) {
@@ -236,7 +236,7 @@ export default function AuthPage() {
                     id="email"
                     type="email"
                     className="pl-10 bg-secondary/50 border-input focus:border-primary transition-colors"
-                    placeholder="you@example.com"
+                    placeholder="Enter your email address"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={isSubmitting}
@@ -271,7 +271,7 @@ export default function AuthPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     className="pl-10 pr-10 bg-secondary/50 border-input focus:border-primary transition-colors font-mono"
-                    placeholder="••••••••••••••••"
+                    placeholder="Enter your master password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isSubmitting}
@@ -303,7 +303,7 @@ export default function AuthPage() {
                       id="confirm-password"
                       type={showPassword ? "text" : "password"}
                       className="pl-10 bg-secondary/50 border-input focus:border-primary transition-colors font-mono"
-                      placeholder="••••••••••••••••"
+                      placeholder="Confirm your master password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       disabled={isSubmitting}
@@ -324,19 +324,14 @@ export default function AuthPage() {
               )}
 
               {/* Security Notice */}
-              <Alert className="bg-primary/5 border-primary/20">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                <AlertDescription className="text-xs text-primary/80">
-                  <strong>Zero-Knowledge Architecture:</strong> Your master password is used to derive encryption keys locally via Argon2id. The server never sees your plaintext password or decrypted data.
-                </AlertDescription>
-              </Alert>
+
             </CardContent>
 
             <CardFooter className="flex flex-col gap-4">
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full h-11 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all font-heading tracking-wide"
+                className="w-full h-11 mt-4 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all font-heading tracking-wide"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (

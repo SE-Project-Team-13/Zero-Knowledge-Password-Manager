@@ -9,10 +9,10 @@ export interface IUser extends Document {
   fullName: string
   salt: string
   verifier: string
-  createdAt: Date
-  updatedAt: Date
+  createdAt: string
+  updatedAt: string
   isBreached?: boolean
-  lastBreachCheck?: Date
+  lastBreachCheck?: string
 }
 
 const UserSchema = new Schema<IUser>({
@@ -20,10 +20,10 @@ const UserSchema = new Schema<IUser>({
   fullName: { type: String, required: true },
   salt: { type: String, required: true },
   verifier: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
+  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
   isBreached: { type: Boolean, default: false },
-  lastBreachCheck: { type: Date },
+  lastBreachCheck: { type: String },
 })
 
 /**
@@ -33,15 +33,17 @@ const UserSchema = new Schema<IUser>({
 export interface ISession extends Document {
   userId: mongoose.Types.ObjectId
   token: string
-  expiresAt: Date
-  createdAt: Date
+  expiresAt: string
+  isOtpVerified: boolean
+  createdAt: string
 }
 
 const SessionSchema = new Schema<ISession>({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
   token: { type: String, required: true, unique: true },
-  expiresAt: { type: Date, required: true },
-  createdAt: { type: Date, default: Date.now },
+  expiresAt: { type: String, required: true },
+  isOtpVerified: { type: Boolean, default: false },
+  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
 })
 
 /**
@@ -58,8 +60,8 @@ export interface IVaultBlob extends Document {
   version: number
   timestamp: number
   nonce: string
-  createdAt: Date
-  updatedAt: Date
+  createdAt: string
+  updatedAt: string
 }
 
 const VaultBlobSchema = new Schema<IVaultBlob>({
@@ -72,8 +74,8 @@ const VaultBlobSchema = new Schema<IVaultBlob>({
   version: { type: Number, required: true },
   timestamp: { type: Number, required: true },
   nonce: { type: String, required: true, unique: true },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
+  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
 })
 
 /**
@@ -86,8 +88,8 @@ export interface ISyncMetadata extends Document {
   lastUpdated: number
   vaultVersion: number
   nonce: string
-  createdAt: Date
-  updatedAt: Date
+  createdAt: string
+  updatedAt: string
 }
 
 const SyncMetadataSchema = new Schema<ISyncMetadata>({
@@ -96,8 +98,8 @@ const SyncMetadataSchema = new Schema<ISyncMetadata>({
   lastUpdated: { type: Number, required: true },
   vaultVersion: { type: Number, required: true },
   nonce: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
+  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
 })
 // Compound index ensures only one sync record exists per user/device pair.
 SyncMetadataSchema.index({ userId: 1, deviceId: 1 }, { unique: true })
@@ -110,14 +112,14 @@ export interface ISimpleVault extends Document {
   userId: string
   data: any
   labels: string[]
-  updatedAt: Date
+  updatedAt: string
 }
 
 const SimpleVaultSchema = new Schema<ISimpleVault>({
   userId: { type: String, required: true, unique: true },
   data: { type: Schema.Types.Mixed, required: true },
   labels: { type: [String], default: [] }, // Plaintext labels for identification
-  updatedAt: { type: Date, default: Date.now },
+  updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
 })
 
 /**
@@ -127,21 +129,21 @@ const SimpleVaultSchema = new Schema<ISimpleVault>({
 export interface IOTP extends Document {
   email: string
   code: string
-  expiresAt: Date
+  expiresAt: string
   verified: boolean
-  createdAt: Date
+  createdAt: string
 }
 
 const OTPSchema = new Schema<IOTP>({
   email: { type: String, required: true },
   code: { type: String, required: true },
-  expiresAt: { type: Date, required: true },
+  expiresAt: { type: String, required: true },
   verified: { type: Boolean, default: false },
-  createdAt: { type: Date, default: Date.now },
+  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
 })
 
-// Index for automatic deletion of expired OTPs (TTL Index)
-OTPSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+// Index for automatic deletion of expired OTPs (TTL Index) - Removed because string expiration doesn't work with MongoDB TTL
+// OTPSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
 /**
  * RecoveryKey Schema: Stores hashed recovery keys for emergency access.
@@ -152,8 +154,8 @@ export interface IRecoveryKey extends Document {
   userId: mongoose.Types.ObjectId
   keyHash: string
   encryptedVaultKey: string // Encrypted master password/key
-  createdAt: Date
-  usedAt?: Date
+  createdAt: string
+  usedAt?: string
   isRevoked: boolean
 }
 
@@ -161,13 +163,30 @@ const RecoveryKeySchema = new Schema<IRecoveryKey>({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
   keyHash: { type: String, required: true },
   encryptedVaultKey: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-  usedAt: { type: Date },
+  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  usedAt: { type: String },
   isRevoked: { type: Boolean, default: false },
 })
 
 // Index for fast lookup by userId
 RecoveryKeySchema.index({ userId: 1 })
+
+/**
+ * LoginChallenge Schema: Stores temporary challenges for secure authentication.
+ * Used to prevent replay attacks by ensuring each login attempt uses a fresh, 
+ * server-generated challenge.
+ */
+export interface ILoginChallenge extends Document {
+  email: string
+  challenge: string
+  expiresAt: string
+}
+
+const LoginChallengeSchema = new Schema<ILoginChallenge>({
+  email: { type: String, required: true, unique: true },
+  challenge: { type: String, required: true },
+  expiresAt: { type: String, required: true },
+})
 
 // Export Mongoose Models
 export const User = mongoose.model<IUser>("User", UserSchema)
@@ -177,4 +196,5 @@ export const SyncMetadata = mongoose.model<ISyncMetadata>("SyncMetadata", SyncMe
 export const SimpleVault = mongoose.model<ISimpleVault>("SimpleVault", SimpleVaultSchema)
 export const OTP = mongoose.model<IOTP>("OTP", OTPSchema)
 export const RecoveryKey = mongoose.model<IRecoveryKey>("RecoveryKey", RecoveryKeySchema)
+export const LoginChallenge = mongoose.model<ILoginChallenge>("LoginChallenge", LoginChallengeSchema)
 
