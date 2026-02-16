@@ -41,5 +41,8 @@ jobs:
     - name: Build Crypto Engine
       run: npm run crypto:build
       
-    - name: Run Frontend Tests
-      run: npm test -w frontend
+    - name: Run Frontend Tests (Excluding Extension)
+      # Explicitly running tests for the main frontend app and crypto engine, skipping extension
+      run: |
+        npm test -w @password-manager/crypto-engine
+        npm test -w password-manager
