@@ -107,8 +107,8 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
                     },
-                    body: JSON.stringify({ 
-                        email, 
+                    body: JSON.stringify({
+                        email,
                         keyHash,
                         encryptedVaultKey
                     }),
@@ -222,7 +222,7 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
                         <div className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg">
                             <p className="text-sm text-red-800 dark:text-red-200 font-semibold flex items-center gap-2">
                                 <AlertTriangle className="h-4 w-4" />
-                                This is the only time you'll see this key!
+                                This is the only time you&apos;ll see this key!
                             </p>
                         </div>
 

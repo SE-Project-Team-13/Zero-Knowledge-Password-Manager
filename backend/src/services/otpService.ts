@@ -1,22 +1,6 @@
-/**
- * OTP Service for generating and verifying one-time passwords via email.
- * This service provides a secondary layer of security for unlocking the vault.
- */
-
 import crypto from "crypto"
-import nodemailer from "nodemailer"
 import { OTP } from "../database/models.js"
-
-// Configure email transporter for sending notification emails.
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.SMTP_PORT || "587"),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-})
+import { sendEmail } from "./emailService.js"
 
 const isProduction = process.env.NODE_ENV === "production"
 const isDebug = process.env.DEBUG === "true"
@@ -33,10 +17,15 @@ function generateOTPCode(): string {
   return crypto.randomInt(100000, 999999).toString()
 }
 
+// Define email sender type matches the imported function signature
+type EmailSender = typeof sendEmail;
+
 /**
  * Generates and sends an OTP to the user's registered email address.
+ * @param email User's email
+ * @param emailSender Optional email sender function for dependency injection (testing)
  */
-export async function sendOTP(email: string): Promise<{ success: boolean; message: string }> {
+export async function sendOTP(email: string, emailSender: EmailSender = sendEmail): Promise<{ success: boolean; message: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase()
     await OTP.deleteMany({ email: normalizedEmail })
@@ -51,8 +40,9 @@ export async function sendOTP(email: string): Promise<{ success: boolean; messag
       verified: false,
     })
 
+    // ... (keep surrounding code)
+
     const mailOptions = {
-      from: process.env.SMTP_FROM || '"Password Manager" <noreply@passwordmanager.com>',
       to: normalizedEmail,
       subject: "🔐 Your Vault Access Code",
       html: `
@@ -84,14 +74,12 @@ export async function sendOTP(email: string): Promise<{ success: boolean; messag
 
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
-        await transporter.sendMail(mailOptions)
-        if (!isProduction || isDebug) {
-          console.log(`[VaultSync:OTP] ✅ Sent OTP to ${normalizedEmail}`)
-          console.log(`[VaultSync:OTP] 🔑 Code: ${code}`)
-        }
+        await emailSender(mailOptions, 'OTP')
       } catch (emailError: unknown) {
-        const errorMessage = emailError instanceof Error ? emailError.message : "Unknown SMTP error"
-        console.error("[VaultSync:OTP] Email failed:", errorMessage)
+        // Fallback logging handled by sendEmail or here if needed to suppress error?
+        // Original code suppressed error and logged fallback log.
+        // `sendEmail` in utils throws.
+        // So we catch here and log fallback.
         if (!isProduction || isDebug) {
           console.log(`[VaultSync:OTP] Fallback for ${normalizedEmail}: ${code}`)
         }
@@ -115,7 +103,7 @@ export async function sendOTP(email: string): Promise<{ success: boolean; messag
 export async function verifyOTP(email: string, code: string): Promise<{ success: boolean; message: string; code?: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase()
-    
+
     // Check rate limit
     const attempts = otpAttempts.get(normalizedEmail)
     if (attempts && attempts.count >= MAX_ATTEMPTS && Date.now() - attempts.lastAttempt < LOCKOUT_TIME) {

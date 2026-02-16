@@ -1,124 +1,97 @@
 
 import { jest, describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
+import { User, RecoveryKey } from '../../src/database/models.js';
 
-// ------------------------------------------------------------------
-// 1. Define Mocks
-// ------------------------------------------------------------------
-const mockSave = (jest.fn() as any).mockResolvedValue(true);
-const mockRecoveryKeyFindOne = jest.fn();
-const mockRecoveryKeyUpdateMany = jest.fn();
-const mockRecoveryKeyCountDocuments = jest.fn();
-
-const MockRecoveryKey = jest.fn().mockImplementation((data: any) => ({
-    ...data,
-    save: mockSave
-}));
-(MockRecoveryKey as any).findOne = mockRecoveryKeyFindOne;
-(MockRecoveryKey as any).updateMany = mockRecoveryKeyUpdateMany;
-(MockRecoveryKey as any).countDocuments = mockRecoveryKeyCountDocuments;
-
-const mockUserFindOne = (jest.fn() as any);
-const MockUser = jest.fn();
-(MockUser as any).findOne = mockUserFindOne;
-
-// ------------------------------------------------------------------
-// 2. Register Unstable Mocks
-// ------------------------------------------------------------------
-jest.unstable_mockModule('../../src/database/models.js', () => ({
-    RecoveryKey: MockRecoveryKey,
-    User: MockUser
-}));
-
-// ------------------------------------------------------------------
-// 3. Test Suite
-// ------------------------------------------------------------------
 describe('RecoveryService Integration Tests', () => {
     let recoveryService: any;
     let generateRecoveryKey: any;
     let storeRecoveryKeyHash: any;
     let verifyRecoveryKey: any;
 
-    const validUserId = '507f1f77bcf86cd799439011'; // Valid ObjectId hex
-
     beforeAll(async () => {
+        // Import service - it will use real models connected to MongoMemoryServer
         recoveryService = await import('../../src/services/recoveryService.js');
         generateRecoveryKey = recoveryService.generateRecoveryKey;
         storeRecoveryKeyHash = recoveryService.storeRecoveryKeyHash;
         verifyRecoveryKey = recoveryService.verifyRecoveryKey;
     });
 
-    beforeEach(() => {
+    beforeEach(async () => {
         jest.clearAllMocks();
-        console.log('\n---------------------------------------------------');
-        mockSave.mockResolvedValue(true);
+        // DB cleanup is handled by jest.setup.js afterEach
     });
 
     it('generateRecoveryKey: should generate a valid recovery key', () => {
         console.log('Test Case 1: Generating a Recovery Key');
         const key = generateRecoveryKey();
         console.log('[Output] Generated Key:', key);
-        
         expect(key).toBeDefined();
         expect(key.length).toBeGreaterThan(0);
         console.log('Result: generated key successfully.');
     });
 
     it('storeRecoveryKeyHash: should hash key and save user recovery record', async () => {
-        const userId = validUserId;
+        const userId = new mongoose.Types.ObjectId().toString();
         const keyHash = 'hashed-key-value';
         const encryptedVaultKey = 'encrypted-vault-key-abc';
-        
+
         console.log(`Test Case 2: Storing Recovery Key for User ${userId}`);
-        
+
         const result = await storeRecoveryKeyHash(userId, keyHash, encryptedVaultKey);
-        
-        console.log('[Output] Stored Record:', result);
-        
-        // Use expect.anything() because ObjectId comparison might differ
-        expect(mockRecoveryKeyUpdateMany).toHaveBeenCalledWith(
-            expect.objectContaining({ userId: expect.anything(), isRevoked: false }), 
-            expect.objectContaining({ isRevoked: true })
-        );
-        expect(MockRecoveryKey).toHaveBeenCalledTimes(1);
-        expect(mockSave).toHaveBeenCalled();
-        console.log('Result: Recovery key stored securely (previous keys revoked).');
+
+        expect(result).toBeDefined();
+        expect(result.userId.toString()).toBe(userId);
+        expect(result.keyHash).toBe(keyHash);
+        expect(result.encryptedVaultKey).toBe(encryptedVaultKey);
+        expect(result.isRevoked).toBe(false);
+
+        // Verify in DB
+        const storedInDb = await RecoveryKey.findById(result._id);
+        expect(storedInDb).toBeDefined();
+        expect(storedInDb?.keyHash).toBe(keyHash);
+        console.log('Result: Recovery key stored securely.');
     });
 
     it('verifyRecoveryKey: should verify a valid key and return vault key', async () => {
         console.log('Test Case 3: Verifying Recovery Key');
-        const email = 'recovery@test.com';
+        const email = 'recovery-test@example.com';
         const rawKey = generateRecoveryKey();
-        
-        const expectedHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+        const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
         const encryptedVaultKey = 'secret-vault-key';
-        
-        // Mock User
-        mockUserFindOne.mockResolvedValue({ _id: validUserId, email });
-        
-        // Mock RecoveryKey findOne to match only if hash matches
-        mockRecoveryKeyFindOne.mockImplementation(async (query: any) => {
-             if (query.keyHash === expectedHash) {
-                 return {
-                     userId: validUserId,
-                     keyHash: expectedHash,
-                     encryptedVaultKey,
-                     isRevoked: false,
-                     save: (jest.fn() as any).mockResolvedValue(true)
-                 };
-             }
-             return null;
-        });
 
-        console.log(`[Input] Verifying Key: ${rawKey.substring(0, 10)}... for ${email}`);
-        
+        // Setup: Create User
+        const user = new User({
+            email,
+            fullName: 'Test User',
+            salt: 'salt',
+            verifier: 'verifier'
+        });
+        await user.save();
+
+        // Setup: Create RecoveryKey
+        const recoveryKey = new RecoveryKey({
+            userId: user._id,
+            keyHash,
+            encryptedVaultKey,
+            isRevoked: false
+        });
+        await recoveryKey.save();
+
+        console.log(`[Input] Verifying Key for ${email}`);
+
         const result = await verifyRecoveryKey(email, rawKey);
-        
+
         console.log('[Output] Verification Result:', result);
-        
-        expect(mockUserFindOne).toHaveBeenCalledWith(expect.objectContaining({ email: email.toLowerCase() }));
+
         expect(result.success).toBe(true);
+        expect(result.userId).toBe(user._id.toString());
         expect(result.encryptedVaultKey).toBe(encryptedVaultKey);
+
+        // Verify usedAt is set
+        const updatedKey = await RecoveryKey.findById(recoveryKey._id);
+        expect(updatedKey?.usedAt).toBeDefined();
         console.log('Result: Success - Valid recovery key accepted.');
     });
 });

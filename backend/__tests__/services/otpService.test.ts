@@ -1,101 +1,46 @@
 
 import { jest, describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
+import { OTP } from '../../src/database/models.js';
 
-// ------------------------------------------------------------------
-// 1. Define Mocks
-// ------------------------------------------------------------------
-const mockOtpSave = (jest.fn() as any).mockResolvedValue(true);
-const mockOtpFindOne = jest.fn();
-const mockOtpDeleteMany = jest.fn();
-const mockOtpCreate = jest.fn();
+// Mock emailSender
+const mockSendEmail = jest.fn().mockImplementation(() => Promise.resolve());
 
-const MockOTP = jest.fn().mockImplementation((data: any) => ({
-    ...data,
-    save: mockOtpSave
-}));
-(MockOTP as any).findOne = mockOtpFindOne;
-(MockOTP as any).deleteMany = mockOtpDeleteMany;
-(MockOTP as any).create = mockOtpCreate;
-
-const mockSendMail = (jest.fn() as any).mockImplementation(() => {
-    console.log('[Mock] sendMail called');
-    return Promise.resolve({ messageId: 'test-message-id' });
-});
-const mockCreateTransport = jest.fn().mockImplementation(() => {
-    console.log('[Mock] createTransport called');
-    return {
-        sendMail: mockSendMail
-    };
-});
-
-// ------------------------------------------------------------------
-// 2. Register Unstable Mocks
-// ------------------------------------------------------------------
-jest.unstable_mockModule('../../src/database/models.js', () => ({
-    OTP: MockOTP
-}));
-
-jest.unstable_mockModule('nodemailer', () => ({
-    default: {
-        createTransport: mockCreateTransport
-    },
-    createTransport: mockCreateTransport
-}));
-
-// ------------------------------------------------------------------
-// 3. Test Suite
-// ------------------------------------------------------------------
 describe('OTPService Integration Tests', () => {
     let sendOTP: any;
     let verifyOTP: any;
 
     beforeAll(async () => {
+        // Setup mock env vars for email testing
+        process.env.SMTP_USER = 'test_user';
+        process.env.SMTP_PASS = 'test_pass';
+
         const otpService = await import('../../src/services/otpService.js');
         sendOTP = otpService.sendOTP;
         verifyOTP = otpService.verifyOTP;
     });
 
-    beforeEach(() => {
+    beforeEach(async () => {
         jest.clearAllMocks();
-        console.log('\n---------------------------------------------------');
-        // Reset defaults
-        process.env.SMTP_USER = 'test-user';
-        process.env.SMTP_PASS = 'test-pass';
-        
-        mockSendMail.mockResolvedValue({ messageId: 'test-message-id' });
-        mockCreateTransport.mockReturnValue({ sendMail: mockSendMail });
-        mockOtpSave.mockResolvedValue(true);
+        // DB cleanup handled by jest.setup.js
     });
 
     it('sendOTP: should generate OTP, save to DB, and send email', async () => {
         const email = 'otp-test@example.com';
         console.log(`Test Case 1: Sending OTP to ${email}`);
 
-        // Mock OTP.create implementation to log what it receives
-        mockOtpCreate.mockImplementation(async (data: any) => {
-             console.log('[MockDB] Creating OTP record:', { 
-                 email: data.email, 
-                 code: data.code, 
-                 verified: data.verified 
-            });
-             return data;
-        });
-
-        const result = await sendOTP(email);
+        const result = await sendOTP(email, mockSendEmail);
 
         console.log('[Output] sendOTP Result:', result);
-        
-        expect(mockOtpDeleteMany).toHaveBeenCalledWith({ email: email.toLowerCase() });
-        expect(mockOtpCreate).toHaveBeenCalled();
-        expect(mockSendMail).toHaveBeenCalled();
-        
-        // specific check on email arguments
-        const mailOptions: any = mockSendMail.mock.calls[0][0];
-        console.log(`[MockEmail] Destination: ${mailOptions.to}`);
-        console.log(`[MockEmail] Subject: ${mailOptions.subject}`);
-        
+
         expect(result.success).toBe(true);
-        console.log('Result: Success - OTP generation and transmission flow verified.');
+        expect(result.success).toBe(true);
+        expect(mockSendEmail).toHaveBeenCalled();
+
+        // Verify in DB
+        const storedOTP = await OTP.findOne({ email });
+        expect(storedOTP).toBeDefined();
+        expect(storedOTP?.code).toBeDefined();
+        expect(storedOTP?.verified).toBe(false);
     });
 
     it('verifyOTP: should verify valid OTP and update status', async () => {
@@ -103,27 +48,23 @@ describe('OTPService Integration Tests', () => {
         const code = '123456';
         console.log(`Test Case 2: Verifying OTP ${code} for ${email}`);
 
-        const mockOtpDoc = {
+        // Scaffolding: Create OTP in DB
+        await OTP.create({
             email,
             code,
-            verified: false,
             expiresAt: new Date(Date.now() + 100000).toISOString(),
-            save: mockOtpSave
-        };
-
-        mockOtpFindOne.mockResolvedValue(mockOtpDoc as never);
+            verified: false
+        });
 
         const result = await verifyOTP(email, code);
 
         console.log('[Output] verifyOTP Result:', result);
-        
-        expect(mockOtpFindOne).toHaveBeenCalled();
-        expect(mockOtpSave).toHaveBeenCalled();
-        // Since we are checking if the property was set on the object we returned
-        // The service usually modifies the object returned by Mongoose
-        expect(mockOtpDoc.verified).toBe(true);
+
         expect(result.success).toBe(true);
-        console.log('Result: Success - OTP verified and marked as used.');
+
+        // Verify in DB
+        const updatedOTP = await OTP.findOne({ email });
+        expect(updatedOTP?.verified).toBe(true);
     });
 
     it('verifyOTP: should reject invalid OTP', async () => {
@@ -131,12 +72,9 @@ describe('OTPService Integration Tests', () => {
         const code = '000000';
         console.log(`Test Case 3: Verifying Invalid OTP ${code}`);
 
-        mockOtpFindOne.mockResolvedValue(null as never);
-
+        // Ensure no OTP exists (handled by afterEach cleanup usually, but to be safe)
+        // Calling verify without creating logic should fail or return false
         const result = await verifyOTP(email, code);
-
-        console.log('[Output] verifyOTP Result:', result);
         expect(result.success).toBe(false);
-        console.log('Result: Success - Invalid OTP correctly rejected.');
     });
 });
