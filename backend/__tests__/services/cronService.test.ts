@@ -1,60 +1,37 @@
-
 import { jest, describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
 import { User, Session, OTP, LoginChallenge } from '../../src/database/models.js';
 import mongoose from 'mongoose';
-
-// Mock node-cron to avoid starting real schedules
-const mockCronSchedule = jest.fn();
-jest.unstable_mockModule('node-cron', () => ({
-    default: { schedule: mockCronSchedule },
-    schedule: mockCronSchedule
-}));
-
-// Mock Breach Service to control breach detection results
-const mockCheckEmailBreach = jest.fn();
-jest.unstable_mockModule('../../src/services/breachService.js', () => ({
-    checkEmailBreach: mockCheckEmailBreach
-}));
+import * as cronService from '../../src/services/cronService.js';
 
 describe('CronService Integration Tests', () => {
-    let cronService: any;
-    let initScheduledJobs: any;
-    let runBreachDetectionJob: any;
-    let runCleanupJob: any;
 
-    beforeAll(async () => {
-        cronService = await import('../../src/services/cronService.js');
-        initScheduledJobs = cronService.initScheduledJobs;
-        runBreachDetectionJob = cronService.runBreachDetectionJob;
-        runCleanupJob = cronService.runCleanupJob;
+    // DB cleanup handled by jest.setup.js
+
+    it('initScheduledJobs: should schedule jobs using injected cron', () => {
+        const mockCron = {
+            schedule: jest.fn()
+        };
+
+        cronService.initScheduledJobs(mockCron as any);
+
+        expect(mockCron.schedule).toHaveBeenCalledTimes(2);
+        expect(mockCron.schedule).toHaveBeenCalledWith("0 0 * * 0", expect.any(Function));
+        expect(mockCron.schedule).toHaveBeenCalledWith("0 2 * * *", cronService.runCleanupJob);
     });
 
-    beforeEach(async () => {
-        jest.clearAllMocks();
-        // DB cleanup handled by jest.setup.js
-    });
-
-    it('initScheduledJobs: should schedule jobs', () => {
-        initScheduledJobs();
-        expect(mockCronSchedule).toHaveBeenCalledTimes(2);
-        // We can't easily check the callback reference because it's imported, but we can check the pattern
-        expect(mockCronSchedule).toHaveBeenCalledWith("0 0 * * 0", expect.any(Function));
-        expect(mockCronSchedule).toHaveBeenCalledWith("0 2 * * *", expect.any(Function));
-    });
-
-    it('runBreachDetectionJob: should mark breached users', async () => {
+    it('runBreachDetectionJob: should mark breached users using injected checker', async () => {
         console.log('Test Case: Breach Detection Logic');
 
         // Setup: Create users
         const safeUser = await User.create({ email: 'safe@test.com', fullName: 'Safe', salt: 's', verifier: 'v' });
         const breachedUser = await User.create({ email: 'breached@test.com', fullName: 'Breach', salt: 's', verifier: 'v' });
 
-        // Mock breach service
-        mockCheckEmailBreach.mockImplementation(async (email: any) => {
+        // Mock breach checker via DI
+        const mockChecker = jest.fn(async (email: string) => {
             return email === 'breached@test.com';
         });
 
-        await runBreachDetectionJob();
+        await cronService.runBreachDetectionJob(mockChecker as any);
 
         // Verify Safe User
         const safeUserDb = await User.findById(safeUser._id);
@@ -78,14 +55,14 @@ describe('CronService Integration Tests', () => {
         await User.create({ _id: uid, email: 't@t.com', fullName: 'T', salt: 's', verifier: 'v' });
 
         // Setup: Expired items
-        await Session.create({ userId: uid, token: 'expired', expiresAt: past });
+        await Session.create({ userId: uid, token: 'expired', expiresAt: past, isOtpVerified: false });
         await OTP.create({ email: 't@t.com', code: '1', expiresAt: past });
         await LoginChallenge.create({ email: 't@t.com', challenge: '1', expiresAt: past });
 
         // Setup: Valid items
-        await Session.create({ userId: uid, token: 'valid', expiresAt: future });
+        await Session.create({ userId: uid, token: 'valid', expiresAt: future, isOtpVerified: false });
 
-        await runCleanupJob();
+        await cronService.runCleanupJob();
 
         // Verify Expired gone
         expect(await Session.findOne({ token: 'expired' })).toBeNull();

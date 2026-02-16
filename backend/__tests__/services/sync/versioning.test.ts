@@ -1,98 +1,92 @@
-
 import { jest, describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
+import { VaultBlob } from '../../../src/database/models.js';
+import * as syncService from '../../../src/services/syncService.js';
+import mongoose from 'mongoose';
 
-// ------------------------------------------------------------------
-// 1. Define Mocks
-// ------------------------------------------------------------------
-const mockFind = jest.fn();
+describe('SyncService - Versioning Logic Integration Tests', () => {
 
-// We need an object that looks like the model class/object exported
-const MockVaultBlob = { 
-    find: mockFind 
-};
-// Attach other methods if needed, but for versioning test, find is key.
-// However, pullVaults might use other methods?
-// pullVaults calls VaultBlob.find(...).sort(...)
-
-const MockSyncMetadata = {
-    findOne: jest.fn(),
-    findOneAndUpdate: jest.fn()
-};
-
-// ------------------------------------------------------------------
-// 2. Register Unstable Mocks
-// ------------------------------------------------------------------
-jest.unstable_mockModule('../../../src/database/models.js', () => ({
-    VaultBlob: MockVaultBlob,
-    SyncMetadata: MockSyncMetadata
-}));
-
-// ------------------------------------------------------------------
-// 3. Test Suite
-// ------------------------------------------------------------------
-describe('SyncService - Versioning Logic', () => {
-    let pullVaults: any;
-
-    beforeAll(async () => {
-        const syncService = await import('../../../src/services/syncService.js');
-        pullVaults = syncService.pullVaults;
-    });
-
-    beforeEach(() => {
-        jest.clearAllMocks();
-        console.log('\n---------------------------------------------------');
-    });
+    // DB cleanup handled by jest.setup.ts
 
     it('pullVaults: should respect version filter when provided', async () => {
-        const userId = 'user-v-1';
-        const deviceId = 'device-v-1';
+        const userId = new mongoose.Types.ObjectId().toString();
+        const deviceId = 'requesting-device';
         const lastVersion = 5;
-        
-        console.log(`Test Case 1: Pulling vaults newer than v${lastVersion}`);
-        
-        // Mock returning newer vaults
-        const mockVaults = [
-            { _id: 'v6-id', version: 6, userId: 'user-v-1', ciphertext: 'v6' },
-            { _id: 'v7-id', version: 7, userId: 'user-v-1', ciphertext: 'v7' }
-        ];
-        
-        const mockQuery = {
-            sort: (jest.fn() as any).mockResolvedValue(mockVaults.map(v => ({...v, userId: { toString: () => v.userId }})))
-        };
-        mockFind.mockReturnValue(mockQuery as never);
 
-        const result = await pullVaults(userId, deviceId, lastVersion);
-        
-        console.log(`[Output] Retrieved ${result.vaults?.length} vaults`);
-        
-        expect(mockFind).toHaveBeenCalledWith(expect.objectContaining({
+        console.log(`Test Case 1: Pulling vaults newer than v${lastVersion}`);
+
+        // Setup: Create older and newer blobs
+        await VaultBlob.create({
             userId,
-            version: { $gt: lastVersion }
-        }));
-        
+            deviceId: 'other',
+            ciphertext: 'v4',
+            version: 4,
+            salt: 's',
+            iv: 'i',
+            authTag: 't',
+            timestamp: Date.now(),
+            nonce: 'n4'
+        });
+
+        await VaultBlob.create({
+            userId,
+            deviceId: 'other',
+            ciphertext: 'v6',
+            version: 6,
+            salt: 's',
+            iv: 'i',
+            authTag: 't',
+            timestamp: Date.now(),
+            nonce: 'n6'
+        });
+
+        await VaultBlob.create({
+            userId,
+            deviceId: 'other',
+            ciphertext: 'v7',
+            version: 7,
+            salt: 's',
+            iv: 'i',
+            authTag: 't',
+            timestamp: Date.now(),
+            nonce: 'n7'
+        });
+
+        const result = await syncService.pullVaults(userId, deviceId, lastVersion);
+
+        console.log(`[Output] Retrieved ${result.vaults?.length} vaults`);
+
+        expect(result.success).toBe(true);
         expect(result.vaults).toHaveLength(2);
-        expect(result.vaults?.[0].version).toBe(6);
+        expect(result.vaults?.[0].version).toBe(7);
+        expect(result.vaults?.[1].version).toBe(6);
+
         console.log('Result: Success - Versions filtered correctly.');
     });
 
-    it('pullVaults: should retrieve all vaults if logic (not tested here) expects so, or default behavior', async () => {
-        const userId = 'user-v-2';
-        const deviceId = 'device-v-2';
-        
-        console.log(`Test Case 2: Pulling all vaults (no version filter)`);
-        
-        const mockQuery = {
-            sort: (jest.fn() as any).mockResolvedValue([])
-        };
-        mockFind.mockReturnValue(mockQuery as never);
+    it('pullVaults: should retrieve all vaults if lastVersion is not provided', async () => {
+        const userId = new mongoose.Types.ObjectId().toString();
+        const deviceId = 'requesting-device';
 
-        await pullVaults(userId, deviceId);
-        
-        // Check finding without version filter
-        // If second arg is omitted, pullVaults(userId, deviceId) -> lastVersion undefined?
-        // Implementation: pullVaults(userId, deviceId, lastVersion?)
-        // If lastVersion is undefined, query should handle it
-        expect(mockFind).toHaveBeenCalledWith({ userId });
-        console.log('Result: Success - Query constructed without version constraint.');
+        await VaultBlob.create({
+            userId,
+            deviceId: 'other',
+            ciphertext: 'v1',
+            version: 1,
+            salt: 's',
+            iv: 'i',
+            authTag: 't',
+            timestamp: Date.now(),
+            nonce: 'na'
+        });
+
+        console.log(`Test Case 2: Pulling all vaults (no version filter)`);
+
+        const result = await syncService.pullVaults(userId, deviceId);
+
+        expect(result.success).toBe(true);
+        expect(result.vaults).toHaveLength(1);
+        expect(result.vaults?.[0].version).toBe(1);
+
+        console.log('Result: Success - All vaults retrieved when no version constraint.');
     });
 });

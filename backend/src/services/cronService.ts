@@ -2,11 +2,16 @@ import cron from "node-cron";
 import { User } from "../database/models.js";
 import { checkEmailBreach } from "./breachService.js";
 
+interface CronProvider {
+    schedule: (cronExpression: string, func: () => void, options?: any) => any;
+}
+
 /**
  * Breach Detection Job Logic
  * Checks all users against the breach database (privacy-preserving).
+ * @param breachChecker - Optional checkEmailBreach function for testing.
  */
-export async function runBreachDetectionJob() {
+export async function runBreachDetectionJob(breachChecker = checkEmailBreach) {
     console.log("[VaultSync:Cron] Running scheduled Breach Detection check...");
     try {
         const users = await User.find({});
@@ -16,7 +21,7 @@ export async function runBreachDetectionJob() {
             // Check if email is in breach database (privacy-preserving)
             if (!user.email) continue;
 
-            const isBreached = await checkEmailBreach(user.email);
+            const isBreached = await breachChecker(user.email);
 
             if (isBreached && !user.isBreached) {
                 // New breach detected!
@@ -81,17 +86,18 @@ export async function runCleanupJob() {
 
 /**
  * Initializes the scheduled jobs.
+ * @param cronProvider - Optional cron provider for testing.
  */
-export function initScheduledJobs() {
+export function initScheduledJobs(cronProvider: CronProvider | typeof cron = cron) {
     console.log("[VaultSync:Cron] Initializing scheduled jobs...");
 
     // Breach Detection Job
     // Schedule: Every week on Sunday at midnight (0 0 * * 0)
-    cron.schedule("0 0 * * 0", runBreachDetectionJob);
+    cronProvider.schedule("0 0 * * 0", () => runBreachDetectionJob());
 
     // Cleanup Job
     // Schedule: Daily at 2:00 AM
-    cron.schedule("0 2 * * *", runCleanupJob);
+    cronProvider.schedule("0 2 * * *", runCleanupJob);
 
     console.log("[VaultSync:Cron] Scheduled jobs started.");
 }

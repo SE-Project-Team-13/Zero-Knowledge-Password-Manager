@@ -1,70 +1,14 @@
-
 import { jest, describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
+import { VaultBlob, SyncMetadata } from '../../src/database/models.js';
+import * as syncService from '../../src/services/syncService.js';
+import mongoose from 'mongoose';
 
-// ------------------------------------------------------------------
-// 1. Define Mocks
-// ------------------------------------------------------------------
-const mockSave = (jest.fn() as any).mockResolvedValue(true);
-const mockVaultFind = jest.fn();
-const mockVaultCreate = jest.fn();
-const mockSyncFindOne = jest.fn();
-const mockSyncFindOneAndUpdate = jest.fn();
-
-const MockVaultBlob = jest.fn().mockImplementation((data: any) => ({
-    ...data,
-    save: mockSave,
-    _id: 'mock-vault-id',
-    userId: { toString: () => 'user-sync-1' },
-    deviceId: 'device-1', // Default mock value if not overridden
-    ciphertext: 'data',
-    salt: 's',
-    iv: 'i',
-    authTag: 't',
-    version: 1,
-    timestamp: 123456789,
-    nonce: 'n',
-    createdAt: new Date(),
-    updatedAt: new Date()
-}));
-(MockVaultBlob as any).find = mockVaultFind;
-(MockVaultBlob as any).create = mockVaultCreate;
-
-const MockSyncMetadata = jest.fn().mockImplementation((data: any) => ({
-    ...data,
-    save: mockSave
-}));
-(MockSyncMetadata as any).findOneAndUpdate = mockSyncFindOneAndUpdate;
-(MockSyncMetadata as any).findOne = mockSyncFindOne;
-
-// ------------------------------------------------------------------
-// 2. Register Unstable Mocks
-// ------------------------------------------------------------------
-jest.unstable_mockModule('../../src/database/models.js', () => ({
-    VaultBlob: MockVaultBlob,
-    SyncMetadata: MockSyncMetadata
-}));
-
-// ------------------------------------------------------------------
-// 3. Test Suite
-// ------------------------------------------------------------------
 describe('SyncService Integration Tests', () => {
-    let pushVault: any;
-    let pullVaults: any;
 
-    beforeAll(async () => {
-        const syncService = await import('../../src/services/syncService.js');
-        pushVault = syncService.pushVault;
-        pullVaults = syncService.pullVaults;
-    });
-
-    beforeEach(() => {
-        jest.clearAllMocks();
-        console.log('\n---------------------------------------------------');
-        mockSave.mockResolvedValue(true);
-    });
+    // DB cleanup handled by jest.setup.ts
 
     it('pushVault: should save encrypted blob and update sync metadata', async () => {
-        const userId = 'user-sync-1';
+        const userId = new mongoose.Types.ObjectId().toString();
         const deviceId = 'device-1';
         const vaultData = {
             ciphertext: 'encrypted-data-blob',
@@ -77,76 +21,70 @@ describe('SyncService Integration Tests', () => {
         };
 
         console.log(`Test Case 1: Pushing new vault version ${vaultData.version} from ${deviceId}`);
-        
-        const result = await pushVault(userId, deviceId, vaultData);
-        
+
+        const result = await syncService.pushVault(userId, deviceId, vaultData);
+
         console.log('[Output] pushVault Result:', result);
-        
-        // Verify VaultBlob creation
-        expect(MockVaultBlob).toHaveBeenCalledWith(expect.objectContaining({
-            userId,
-            deviceId,
-            ciphertext: vaultData.ciphertext,
-            version: vaultData.version
-        }));
-        
-        // Verify SyncMetadata update
-        expect(mockSyncFindOneAndUpdate).toHaveBeenCalledWith(
-            { userId, deviceId },
-            expect.objectContaining({ vaultVersion: 1, nonce: vaultData.nonce }),
-            expect.objectContaining({ upsert: true })
-        );
-        
+
         expect(result.success).toBe(true);
-        expect(result.vaultId).toBe('mock-vault-id');
+        expect(result.vaultId).toBeDefined();
+
+        // Verify VaultBlob creation in DB
+        const blob = await VaultBlob.findById(result.vaultId);
+        expect(blob).not.toBeNull();
+        expect(blob?.userId.toString()).toBe(userId);
+        expect(blob?.version).toBe(vaultData.version);
+
+        // Verify SyncMetadata update in DB
+        const meta = await SyncMetadata.findOne({ userId, deviceId });
+        expect(meta).not.toBeNull();
+        expect(meta?.vaultVersion).toBe(vaultData.version);
+        expect(meta?.nonce).toBe(vaultData.nonce);
+
         console.log('Result: Success - Vault pushed and metadata updated.');
     });
 
     it('pullVaults: should retrieve vault blobs filtered by version', async () => {
-        const userId = 'user-sync-1';
-        const deviceId = 'device-2';
-        const lastVersion = 1;
+        const userId = new mongoose.Types.ObjectId().toString();
+        const deviceId = 'requesting-device';
 
-        console.log(`Test Case 2: Pulling vaults for User ${userId} newer than v${lastVersion}`);
-        
-        const mockBlobs = [
-            {
-                _id: 'blob-2',
-                userId: userId,
-                deviceId: 'device-1',
-                ciphertext: 'newer-data',
-                version: 2,
-                salt: 's',
-                iv: 'i',
-                authTag: 't',
-                timestamp: Date.now(),
-                nonce: 'n2',
-                createdAt: new Date(),
-                updatedAt: new Date()
-            }
-        ];
-        
-        // Mock DB find().sort() chain properly
-        const mockQuery = {
-            sort: (jest.fn() as any).mockResolvedValue(mockBlobs.map(b => ({
-                ...b,
-                userId: { toString: () => b.userId } // Mock ObjectId behavior
-            })))
-        };
-        mockVaultFind.mockReturnValue(mockQuery as never);
+        // Setup: Create some older and newer blobs
+        await VaultBlob.create({
+            userId,
+            deviceId: 'other-device',
+            ciphertext: 'v1-data',
+            salt: 's',
+            iv: 'i',
+            authTag: 't',
+            version: 1,
+            timestamp: Date.now() - 10000,
+            nonce: 'n1'
+        });
+
+        await VaultBlob.create({
+            userId,
+            deviceId: 'other-device',
+            ciphertext: 'v2-data',
+            salt: 's',
+            iv: 'i',
+            authTag: 't',
+            version: 2,
+            timestamp: Date.now(),
+            nonce: 'n2'
+        });
+
+        console.log(`Test Case 2: Pulling vaults for User ${userId} newer than v1`);
 
         // Execute function
-        const result = await pullVaults(userId, deviceId, lastVersion);
-        
+        const result = await syncService.pullVaults(userId, deviceId, 1);
+
         console.log('[Output] pullVaults found:', result.vaults?.length, 'vaults');
-        
-        expect(mockVaultFind).toHaveBeenCalledWith(expect.objectContaining({
-            userId,
-            version: { $gt: lastVersion }
-        }));
+
         expect(result.success).toBe(true);
         expect(result.vaults).toHaveLength(1);
         expect(result.vaults?.[0].version).toBe(2);
+        expect(result.vaults?.[0].ciphertext).toBe('v2-data');
+
         console.log('Result: Success - Retrieved correct vault versions.');
     });
 });

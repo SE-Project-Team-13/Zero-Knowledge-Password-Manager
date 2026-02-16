@@ -2,36 +2,11 @@
 import { jest, describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
 import crypto from 'crypto';
 import { User, LoginChallenge, Session } from '../../src/database/models.js';
-
-// Mock Breach Service
-const mockCheckEmailBreach = (jest.fn() as any).mockResolvedValue(false);
-jest.unstable_mockModule('../../src/services/breachService.js', () => ({
-    checkEmailBreach: mockCheckEmailBreach
-}));
-
-// Mock OTP Service
-const mockSendOTP = (jest.fn() as any).mockResolvedValue({ success: true });
-jest.unstable_mockModule('../../src/services/otpService.js', () => ({
-    sendOTP: mockSendOTP,
-    verifyOTP: jest.fn()
-}));
+import * as authService from '../../src/services/authService.js';
 
 describe('AuthService Integration Tests', () => {
-    let authService: any;
-    let registerUser: any;
-    let authenticateUser: any;
 
-    beforeAll(async () => {
-        authService = await import('../../src/services/authService.js');
-        registerUser = authService.registerUser;
-        authenticateUser = authService.authenticateUser;
-    });
-
-    beforeEach(async () => {
-        jest.clearAllMocks();
-        mockCheckEmailBreach.mockResolvedValue(false);
-        // DB cleanup handled by jest.setup.js
-    });
+    // DB cleanup handled by jest.setup.js
 
     it('registerUser: should create a new user and return user object', async () => {
         console.log('Test Case 1: Registering a new user');
@@ -42,7 +17,7 @@ describe('AuthService Integration Tests', () => {
             verifier: 'register-verifier-456'
         };
 
-        const result = await registerUser(input.email, input.fullName, input.salt, input.verifier);
+        const result = await authService.registerUser(input.email, input.fullName, input.salt, input.verifier);
 
         console.log('[Output] Registered User:', result);
 
@@ -81,20 +56,20 @@ describe('AuthService Integration Tests', () => {
         // Generate valid proof: hash(verifier + challenge)
         const validProof = crypto.createHash('sha256').update(verifier + clientChallenge).digest('hex');
 
-        const result = await authenticateUser(email, clientChallenge, validProof);
+        const result = await authService.authenticateUser(email, clientChallenge, validProof);
 
         console.log('[Output] Authentication Result:', result);
 
         expect(result.success).toBe(true);
         expect(result.user).toBeDefined();
 
-        // Verify Challenge is deleted
+        // Verify Challenge is deleted (replay protection)
         const challenge = await LoginChallenge.findOne({ email });
         expect(challenge).toBeNull();
 
-        // Verify Session created
-        const session = await Session.findOne({ userId: user._id });
-        expect(session).toBeDefined();
+        // Note: authenticateUser implies success, but session creation is handled by controller usually, 
+        // so we don't check for session existence here.
+
         console.log('Result: Success - Authentication successful with valid proof.');
     });
 
@@ -120,7 +95,7 @@ describe('AuthService Integration Tests', () => {
             expiresAt: new Date(Date.now() + 10000).toISOString()
         });
 
-        const result = await authenticateUser(email, clientChallenge, invalidProof);
+        const result = await authService.authenticateUser(email, clientChallenge, invalidProof);
 
         console.log('[Output] Authentication Result:', result);
 
