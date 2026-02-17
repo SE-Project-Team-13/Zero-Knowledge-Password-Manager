@@ -12,8 +12,8 @@
     "@password-manager/crypto-engine": "file:../crypto-engine"
   },
   "devDependencies": {
-    "esbuild": "^0.20.0",
     "@types/chrome": "^0.0.260",
+    "esbuild": "^0.27.3",
     "typescript": "^5.0.0"
   },
   "engines": {
