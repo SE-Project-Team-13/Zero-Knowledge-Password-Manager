@@ -81,7 +81,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const [isUnlocked, setIsUnlocked] = useState(false);
     const [session] = useVaultSync();
 
-    const unlockVault = async () => {
+    const unlockVault = React.useCallback(async () => {
         // If already unlocked and we have data, don't reload unless forced
         if (isUnlocked && decryptedEntries.length > 0) {
             setIsLoadingVault(false);
@@ -329,7 +329,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoadingVault(false);
         }
-    };
+    }, [isUnlocked, decryptedEntries.length, session.userId]);
 
     const addEntry = async (entryCtx: { site: string; username: string; password: string; url: string; notes: string }) => {
         if (!derivedKeys) {
@@ -559,7 +559,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 unlockVault();
             }
         }
-    }, [session.isAuthenticated, isUnlocked]);
+    }, [session.isAuthenticated, isUnlocked, isLoadingVault, unlockVault]);
 
     // Initial load
     useEffect(() => {
@@ -570,7 +570,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         } else {
             setIsLoadingVault(false);
         }
-    }, []);
+    }, [unlockVault]);
 
     return (
         <VaultContext.Provider value={{

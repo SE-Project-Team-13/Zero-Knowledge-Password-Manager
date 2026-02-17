@@ -57,6 +57,11 @@ const calculatePasswordStrength = (password: string) => {
   return { score, label: "Strong", color: "bg-green-500" };
 };
 
+import { useCallback } from "react";
+
+// --- Constants ---
+const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
 /**
  * DashboardPage: The main authenticated view for managing vault entries.
  */
@@ -116,7 +121,73 @@ export default function DashboardPage() {
 
   // Auto-logout after inactivity
   const lastActivityRef = useRef<number>(Date.now());
-  const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+  // Send OTP to user's email
+  const sendOTPToUser = useCallback(async () => {
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      
+      const token = typeof window !== 'undefined' && localStorage.getItem("auth_token");
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/otp/send`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ email: session.email }),
+        },
+      );
+
+      if (response.ok) {
+        setOtpSent(true);
+        setTimeLeft(600); // Reset timer to 10 minutes
+        toast.success("OTP sent to your email");
+      } else {
+        const error = await response.json();
+        toast.error(error.message || "Failed to send OTP");
+      }
+    } catch (error) {
+      console.error("Send OTP error:", error);
+      toast.error("Failed to send OTP. Please try again.");
+    }
+  }, [session.email]);
+
+  const unlockVault = useCallback(async () => {
+    setIsVerifyingOtp(true);
+    try {
+      // 1. Ensure we have the master password
+      let passwordToUse = masterPassword.trim();
+
+      if (!passwordToUse) {
+        const sessionPassword = sessionStorage.getItem("session_master_password");
+        if (sessionPassword) {
+          passwordToUse = sessionPassword;
+          setMasterPassword(sessionPassword);
+        } else {
+          console.log("[Dashboard] Master password not in storage, manual entry required.");
+          setIsVerifyingOtp(false);
+          return;
+        }
+      }
+
+      sessionStorage.setItem("session_master_password", passwordToUse);
+
+      await contextUnlockVault();
+      
+      // Removed setIsUnlocked(true) as we rely on context now
+      toast.success("Vault unlocked successfully");
+    } catch (err) {
+      console.error("Unlock error:", err);
+      toast.error("Failed to unlock vault");
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  }, [masterPassword, contextUnlockVault]);
 
   // Send OTP on component mount and handle initialization
   useEffect(() => {
@@ -173,7 +244,7 @@ export default function DashboardPage() {
     } else {
       setIsInitializing(false)
     }
-  }, [session.isAuthenticated, session.email, otpSent, isVaultUnlocked]);
+  }, [session.isAuthenticated, session.email, otpSent, isVaultUnlocked, masterPassword, sendOTPToUser, unlockVault]);
 
   // Countdown timer for OTP expiration
   useEffect(() => {
@@ -193,40 +264,6 @@ export default function DashboardPage() {
     return () => clearInterval(timer);
   }, [otpSent, otpVerified]);
 
-  // Send OTP to user's email
-  const sendOTPToUser = async () => {
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      
-      const token = typeof window !== 'undefined' && localStorage.getItem("auth_token");
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/otp/send`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ email: session.email }),
-        },
-      );
-
-      if (response.ok) {
-        setOtpSent(true);
-        setTimeLeft(600); // Reset timer to 10 minutes
-        toast.success("OTP sent to your email");
-      } else {
-        const error = await response.json();
-        toast.error(error.message || "Failed to send OTP");
-      }
-    } catch (error) {
-      console.error("Send OTP error:", error);
-      toast.error("Failed to send OTP. Please try again.");
-    }
-  };
 
   // Verify OTP
   const handleVerifyOTP = async (e: React.FormEvent) => {
@@ -310,38 +347,6 @@ export default function DashboardPage() {
       clearInterval(checkInactivity);
     };
   }, [isVaultUnlocked, actions]);
-
-  const unlockVault = async () => {
-    setIsVerifyingOtp(true);
-    try {
-      // 1. Ensure we have the master password
-      let passwordToUse = masterPassword.trim();
-
-      if (!passwordToUse) {
-        const sessionPassword = sessionStorage.getItem("session_master_password");
-        if (sessionPassword) {
-          passwordToUse = sessionPassword;
-          setMasterPassword(sessionPassword);
-        } else {
-          console.log("[Dashboard] Master password not in storage, manual entry required.");
-          setIsVerifyingOtp(false);
-          return;
-        }
-      }
-
-      sessionStorage.setItem("session_master_password", passwordToUse);
-
-      await contextUnlockVault();
-      
-      // Removed setIsUnlocked(true) as we rely on context now
-      toast.success("Vault unlocked successfully");
-    } catch (err) {
-      console.error("Unlock error:", err);
-      toast.error("Failed to unlock vault");
-    } finally {
-      setIsVerifyingOtp(false);
-    }
-  };
 
   // Generate strong password
   const generatePassword = () => {
