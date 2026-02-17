@@ -3,19 +3,12 @@ import { MockBreachDB } from "./mockBreachDb.js"; // Note the .js extension for 
 
 /**
  * Checks if an email exists in the breach database using k-anonymity.
- * 
- * Privacy Protocol:
- * 1. Hash the email (SHA-256).
- * 2. Send only the first 5 characters (prefix) to the external service.
- * 3. Receive a list of suffixes.
- * 4. Check locally if our full hash matches any returned suffix.
- * 
- * This ensures the external service never sees the full email or hash.
- * 
+ * ...
  * @param email - The email to check.
+ * @param breachDB - Optional breach DB provider for testing.
  * @returns true if breached, false otherwise.
  */
-export async function checkEmailBreach(email: string): Promise<boolean> {
+export async function checkEmailBreach(email: string, breachDB = MockBreachDB): Promise<boolean> {
     try {
         // 1. Hash the email
         const hash = crypto
@@ -28,7 +21,7 @@ export async function checkEmailBreach(email: string): Promise<boolean> {
         const suffix = hash.substring(5);
 
         // 3. Query external service with ONLY the prefix
-        const suffixes = await MockBreachDB.getSuffixes(prefix);
+        const suffixes = await breachDB.getSuffixes(prefix);
 
         // 4. Check for match locally
         const isBreached = suffixes.includes(suffix.toUpperCase()) || suffixes.includes(suffix.toLowerCase());

@@ -1,162 +1,75 @@
-
 import { jest, describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
+import { User, Session, OTP, LoginChallenge } from '../../src/database/models.js';
+import mongoose from 'mongoose';
+import * as cronService from '../../src/services/cronService.js';
 
-// ------------------------------------------------------------------
-// 1. Define Mocks
-// ------------------------------------------------------------------
-const mockSave = (jest.fn() as any).mockResolvedValue(true);
-const mockUserFind = jest.fn();
-const mockUserUpdateOne = jest.fn();
-
-const mockUserInstance = { 
-    _id: 'mock-user-id', 
-    email: 'test@example.com', 
-    isBreached: false,
-    save: mockSave 
-};
-
-const MockUser = jest.fn().mockImplementation((data) => ({
-    ...mockUserInstance,
-    ...(data || {}),
-    save: mockSave
-}));
-(MockUser as any).find = mockUserFind;
-(MockUser as any).updateOne = mockUserUpdateOne;
-
-const MockOther = jest.fn();
-(MockOther as any).deleteMany = jest.fn();
-
-// Cron Mock
-const mockCronSchedule = jest.fn();
-const cronCallbacks: { [key: string]: Function } = {};
-
-// Breach Service Mock
-const mockCheckEmailBreach = jest.fn();
-
-// ------------------------------------------------------------------
-// 2. Register Unstable Mocks
-// ------------------------------------------------------------------
-jest.unstable_mockModule('../../src/database/models.js', () => ({
-    User: MockUser,
-    Session: MockOther,
-    OTP: MockOther,
-    LoginChallenge: MockOther,
-    VaultBlob: MockOther, // Ensure all exports needed by other imports are present
-    SyncMetadata: MockOther,
-    RecoveryKey: MockOther,
-    SimpleVault: MockOther
-}));
-
-jest.unstable_mockModule('../../src/services/breachService.js', () => ({
-    checkEmailBreach: mockCheckEmailBreach
-}));
-
-jest.unstable_mockModule('node-cron', () => ({
-    default: {
-        schedule: mockCronSchedule
-    },
-    schedule: mockCronSchedule
-}));
-
-// ------------------------------------------------------------------
-// 3. Test Suite
-// ------------------------------------------------------------------
 describe('CronService Integration Tests', () => {
-    let initScheduledJobs: any;
 
-    beforeAll(async () => {
-        const cronService = await import('../../src/services/cronService.js');
-        initScheduledJobs = cronService.initScheduledJobs;
+    // DB cleanup handled by jest.setup.js
+
+    it('initScheduledJobs: should schedule jobs using injected cron', () => {
+        const mockCron = {
+            schedule: jest.fn()
+        };
+
+        cronService.initScheduledJobs(mockCron as any);
+
+        expect(mockCron.schedule).toHaveBeenCalledTimes(2);
+        expect(mockCron.schedule).toHaveBeenCalledWith("0 0 * * 0", expect.any(Function));
+        expect(mockCron.schedule).toHaveBeenCalledWith("0 2 * * *", cronService.runCleanupJob);
     });
 
-    beforeEach(() => {
-        jest.clearAllMocks();
-        // Reset callbacks map logic
-        Object.keys(cronCallbacks).forEach(key => delete cronCallbacks[key]);
-        
-        console.log('\n---------------------------------------------------');
-        
-        // Mock schedule to capture callbacks
-        (mockCronSchedule as any).mockImplementation((pattern: string, callback: Function) => {
-            console.log(`[Cron Mock] Registered job for pattern: ${pattern}`);
-            cronCallbacks[pattern] = callback;
-            return { start: jest.fn(), stop: jest.fn() };
+    it('runBreachDetectionJob: should mark breached users using injected checker', async () => {
+        console.log('Test Case: Breach Detection Logic');
+
+        // Setup: Create users
+        const safeUser = await User.create({ email: 'safe@test.com', fullName: 'Safe', salt: 's', verifier: 'v' });
+        const breachedUser = await User.create({ email: 'breached@test.com', fullName: 'Breach', salt: 's', verifier: 'v' });
+
+        // Mock breach checker via DI
+        const mockChecker = jest.fn(async (email: string) => {
+            return email === 'breached@test.com';
         });
+
+        await cronService.runBreachDetectionJob(mockChecker as any);
+
+        // Verify Safe User
+        const safeUserDb = await User.findById(safeUser._id);
+        expect(safeUserDb?.isBreached).toBe(false);
+        expect(safeUserDb?.lastBreachCheck).toBeDefined();
+
+        // Verify Breached User
+        const breachedUserDb = await User.findById(breachedUser._id);
+        expect(breachedUserDb?.isBreached).toBe(true);
+        expect(breachedUserDb?.lastBreachCheck).toBeDefined();
     });
 
-    it('should initialize scheduled jobs', () => {
-        console.log('Test Case 1: Initializing jobs');
-        initScheduledJobs();
-        expect(mockCronSchedule).toHaveBeenCalled();
-        // Depending on implementation, it might register 2 or more jobs
-        console.log('Result: Jobs scheduled successfully');
-    });
+    it('runCleanupJob: should remove expired data', async () => {
+        console.log('Test Case: Cleanup Logic');
 
-    it('should run breach detection logic correctly', async () => {
-        console.log('Test Case 2: Running Breach Detection Job Logic');
-        
-        // Initialize to capture callbacks
-        initScheduledJobs();
-        
-        const breachJobPattern = '0 0 * * 0'; // Weekly
-        const callback = cronCallbacks[breachJobPattern];
-        
-        if (!callback) {
-            // Helper to see what patterns were registered
-            console.log('Registered patterns:', Object.keys(cronCallbacks));
-            // Just return if not found to avoid crashing test, but expect call fails
-            // Actually, we can assume developer checks logs if this fails
-        }
-        
-        // If not found, use the first registered one for testing purposes (assuming only 2 jobs)
-        // Or fail explicitly.
-        // Let's assume pattern matches code. If changed, test needs update.
-        // If pattern mismatch, we can iterate callbacks.
-        const activeCallback = callback || Object.values(cronCallbacks)[0]; 
+        const now = Date.now();
+        const past = new Date(now - 100000).toISOString().replace("T", " ").substring(0, 19);
+        const future = new Date(now + 100000).toISOString().replace("T", " ").substring(0, 19);
 
-        const mockUsers: any[] = [
-            { _id: 'user1', email: 'breached@test.com', isBreached: false },
-            { _id: 'user2', email: 'safe@test.com', isBreached: false }
-        ];
-        
-        console.log('[MockDB] Returning users:', mockUsers.map(u => u.email));
-        mockUserFind.mockResolvedValue(mockUsers as never);
-        
-        // Mock checkEmailBreach to return true for user1
-        mockCheckEmailBreach.mockImplementation(async (email: any) => {
-             const result = email === 'breached@test.com';
-             console.log(`[MockBreachService] checkEmailBreach(${email}) -> ${result}`);
-             return result;
-        });
-        
-        // Execute callback
-        console.log('[Action] Triggering Breach Check Job manually...');
-        if (activeCallback) await activeCallback();
-        
-        expect(mockUserUpdateOne).toHaveBeenCalledWith(
-            expect.objectContaining({ _id: 'user1' }),
-            expect.objectContaining({ isBreached: true }),
-            expect.anything()
-        );
-        
-        console.log('Result: Breach detection job marked "breached@test.com" as breached.');
-    });
+        const uid = new mongoose.Types.ObjectId();
+        await User.create({ _id: uid, email: 't@t.com', fullName: 'T', salt: 's', verifier: 'v' });
 
-    it('should run cleanup job correctly', async () => {
-        console.log('Test Case 3: Running Cleanup Job Logic');
-        
-        initScheduledJobs();
-        const cleanupPattern = '0 2 * * *'; // Daily at 2AM
-        const callback = cronCallbacks[cleanupPattern];
-        // Fallback to second registered callback if pattern mismatch
-        const activeCallback = callback || Object.values(cronCallbacks)[1] || Object.values(cronCallbacks)[0];
+        // Setup: Expired items
+        await Session.create({ userId: uid, token: 'expired', expiresAt: past, isOtpVerified: false });
+        await OTP.create({ email: 't@t.com', code: '1', expiresAt: past });
+        await LoginChallenge.create({ email: 't@t.com', challenge: '1', expiresAt: past });
 
-        (MockOther as any).deleteMany.mockResolvedValue({ deletedCount: 5 } as never);
+        // Setup: Valid items
+        await Session.create({ userId: uid, token: 'valid', expiresAt: future, isOtpVerified: false });
 
-        console.log('[Action] Triggering Cleanup Job manually...');
-        if (activeCallback) await activeCallback(); 
-        
-        expect((MockOther as any).deleteMany).toHaveBeenCalled();
-        console.log('Result: Cleanup job executed deletion logic.');
+        await cronService.runCleanupJob();
+
+        // Verify Expired gone
+        expect(await Session.findOne({ token: 'expired' })).toBeNull();
+        expect(await OTP.findOne({ code: '1' })).toBeNull();
+        expect(await LoginChallenge.findOne({ challenge: '1' })).toBeNull();
+
+        // Verify Valid remains
+        expect(await Session.findOne({ token: 'valid' })).toBeDefined();
     });
 });
