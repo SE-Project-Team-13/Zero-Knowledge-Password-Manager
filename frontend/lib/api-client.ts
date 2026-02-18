@@ -40,7 +40,8 @@ class ApiClient {
   private token: string | null = null
 
   constructor(baseUrl: string = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001") {
-    this.baseUrl = baseUrl
+    // Ensure protocol is present (Render env var might provide only host)
+    this.baseUrl = baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`
     // Restore token from localStorage if available
     if (typeof window !== "undefined") {
       this.token = localStorage.getItem("auth_token")
