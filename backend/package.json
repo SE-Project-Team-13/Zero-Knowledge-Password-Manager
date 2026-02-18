@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch --loader ts-node/esm src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "build": "tsc && ls -R",
+    "start": "tsc && node dist/index.js",
     "test": "jest"
   },
   "dependencies": {
