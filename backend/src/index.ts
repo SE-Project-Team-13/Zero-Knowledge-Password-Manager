@@ -234,8 +234,8 @@ async function start() {
       res.status(500).json({ error: "Internal server error", code: "INTERNAL_ERROR", message: err.message })
     })
 
-    const server = app.listen(PORT, () => {
-      logger.info(`Blind sync backend listening on port ${PORT}`)
+    const server = app.listen(Number(PORT), "0.0.0.0", () => {
+      logger.info(`Blind sync backend listening on port ${PORT} (0.0.0.0)`)
     })
 
     const shutdown = async () => {
