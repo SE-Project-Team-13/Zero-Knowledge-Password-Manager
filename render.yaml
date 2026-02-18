@@ -2,7 +2,7 @@ services:
   - type: web
     name: password-manager-backend
     env: node
-    buildCommand: rm -f package-lock.json && npm install --include=dev && npm run build -w backend
+    buildCommand: rm -rf node_modules package-lock.json && npm install --include=dev && npm run build -w backend
     startCommand: npm start -w backend
     envVars:
       - key: PORT
@@ -27,7 +27,7 @@ services:
   - type: web
     name: password-manager-frontend
     env: node
-    buildCommand: rm -f package-lock.json && npm install --include=dev && npm run crypto:build && npm run build -w frontend
+    buildCommand: rm -rf node_modules package-lock.json && npm install --include=dev && npm run crypto:build && npm run build -w frontend
     startCommand: npm start -w frontend
     envVars:
       - key: NEXT_PUBLIC_API_URL
