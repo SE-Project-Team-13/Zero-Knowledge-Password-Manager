@@ -9,7 +9,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@password-manager/crypto-engine": "file:../crypto-engine"
+    "@password-manager/crypto-engine": "file:../crypto-engine",
+    "@tailwindcss/postcss": "^4.2.0"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.260",
