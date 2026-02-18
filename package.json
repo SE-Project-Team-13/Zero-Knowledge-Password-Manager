@@ -5,6 +5,7 @@
     "frontend",
     "frontend/extension",
     "frontend/crypto-engine",
+    "mobile",
     "backend"
   ],
   "scripts": {
