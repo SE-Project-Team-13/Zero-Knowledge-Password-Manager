@@ -5,7 +5,8 @@
     "frontend",
     "frontend/extension",
     "frontend/crypto-engine",
-    "backend"
+    "backend",
+    "mobile"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
