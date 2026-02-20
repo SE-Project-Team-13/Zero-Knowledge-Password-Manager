@@ -3,7 +3,7 @@
     "version": "0.1.0",
     "private": true,
     "scripts": {
-        "build": "rm -rf .next && NODE_OPTIONS='--max-old-space-size=4096' next build --debug",
+        "build": "next build",
         "dev": "next dev",
         "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
         "start": "next start",
