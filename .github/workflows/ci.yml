@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -69,16 +69,23 @@ jobs:
       working-directory: backend
       run: npx eslint . --ext .ts || true
 
-  build-docker:
-    needs: [test-crypto, test-backend, test-frontend]
+  deploy:
+    name: Deploy to Render
+    needs: [test-crypto, test-backend, test-frontend, code-quality]
     runs-on: ubuntu-latest
+    # Only deploy on pushes to main, not on PRs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-    - name: Build Docker Image
-      run: echo "Building Docker image... (No Dockerfile found in repo, please add one to enable actual builds)"
+    - name: Deploy Backend to Render
+      run: |
+        curl -f -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}" \
+          -o /dev/null -w "Backend deploy triggered: HTTP %{http_code}\n"
 
-  notify:
-    needs: [build-docker, code-quality]
-    runs-on: ubuntu-latest
-    steps:
-    - name: Notify Success
-      run: echo "CI Pipeline passed successfully!"
+    - name: Deploy Frontend to Render
+      if: ${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND != '' }}
+      run: |
+        curl -f -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}" \
+          -o /dev/null -w "Frontend deploy triggered: HTTP %{http_code}\n"
+
+    - name: Deployment Summary
+      run: echo "Deployment triggered for commit ${{ github.sha }}"
