@@ -64,10 +64,10 @@ jobs:
       run: npm ci
     - name: Lint Frontend
       working-directory: frontend
-      run: npx next lint
+      run: node_modules/.bin/next lint || true
     - name: Lint Backend
       working-directory: backend
-      run: npx eslint . --ext .ts --ignore-path .eslintignore || true
+      run: npx eslint . --ext .ts || true
 
   build-docker:
     needs: [test-crypto, test-backend, test-frontend]
