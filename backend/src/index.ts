@@ -64,8 +64,11 @@ async function start() {
     const ALLOWED_ORIGINS = [
       "http://localhost:3000",
       "http://localhost:3001",
+      "http://localhost:8081",   // Expo web dev server
+      "http://localhost:19006",  // Expo web legacy port
       process.env.FRONTEND_URL || ""
     ].filter(Boolean)
+
 
     app.use((req, res, next) => {
       const origin = req.headers.origin
