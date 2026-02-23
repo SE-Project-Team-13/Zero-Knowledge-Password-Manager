@@ -79,8 +79,9 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
       console.log(`[VaultSync:OTP] Dev mode OTP for ${normalizedEmail}: ${code}`)
     } else {
       // In production, OTP must not report success when email service is not configured.
-      console.error("[VaultSync:OTP] SMTP credentials missing in production")
-      return { success: false, message: "OTP email service is not configured" }
+      const errorMsg = "SMTP credentials (SMTP_USER, SMTP_PASS) are missing in production environment. OTP cannot be sent."
+      console.error(`[VaultSync:OTP] ${errorMsg}`)
+      return { success: false, message: errorMsg }
     }
 
     return { success: true, message: "OTP sent successfully" }
