@@ -104,6 +104,8 @@ async function start() {
       } else if (!origin && !isProduction) {
         /* Allow requests without origin (like direct browser hits) in development */
         res.header("Access-Control-Allow-Origin", "*")
+      } else if (origin) {
+        logger.warn(`CORS blocked for origin: ${origin}`)
       }
 
       res.header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS")
