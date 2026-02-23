@@ -40,6 +40,7 @@ import {
 import { toast } from "sonner";
 import { copyWithAutoClear } from "@/lib/clipboard";
 import { useRouter } from "next/navigation";
+import { buildApiUrl } from "@/lib/api-base-url";
 // --- Helpers ---
 const calculatePasswordStrength = (password: string) => {
   if (!password) return { score: 0, label: "None", color: "bg-gray-200" };
@@ -135,7 +136,7 @@ export default function DashboardPage() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/otp/send`,
+        buildApiUrl("/otp/send"),
         {
           method: "POST",
           headers,
@@ -282,7 +283,7 @@ export default function DashboardPage() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/otp/verify`,
+        buildApiUrl("/otp/verify"),
         {
           method: "POST",
           headers,
