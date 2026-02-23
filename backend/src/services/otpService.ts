@@ -72,14 +72,19 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
       text: `Your Vault Access Code: ${code}\nValid for 10 minutes.`,
     }
 
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    const isMockEmail = process.env.MOCK_EMAIL === "true"
+
+    if (process.env.SMTP_USER && process.env.SMTP_PASS && !isMockEmail) {
       await emailSender(mailOptions, "OTP")
-    } else if (!isProduction || isDebug) {
-      // In local/dev we allow OTP without SMTP and log the code for manual testing.
-      console.log(`[VaultSync:OTP] Dev mode OTP for ${normalizedEmail}: ${code}`)
+    } else if (!isProduction || isDebug || isMockEmail) {
+      // In local/dev or mock mode we allow OTP without SMTP and log the code for manual testing.
+      console.log(`[VaultSync:OTP] ${isMockEmail ? 'MOCK' : 'Dev'} mode OTP for ${normalizedEmail}: ${code}`)
+      if (isMockEmail && isProduction) {
+        return { success: true, message: "OTP sent (MOCK MODE: Check server logs for code)" }
+      }
     } else {
       // In production, OTP must not report success when email service is not configured.
-      const errorMsg = "SMTP credentials (SMTP_USER, SMTP_PASS) are missing in production environment. OTP cannot be sent."
+      const errorMsg = "SMTP credentials (SMTP_USER, SMTP_PASS) missing. Please configure SMTP or set MOCK_EMAIL=true for testing."
       console.error(`[VaultSync:OTP] ${errorMsg}`)
       return { success: false, message: errorMsg }
     }

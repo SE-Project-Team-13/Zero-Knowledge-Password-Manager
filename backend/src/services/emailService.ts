@@ -36,7 +36,7 @@ export async function sendEmail(options: MailOptions, contextInfo?: string): Pro
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
         try {
             await transporter.sendMail({
-                from: process.env.SMTP_FROM || '"Password Manager" <noreply@passwordmanager.com>',
+                from: process.env.SMTP_FROM || process.env.SMTP_USER || '"Password Manager" <noreply@passwordmanager.com>',
                 ...options
             })
             if (!isProduction || isDebug) {
