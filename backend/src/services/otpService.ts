@@ -76,6 +76,7 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
 
     if (process.env.SMTP_USER && process.env.SMTP_PASS && !isMockEmail) {
       await emailSender(mailOptions, "OTP")
+    } else if (!isProduction || isDebug || isMockEmail) {
       // In local/dev or mock mode we allow OTP without SMTP and log the code for manual testing.
       console.log('--------------------------------------------------');
       console.log(`[VaultSync:OTP] 🔐 ${isMockEmail ? 'MOCK' : 'Dev'} MODE ACCESS CODE`);
@@ -84,7 +85,7 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
       console.log('--------------------------------------------------');
 
       if (isMockEmail && isProduction) {
-        return { success: true, message: "OTP sent (MOCK MODE: Check Render logs for code)" }
+        return { success: true, message: `OTP sent (MOCK MODE: ${code})` }
       }
     } else {
       // In production, OTP must not report success when email service is not configured.
