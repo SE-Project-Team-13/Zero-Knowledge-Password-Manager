@@ -73,21 +73,14 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
     }
 
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-      try {
-        await emailSender(mailOptions, 'OTP')
-      } catch (emailError: unknown) {
-        // Fallback logging handled by sendEmail or here if needed to suppress error?
-        // Original code suppressed error and logged fallback log.
-        // `sendEmail` in utils throws.
-        // So we catch here and log fallback.
-        if (!isProduction || isDebug) {
-          console.log(`[VaultSync:OTP] Fallback for ${normalizedEmail}: ${code}`)
-        }
-      }
+      await emailSender(mailOptions, "OTP")
+    } else if (!isProduction || isDebug) {
+      // In local/dev we allow OTP without SMTP and log the code for manual testing.
+      console.log(`[VaultSync:OTP] Dev mode OTP for ${normalizedEmail}: ${code}`)
     } else {
-      if (!isProduction || isDebug) {
-        console.log(`[VaultSync:OTP] Dev mode OTP for ${normalizedEmail}: ${code}`)
-      }
+      // In production, OTP must not report success when email service is not configured.
+      console.error("[VaultSync:OTP] SMTP credentials missing in production")
+      return { success: false, message: "OTP email service is not configured" }
     }
 
     return { success: true, message: "OTP sent successfully" }

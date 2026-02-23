@@ -31,17 +31,37 @@ export default function OtpScreen({ email, onVerified }: Props) {
         return () => clearTimeout(t);
     }, [countdown]);
 
+    const getApiErrorMessage = (e: any, fallback: string) => {
+        return (
+            e?.response?.data?.message ||
+            e?.response?.data?.error ||
+            e?.message ||
+            fallback
+        );
+    };
+
     const sendOtp = async () => {
         setIsSending(true);
         setError(null);
         try {
             const token = await SecureStorageService.getSessionId();
-            await axios.post(`${API_URL}/otp/send`, { email }, {
+            if (!token) {
+                throw new Error('Missing session token. Please login again.');
+            }
+            console.log('[OTP] Sending OTP', { apiUrl: API_URL, email: email.trim().toLowerCase() });
+            const response = await axios.post(`${API_URL}/otp/send`, { email: email.trim().toLowerCase() }, {
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                timeout: 60000,
             });
+            console.log('[OTP] Send response', response.status, response.data);
             setCountdown(60);
         } catch (e: any) {
-            const msg = e?.response?.data?.message || 'Failed to send OTP';
+            console.error('[OTP] Send failed', {
+                status: e?.response?.status,
+                data: e?.response?.data,
+                message: e?.message,
+            });
+            const msg = getApiErrorMessage(e, 'Failed to send OTP');
             setError(msg);
         } finally {
             setIsSending(false);
@@ -54,12 +74,22 @@ export default function OtpScreen({ email, onVerified }: Props) {
         setError(null);
         try {
             const token = await SecureStorageService.getSessionId();
-            await axios.post(`${API_URL}/otp/verify`, { email, code }, {
+            if (!token) {
+                throw new Error('Missing session token. Please login again.');
+            }
+            const response = await axios.post(`${API_URL}/otp/verify`, { email: email.trim().toLowerCase(), code }, {
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                timeout: 60000,
             });
+            console.log('[OTP] Verify response', response.status, response.data);
             onVerified();
         } catch (e: any) {
-            const msg = e?.response?.data?.message || 'Invalid OTP code';
+            console.error('[OTP] Verify failed', {
+                status: e?.response?.status,
+                data: e?.response?.data,
+                message: e?.message,
+            });
+            const msg = getApiErrorMessage(e, 'Invalid OTP code');
             setError(msg);
         } finally {
             setIsLoading(false);

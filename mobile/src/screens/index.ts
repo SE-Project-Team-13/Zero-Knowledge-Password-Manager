@@ -4,4 +4,5 @@ export { default as DashboardScreen } from './DashboardScreen';
 export { default as VaultListScreen } from './VaultListScreen';
 export { default as AddCredentialScreen } from './AddCredentialScreen';
 export { default as SettingsScreen } from './SettingsScreen';
+export { default as OtpScreen } from './OtpScreen';
 

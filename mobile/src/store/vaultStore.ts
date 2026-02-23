@@ -20,6 +20,10 @@ interface ServerVaultRecord {
     iv: string;
     salt: string;
     tag?: string;
+    authTag?: string;
+    version?: number;
+    timestamp?: number;
+    nonce?: string;
     algorithm: 'AES-256-GCM';
     derivationAlgorithm: 'Argon2id';
 }
@@ -40,7 +44,10 @@ interface VaultState {
 
 async function getDeviceId(): Promise<string> {
     let id = await AsyncStorage.getItem(DEVICE_ID_KEY);
-    if (!id) { id = uuidv4(); await AsyncStorage.setItem(DEVICE_ID_KEY, id); }
+    if (!id) {
+        id = uuidv4();
+        await AsyncStorage.setItem(DEVICE_ID_KEY, id);
+    }
     return id;
 }
 
@@ -49,24 +56,38 @@ async function getAuthHeaders() {
     return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 }
 
-/** Serialize entries array → encrypted blob using derive key */
+// Serialize entries array to an encrypted blob using the derived key.
 async function encryptEntries(entries: VaultEntryLocal[], derivedKey: DerivedKey): Promise<ServerVaultRecord> {
     const serialized: VaultEntry = {
         site: '__vault__',
         username: '__vault__',
-        password: JSON.stringify(entries), // Pack all entries into password field
+        password: JSON.stringify(entries),
         metadata: { isVaultBlob: true },
     };
     const encrypted = await encrypt(serialized, derivedKey);
     return encrypted as ServerVaultRecord;
 }
 
-/** Decrypt blob → entries array */
+// Decrypt blob to entries array.
 async function decryptEntries(record: ServerVaultRecord, derivedKey: DerivedKey): Promise<VaultEntryLocal[]> {
-    const decrypted = await decrypt(record as EncryptedVault, derivedKey);
+    const normalized: EncryptedVault = {
+        ciphertext: record.ciphertext,
+        iv: record.iv,
+        salt: record.salt,
+        tag: record.tag || record.authTag || '',
+        algorithm: 'AES-256-GCM',
+        derivationAlgorithm: 'Argon2id',
+    };
+
+    if (!normalized.tag) {
+        throw new Error('Invalid vault record: missing auth tag');
+    }
+
+    const decrypted = await decrypt(normalized, derivedKey);
     if (decrypted.metadata?.isVaultBlob && typeof decrypted.password === 'string') {
         return JSON.parse(decrypted.password) as VaultEntryLocal[];
     }
+
     // Legacy: single entry
     return [{ ...decrypted, id: uuidv4() }];
 }
@@ -81,14 +102,23 @@ async function pullVaults(userId: string, version: number): Promise<{ vaults: an
 async function pushVault(userId: string, record: ServerVaultRecord, version: number): Promise<void> {
     const headers = await getAuthHeaders();
     const deviceId = await getDeviceId();
-    await axios.post(`${API_URL}/sync/push`, {
-        userId,
-        deviceId,
-        vault: {
-            ...record,
-            version,
+    await axios.post(
+        `${API_URL}/sync/push`,
+        {
+            userId,
+            deviceId,
+            vault: {
+                ciphertext: record.ciphertext,
+                iv: record.iv,
+                salt: record.salt,
+                authTag: record.tag || record.authTag,
+                version,
+                timestamp: Date.now(),
+                nonce: uuidv4(),
+            },
         },
-    }, { headers });
+        { headers },
+    );
 }
 
 export const useVaultStore = create<VaultState>((set, get) => ({
@@ -103,10 +133,16 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         set({ isLoading: true, error: null });
         try {
             const { vaults, currentVersion } = await pullVaults(userId, get().version);
-            if (vaults.length === 0) { set({ isLoading: false }); return; }
-            const latest = vaults[vaults.length - 1];
+            if (vaults.length === 0) {
+                set({ isLoading: false });
+                return;
+            }
+
+            // Backend returns newest first.
+            const latest = vaults[0] as ServerVaultRecord;
             const entries = await decryptEntries(latest, derivedKey);
-            set({ entries, version: currentVersion, lastSyncTime: Date.now(), isLoading: false });
+            const resolvedVersion = Math.max(currentVersion || 0, latest.version || 0, get().version);
+            set({ entries, version: resolvedVersion, lastSyncTime: Date.now(), isLoading: false });
         } catch (e: any) {
             set({ error: e.message || 'Failed to load vault', isLoading: false });
         }
@@ -132,7 +168,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     },
 
     deleteEntry: async (id, derivedKey, userId) => {
-        const newEntries = get().entries.filter(e => e.id !== id);
+        const newEntries = get().entries.filter((e) => e.id !== id);
         set({ entries: newEntries, isSyncing: true });
         try {
             const encrypted = await encryptEntries(newEntries, derivedKey);

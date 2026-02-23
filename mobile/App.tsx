@@ -11,6 +11,7 @@ import { Colors } from './src/theme';
 // Screens
 import {
   LoginScreen,
+  OtpScreen,
   DashboardScreen,
   VaultListScreen,
   AddCredentialScreen,
@@ -75,7 +76,7 @@ function AppUnauthenticated() {
 }
 
 export default function App() {
-  const { isAuthenticated, checkAuth } = useAuthStore();
+  const { isAuthenticated, isOtpPending, pendingEmail, completeOtpVerification, checkAuth } = useAuthStore();
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -95,7 +96,17 @@ export default function App() {
   return (
     <NavigationContainer>
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
-      {isAuthenticated ? <AppAuthenticated /> : <AppUnauthenticated />}
+      {isAuthenticated ? (
+        <AppAuthenticated />
+      ) : isOtpPending && pendingEmail ? (
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Otp">
+            {() => <OtpScreen email={pendingEmail} onVerified={completeOtpVerification} />}
+          </Stack.Screen>
+        </Stack.Navigator>
+      ) : (
+        <AppUnauthenticated />
+      )}
     </NavigationContainer>
   );
 }
