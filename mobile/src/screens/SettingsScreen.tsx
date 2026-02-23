@@ -6,6 +6,10 @@ import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
 import { Colors, Spacing, Radius, Typography } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import axios from 'axios';
+import { API_URL } from '../config';
+import { SecureStorageService } from '../services/secureStorage';
 
 function SettingRow({ icon, title, subtitle, onPress, danger = false }: {
     icon: string;
@@ -40,6 +44,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function SettingsScreen() {
     const { logout, userId } = useAuthStore();
     const { entries, clearVault } = useVaultStore();
+    const navigation = useNavigation<any>();
 
     const handleLogout = () => {
         Alert.alert('Sign Out', 'You will need to re-enter your master password to access your vault.', [
@@ -47,12 +52,55 @@ export default function SettingsScreen() {
             {
                 text: 'Sign Out',
                 style: 'destructive',
-                onPress: () => {
-                    clearVault();
-                    logout();
+                onPress: async () => {
+                    try {
+                        clearVault();
+                        await logout();
+                        navigation.reset({
+                            index: 0,
+                            routes: [{ name: 'Login' }],
+                        });
+                        console.log('[Auth] Sign out completed');
+                    } catch (e) {
+                        console.error('[Auth] Sign out failed', e);
+                        Alert.alert('Sign out failed', 'Please try again.');
+                    }
                 },
             },
         ]);
+    };
+
+    const handleDeleteAccount = () => {
+        Alert.alert(
+            'Delete Account',
+            'This will permanently delete your account and all encrypted data. This cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const token = await SecureStorageService.getSessionId();
+                            if (!token) throw new Error('Missing session token');
+
+                            await axios.delete(`${API_URL}/auth/account`, {
+                                headers: {
+                                    Authorization: `Bearer ${token}`,
+                                },
+                            });
+
+                            clearVault();
+                            await logout();
+                            Alert.alert('Account Deleted', 'Your account has been deleted.');
+                        } catch (error: any) {
+                            const message = error?.response?.data?.message || error?.message || 'Failed to delete account';
+                            Alert.alert('Delete Failed', message);
+                        }
+                    },
+                },
+            ],
+        );
     };
 
     return (
@@ -67,6 +115,12 @@ export default function SettingsScreen() {
             </View>
 
             <Section title="Security">
+                <SettingRow
+                    icon="lock-closed-outline"
+                    title="Change Master Password"
+                    subtitle="Re-encrypt your vault with a new password"
+                    onPress={() => navigation.navigate('ChangePassword')}
+                />
                 <SettingRow
                     icon="shield-checkmark-outline"
                     title="Encryption"
@@ -85,6 +139,13 @@ export default function SettingsScreen() {
             </Section>
 
             <Section title="Danger Zone">
+                <SettingRow
+                    icon="trash-outline"
+                    title="Delete Account"
+                    subtitle="Permanently remove your account and vault data"
+                    onPress={handleDeleteAccount}
+                    danger
+                />
                 <SettingRow
                     icon="log-out-outline"
                     title="Sign Out"

@@ -12,9 +12,12 @@ import { Colors } from './src/theme';
 import {
   LoginScreen,
   OtpScreen,
+  RecoveryLoginScreen,
+  ResetPasswordScreen,
   DashboardScreen,
   VaultListScreen,
   AddCredentialScreen,
+  ChangePasswordScreen,
   SettingsScreen,
 } from './src/screens';
 
@@ -63,6 +66,7 @@ function AppAuthenticated() {
         component={AddCredentialScreen}
         options={{ presentation: 'modal' }}
       />
+      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
     </Stack.Navigator>
   );
 }
@@ -71,6 +75,8 @@ function AppUnauthenticated() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="RecoveryLogin" component={RecoveryLoginScreen} />
+      <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </Stack.Navigator>
   );
 }

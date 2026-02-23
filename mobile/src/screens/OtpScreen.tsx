@@ -8,6 +8,7 @@ import { Colors, Spacing, Radius, Typography } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '../config';
 import { SecureStorageService } from '../services/secureStorage';
+import { useAuthStore } from '../store/authStore';
 
 interface Props {
     email: string;
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function OtpScreen({ email, onVerified }: Props) {
+    const { logout } = useAuthStore();
     const [code, setCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isSending, setIsSending] = useState(false);
@@ -61,10 +63,20 @@ export default function OtpScreen({ email, onVerified }: Props) {
                 data: e?.response?.data,
                 message: e?.message,
             });
-            const msg = getApiErrorMessage(e, 'Failed to send OTP');
+            const msg = e?.response?.status === 429
+                ? 'Too many OTP attempts. Please wait a minute and try again.'
+                : getApiErrorMessage(e, 'Failed to send OTP');
             setError(msg);
         } finally {
             setIsSending(false);
+        }
+    };
+
+    const handleSignOut = async () => {
+        try {
+            await logout();
+        } catch (e) {
+            console.error('[OTP] Sign out failed', e);
         }
     };
 
@@ -156,6 +168,11 @@ export default function OtpScreen({ email, onVerified }: Props) {
                         </Text>}
                 </TouchableOpacity>
 
+                <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+                    <Ionicons name="log-out-outline" size={14} color={Colors.textMuted} />
+                    <Text style={styles.signOutText}>Sign Out</Text>
+                </TouchableOpacity>
+
                 {/* Security note */}
                 <View style={styles.note}>
                     <Ionicons name="shield-checkmark" size={12} color={Colors.success} />
@@ -198,6 +215,15 @@ const styles = StyleSheet.create({
     resendBtn: { padding: Spacing.sm, marginBottom: Spacing.lg },
     resendText: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
     resendDisabled: { color: Colors.textMuted },
+    signOutBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: Spacing.lg,
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: 4,
+    },
+    signOutText: { color: Colors.textMuted, fontSize: 13, fontWeight: '600' },
     note: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         backgroundColor: Colors.surface, borderRadius: Radius.full,

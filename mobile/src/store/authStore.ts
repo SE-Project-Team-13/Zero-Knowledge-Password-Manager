@@ -26,6 +26,8 @@ interface AuthState {
   isAuthenticated: boolean;
   isOtpPending: boolean;
   pendingEmail: string | null;
+  recoveryEmail: string | null;
+  recoveredMasterPassword: string | null;
   userId: string | null;
   masterKey: DerivedKey | null;
   isLoading: boolean;
@@ -34,7 +36,10 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, fullName: string, password: string) => Promise<void>;
   completeOtpVerification: () => void;
-  logout: () => void;
+  setMasterKey: (masterKey: DerivedKey | null) => void;
+  setRecoveryContext: (email: string | null, masterPassword: string | null) => void;
+  clearRecoveryContext: () => void;
+  logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
 }
 
@@ -42,6 +47,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
   isOtpPending: false,
   pendingEmail: null,
+  recoveryEmail: null,
+  recoveredMasterPassword: null,
   userId: null,
   masterKey: null,
   isLoading: false,
@@ -161,6 +168,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 
+  setMasterKey: (masterKey: DerivedKey | null) => {
+    set({ masterKey });
+  },
+
+  setRecoveryContext: (email: string | null, masterPassword: string | null) => {
+    set({
+      recoveryEmail: email,
+      recoveredMasterPassword: masterPassword,
+    });
+  },
+
+  clearRecoveryContext: () => {
+    set({
+      recoveryEmail: null,
+      recoveredMasterPassword: null,
+    });
+  },
+
   logout: async () => {
     await SecureStorageService.clearSession();
     await SecureStorageService.deleteItem('user_id');
@@ -168,6 +193,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isAuthenticated: false,
       isOtpPending: false,
       pendingEmail: null,
+      recoveryEmail: null,
+      recoveredMasterPassword: null,
       masterKey: null,
       userId: null,
     });
