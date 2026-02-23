@@ -35,9 +35,7 @@ function normalizeApiUrl(raw?: string): string | null {
   }
 }
 
-const devDefaultApiUrl = Platform.OS === 'android'
-  ? 'http://10.0.2.2:3001'
-  : 'http://localhost:3001';
+const DEFAULT_PRODUCTION_API_URL = 'https://zero-knowledge-password-manager.onrender.com';
 
 const normalizedEnvApiUrl = normalizeApiUrl(envApiUrlRaw);
 if (__DEV__ && envApiUrlRaw && !normalizedEnvApiUrl) {
@@ -45,7 +43,7 @@ if (__DEV__ && envApiUrlRaw && !normalizedEnvApiUrl) {
   console.warn('[config] Ignoring invalid EXPO_PUBLIC_API_URL:', envApiUrlRaw);
 }
 
-export const API_URL = normalizedEnvApiUrl || devDefaultApiUrl;
+export const API_URL = normalizedEnvApiUrl || DEFAULT_PRODUCTION_API_URL;
 
 // Device identifier key
 export const DEVICE_ID_KEY = 'device_id';
