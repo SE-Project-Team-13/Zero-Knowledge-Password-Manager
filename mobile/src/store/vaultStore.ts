@@ -128,6 +128,27 @@ async function decryptEntries(record: ServerVaultRecord, derivedKey: DerivedKey)
         return [normalizeEntry(parsed)];
     }
 
+    // Compatibility: web dashboard stores a VAULT_ROOT wrapper without metadata.
+    if (
+        typeof decrypted.site === 'string' &&
+        decrypted.site === 'VAULT_ROOT' &&
+        typeof decrypted.username === 'string' &&
+        decrypted.username === 'SYSTEM' &&
+        typeof decrypted.password === 'string'
+    ) {
+        try {
+            const parsed = JSON.parse(decrypted.password);
+            if (Array.isArray(parsed)) {
+                return parsed.map(normalizeEntry);
+            }
+            if (parsed && typeof parsed === 'object') {
+                return [normalizeEntry(parsed)];
+            }
+        } catch (e) {
+            console.warn('[Sync] Failed to parse VAULT_ROOT payload, falling back to single entry', e);
+        }
+    }
+
     // Legacy: single entry
     return [normalizeEntry(decrypted)];
 }

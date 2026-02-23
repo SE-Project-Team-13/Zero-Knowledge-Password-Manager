@@ -5,7 +5,7 @@
 
 import { Router, type Request, type Response } from "express"
 import * as crypto from "crypto"
-import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount, generateLoginChallenge } from "../services/authService.js"
+import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount, generateLoginChallenge, invalidateSessionToken } from "../services/authService.js"
 import { User } from "../database/models.js"
 import type { RegisterRequest, LoginRequest, LoginResponse, ErrorResponse } from "../types/index.js"
 import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
@@ -282,6 +282,29 @@ export function createAuthRouter(): Router {
     } catch (error) {
       console.error("Delete account error:", error)
       return res.status(500).json({ error: "Internal server error" })
+    }
+  })
+
+  /**
+   * POST /auth/logout
+   * Invalidates the current session token.
+   */
+  router.post("/logout", async (req: Request, res: Response) => {
+    try {
+      const token = extractBearerToken(req.headers.authorization)
+      if (!token) {
+        return res.status(401).json({ error: "Unauthorized" })
+      }
+
+      await invalidateSessionToken(token)
+      return res.status(200).json({ success: true, message: "Logged out successfully" })
+    } catch (error) {
+      console.error("[VaultSync] Logout error:", error)
+      return res.status(500).json({
+        error: "Logout failed",
+        code: "INTERNAL_ERROR",
+        message: "An unexpected error occurred during logout",
+      } as ErrorResponse)
     }
   })
 

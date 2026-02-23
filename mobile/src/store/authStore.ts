@@ -188,6 +188,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    const token = await SecureStorageService.getSessionId();
+    if (token) {
+      try {
+        await axios.post(`${API_URL}/auth/logout`, {}, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 15000,
+        });
+      } catch (e: any) {
+        // Always clear local state even if server logout fails.
+        console.warn('[Auth] Server logout failed, continuing local logout:', e?.response?.status || e?.message);
+      }
+    }
+
     await SecureStorageService.clearSession();
     await SecureStorageService.deleteItem('user_id');
     set({
