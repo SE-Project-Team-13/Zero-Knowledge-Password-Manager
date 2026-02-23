@@ -58,6 +58,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // 1. Fetch Salt and Challenge
+      console.log(`[Auth] API_URL=${API_URL}`);
       console.log(`Fetching salt for ${email}`);
       const saltResponse = await axios.get(`${API_URL}/auth/salt/${encodeURIComponent(email)}`);
       const { salt, challenge } = saltResponse.data;
