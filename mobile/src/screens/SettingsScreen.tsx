@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
+    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform,
 } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
@@ -46,61 +46,75 @@ export default function SettingsScreen() {
     const { entries, clearVault } = useVaultStore();
     const navigation = useNavigation<any>();
 
+    const confirmAction = (title: string, message: string): Promise<boolean> => {
+        if (Platform.OS === 'web') {
+            return Promise.resolve(window.confirm(`${title}\n\n${message}`));
+        }
+        return new Promise((resolve) => {
+            Alert.alert(title, message, [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Confirm', style: 'destructive', onPress: () => resolve(true) },
+            ]);
+        });
+    };
+
     const handleLogout = () => {
-        Alert.alert('Sign Out', 'You will need to re-enter your master password to access your vault.', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Sign Out',
-                style: 'destructive',
-                onPress: async () => {
-                    try {
-                        clearVault();
-                        await logout();
-                        navigation.reset({
-                            index: 0,
-                            routes: [{ name: 'Login' }],
-                        });
-                        console.log('[Auth] Sign out completed');
-                    } catch (e) {
-                        console.error('[Auth] Sign out failed', e);
-                        Alert.alert('Sign out failed', 'Please try again.');
-                    }
-                },
-            },
-        ]);
+        console.log('[Auth] Sign out tapped');
+        (async () => {
+            const confirmed = await confirmAction(
+                'Sign Out',
+                'You will need to re-enter your master password to access your vault.',
+            );
+            if (!confirmed) return;
+            try {
+                console.log('[Auth] Sign out started');
+                clearVault();
+                await logout();
+                console.log('[Auth] Sign out completed');
+            } catch (e) {
+                console.error('[Auth] Sign out failed', e);
+                if (Platform.OS === 'web') {
+                    window.alert('Sign out failed. Please try again.');
+                } else {
+                    Alert.alert('Sign out failed', 'Please try again.');
+                }
+            }
+        })();
     };
 
     const handleDeleteAccount = () => {
-        Alert.alert(
-            'Delete Account',
-            'This will permanently delete your account and all encrypted data. This cannot be undone.',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            const token = await SecureStorageService.getSessionId();
-                            if (!token) throw new Error('Missing session token');
+        (async () => {
+            const confirmed = await confirmAction(
+                'Delete Account',
+                'This will permanently delete your account and all encrypted data. This cannot be undone.',
+            );
+            if (!confirmed) return;
+            try {
+                const token = await SecureStorageService.getSessionId();
+                if (!token) throw new Error('Missing session token');
 
-                            await axios.delete(`${API_URL}/auth/account`, {
-                                headers: {
-                                    Authorization: `Bearer ${token}`,
-                                },
-                            });
-
-                            clearVault();
-                            await logout();
-                            Alert.alert('Account Deleted', 'Your account has been deleted.');
-                        } catch (error: any) {
-                            const message = error?.response?.data?.message || error?.message || 'Failed to delete account';
-                            Alert.alert('Delete Failed', message);
-                        }
+                await axios.delete(`${API_URL}/auth/account`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
                     },
-                },
-            ],
-        );
+                });
+
+                clearVault();
+                await logout();
+                if (Platform.OS === 'web') {
+                    window.alert('Your account has been deleted.');
+                } else {
+                    Alert.alert('Account Deleted', 'Your account has been deleted.');
+                }
+            } catch (error: any) {
+                const message = error?.response?.data?.message || error?.message || 'Failed to delete account';
+                if (Platform.OS === 'web') {
+                    window.alert(message);
+                } else {
+                    Alert.alert('Delete Failed', message);
+                }
+            }
+        })();
     };
 
     return (

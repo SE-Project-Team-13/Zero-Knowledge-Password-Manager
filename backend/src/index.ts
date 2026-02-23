@@ -61,19 +61,33 @@ async function start() {
     app.use(helmet())
 
     // CORS Middleware
+    const configuredOrigins = (process.env.FRONTEND_URL || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .flatMap((value) => {
+        if (value.startsWith("http://") || value.startsWith("https://")) {
+          return [value]
+        }
+        return [`https://${value}`, `http://${value}`]
+      })
+
     const ALLOWED_ORIGINS = [
       "http://localhost:3000",
       "http://localhost:3001",
       "http://localhost:8081",   // Expo web dev server
       "http://localhost:19006",  // Expo web legacy port
-      process.env.FRONTEND_URL || ""
-    ].filter(Boolean)
+      ...configuredOrigins,
+    ]
+
+    const isRenderOrigin = (origin: string): boolean => /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin)
 
 
     app.use((req, res, next) => {
       const origin = req.headers.origin
-      if (origin && ALLOWED_ORIGINS.includes(origin)) {
+      if (origin && (ALLOWED_ORIGINS.includes(origin) || isRenderOrigin(origin))) {
         res.header("Access-Control-Allow-Origin", origin)
+        res.header("Vary", "Origin")
       } else if (!origin && !isProduction) {
         /* Allow requests without origin (like direct browser hits) in development */
         res.header("Access-Control-Allow-Origin", "*")
