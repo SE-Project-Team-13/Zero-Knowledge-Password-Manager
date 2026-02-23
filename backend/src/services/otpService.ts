@@ -85,9 +85,9 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
     }
 
     return { success: true, message: "OTP sent successfully" }
-  } catch (error) {
+  } catch (error: any) {
     console.error("[VaultSync:OTP] Error sending OTP:", error)
-    return { success: false, message: "Failed to send OTP" }
+    return { success: false, message: error.message || "Failed to send OTP" }
   }
 }
 
