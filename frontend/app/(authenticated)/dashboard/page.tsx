@@ -145,9 +145,10 @@ export default function DashboardPage() {
       );
 
       if (response.ok) {
+        const data = await response.json();
         setOtpSent(true);
         setTimeLeft(600); // Reset timer to 10 minutes
-        toast.success("OTP sent to your email");
+        toast.success(data.message || "OTP sent to your email");
       } else {
         const error = await response.json();
         console.error("[OTP] Send failed with details:", error);

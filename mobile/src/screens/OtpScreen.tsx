@@ -56,6 +56,11 @@ export default function OtpScreen({ email, onVerified }: Props) {
                 timeout: 60000,
             });
             console.log('[OTP] Send response', response.status, response.data);
+
+            if (response.data?.message && response.data.message.includes('MOCK MODE')) {
+                Alert.alert('Mock Mode Active', response.data.message);
+            }
+
             setCountdown(60);
         } catch (e: any) {
             console.error('[OTP] Send failed', {
