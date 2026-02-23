@@ -65,14 +65,28 @@ async function start() {
       "http://localhost:3000",
       "http://localhost:3001",
       "http://localhost:8081",   // Expo web dev server
+      "http://localhost:8082",   // Expo web dev server (common alternate)
       "http://localhost:19006",  // Expo web legacy port
       process.env.FRONTEND_URL || ""
     ].filter(Boolean)
 
+    function isAllowedDevOrigin(origin: string): boolean {
+      // Allow local dev clients (Expo web often uses varying localhost ports).
+      try {
+        const url = new URL(origin)
+        const host = url.hostname
+        if (url.protocol !== "http:" && url.protocol !== "https:") return false
+        return host === "localhost" || host === "127.0.0.1"
+      } catch {
+        return false
+      }
+    }
+
 
     app.use((req, res, next) => {
       const origin = req.headers.origin
-      if (origin && ALLOWED_ORIGINS.includes(origin)) {
+      if (origin && (ALLOWED_ORIGINS.includes(origin) || isAllowedDevOrigin(origin))) {
+        res.header("Vary", "Origin")
         res.header("Access-Control-Allow-Origin", origin)
       } else if (!origin && !isProduction) {
         /* Allow requests without origin (like direct browser hits) in development */

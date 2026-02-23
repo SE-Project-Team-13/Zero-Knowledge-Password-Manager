@@ -12,7 +12,6 @@ import { Colors } from './src/theme';
 import {
   LoginScreen,
   OtpScreen,
-  RecoveryLoginScreen,
   ResetPasswordScreen,
   DashboardScreen,
   VaultListScreen,
@@ -20,6 +19,7 @@ import {
   ChangePasswordScreen,
   SettingsScreen,
 } from './src/screens';
+import RecoveryLoginScreen from './src/screens/RecoveryLoginScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
