@@ -17,15 +17,21 @@ import { useVaultStore, type VaultEntryLocal } from '../store/vaultStore';
 import { Colors, Spacing, Radius, Typography } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { API_URL } from '../config';
+import { SecureStorageService } from '../services/secureStorage';
+import { createShareEnvelope, decryptShareEnvelope, ensureShareKeyPair, verifyShareEnvelopeSignature } from '../services/shareCrypto';
+import axios from 'axios';
 
 function VaultCard({
     entry,
     onDelete,
     onEdit,
+    onShare,
 }: {
     entry: VaultEntryLocal;
     onDelete: (id: string) => void;
     onEdit: (entry: VaultEntryLocal) => void;
+    onShare: (entry: VaultEntryLocal) => void;
 }) {
     const [revealed, setRevealed] = useState(false);
     const [copied, setCopied] = useState<'user' | 'pass' | null>(null);
@@ -59,6 +65,9 @@ function VaultCard({
                 </View>
                 <TouchableOpacity onPress={() => onEdit(entry)} style={styles.iconBtn}>
                     <Ionicons name="create-outline" size={18} color={Colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => onShare(entry)} style={styles.iconBtn}>
+                    <Ionicons name="share-social-outline" size={18} color={Colors.primary} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={confirmDelete} style={styles.iconBtn}>
                     <Ionicons name="trash-outline" size={18} color={Colors.destructive} />
@@ -94,7 +103,7 @@ function VaultCard({
 
 export default function VaultListScreen() {
     const { masterKey, userId } = useAuthStore();
-    const { entries, isLoading, isSyncing, loadVault, deleteEntry, updateEntry, syncConflict, resolveSyncConflict } = useVaultStore();
+    const { entries, isLoading, isSyncing, loadVault, deleteEntry, updateEntry, addEntry, syncConflict, resolveSyncConflict } = useVaultStore();
     const [search, setSearch] = useState('');
     const [editingEntry, setEditingEntry] = useState<VaultEntryLocal | null>(null);
     const [editSite, setEditSite] = useState('');
@@ -105,6 +114,21 @@ export default function VaultListScreen() {
     const [showEditPassword, setShowEditPassword] = useState(false);
     const [isManualSyncing, setIsManualSyncing] = useState(false);
     const [isResolvingConflict, setIsResolvingConflict] = useState(false);
+    const [sharingEntry, setSharingEntry] = useState<VaultEntryLocal | null>(null);
+    const [shareRecipientEmail, setShareRecipientEmail] = useState('');
+    const [isSendingShare, setIsSendingShare] = useState(false);
+    const [incomingShares, setIncomingShares] = useState<Array<{
+        id: string;
+        encryptedSessionKey: string;
+        ciphertext: string;
+        iv: string;
+        signature: string;
+        senderSigningPublicKey: string;
+        recipientEmail: string;
+        sender: { email: string; fullName: string };
+        createdAt: string;
+    }>>([]);
+    const [incomingOpen, setIncomingOpen] = useState(false);
     const navigation = useNavigation<any>();
 
     useEffect(() => {
@@ -112,6 +136,29 @@ export default function VaultListScreen() {
             loadVault(masterKey, userId);
         }
     }, [masterKey, userId]);
+
+    useEffect(() => {
+        const initSharing = async () => {
+            if (!userId) return;
+            const token = await SecureStorageService.getSessionId();
+            if (!token) return;
+            try {
+                const { publicKey, signingPublicKey } = await ensureShareKeyPair();
+                await axios.post(
+                    `${API_URL}/share/public-key`,
+                    { publicKey, signingPublicKey },
+                    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
+                );
+                const res = await axios.get(`${API_URL}/share/incoming`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                setIncomingShares(res.data?.shares || []);
+            } catch (error) {
+                console.warn('[Share] init failed', error);
+            }
+        };
+        void initSharing();
+    }, [userId]);
 
     const filtered = entries.filter((e) =>
         e.site.toLowerCase().includes(search.toLowerCase()) ||
@@ -174,6 +221,104 @@ export default function VaultListScreen() {
         }
     };
 
+    const handleSendShare = async () => {
+        if (!sharingEntry || !shareRecipientEmail.trim()) return;
+        const token = await SecureStorageService.getSessionId();
+        if (!token) return;
+        setIsSendingShare(true);
+        try {
+            const recipientRes = await axios.get(
+                `${API_URL}/share/public-key/${encodeURIComponent(shareRecipientEmail.trim().toLowerCase())}`,
+                { headers: { Authorization: `Bearer ${token}` } },
+            );
+            const envelope = await createShareEnvelope(
+                {
+                    site: sharingEntry.site,
+                    siteUrl: sharingEntry.siteUrl || '',
+                    username: sharingEntry.username,
+                    password: sharingEntry.password,
+                    notes: sharingEntry.notes || '',
+                },
+                recipientRes.data.publicKey,
+                shareRecipientEmail.trim().toLowerCase(),
+            );
+            await axios.post(
+                `${API_URL}/share/send`,
+                {
+                    recipientEmail: shareRecipientEmail.trim().toLowerCase(),
+                    encryptedSessionKey: envelope.encryptedSessionKey,
+                    ciphertext: envelope.ciphertext,
+                    iv: envelope.iv,
+                    signature: envelope.signature,
+                    senderSigningPublicKey: envelope.senderSigningPublicKey,
+                },
+                { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
+            );
+            Alert.alert('Shared', 'Credential shared securely.');
+            setSharingEntry(null);
+            setShareRecipientEmail('');
+        } catch (e: any) {
+            Alert.alert('Share failed', e?.response?.data?.error || e?.message || 'Could not share now.');
+        } finally {
+            setIsSendingShare(false);
+        }
+    };
+
+    const handleAcceptIncoming = async (shareId: string) => {
+        if (!masterKey || !userId) return;
+        const token = await SecureStorageService.getSessionId();
+        if (!token) return;
+        const share = incomingShares.find((s) => s.id === shareId);
+        if (!share) return;
+        try {
+            const signatureOk = await verifyShareEnvelopeSignature(
+                {
+                    encryptedSessionKey: share.encryptedSessionKey,
+                    ciphertext: share.ciphertext,
+                    iv: share.iv,
+                    signature: share.signature,
+                },
+                share.senderSigningPublicKey,
+                share.recipientEmail,
+            );
+            if (!signatureOk) {
+                Alert.alert(
+                    'Security Warning',
+                    `This shared item from ${share.sender.email} failed signature verification and may be tampered with.`,
+                );
+                return;
+            }
+            const decrypted = await decryptShareEnvelope({
+                encryptedSessionKey: share.encryptedSessionKey,
+                ciphertext: share.ciphertext,
+                iv: share.iv,
+            });
+            await addEntry(
+                {
+                    site: decrypted.site || 'Shared Credential',
+                    username: decrypted.username || '',
+                    password: decrypted.password || '',
+                    siteUrl: decrypted.siteUrl || '',
+                    notes: decrypted.notes || `Shared by ${share.sender.email}`,
+                },
+                masterKey,
+                userId,
+            );
+            await axios.post(`${API_URL}/share/${encodeURIComponent(shareId)}/accept`, {}, { headers: { Authorization: `Bearer ${token}` } });
+            setIncomingShares((prev) => prev.filter((s) => s.id !== shareId));
+            Alert.alert('Accepted', 'Credential added to vault.');
+        } catch (e: any) {
+            Alert.alert('Accept failed', e?.message || 'Could not decrypt shared credential.');
+        }
+    };
+
+    const handleRejectIncoming = async (shareId: string) => {
+        const token = await SecureStorageService.getSessionId();
+        if (!token) return;
+        await axios.post(`${API_URL}/share/${encodeURIComponent(shareId)}/reject`, {}, { headers: { Authorization: `Bearer ${token}` } });
+        setIncomingShares((prev) => prev.filter((s) => s.id !== shareId));
+    };
+
     const handleResolveConflict = async (choice: 'local' | 'server') => {
         if (!masterKey || !userId) return;
         setIsResolvingConflict(true);
@@ -198,6 +343,10 @@ export default function VaultListScreen() {
                 </View>
                 <View style={styles.headerActions}>
                     {(isSyncing || isManualSyncing) && <ActivityIndicator size="small" color={Colors.primary} />}
+                    <TouchableOpacity style={styles.syncBtn} onPress={() => setIncomingOpen(true)}>
+                        <Ionicons name="mail-outline" size={16} color={Colors.primary} />
+                        <Text style={styles.syncBtnText}>{`Shares (${incomingShares.length})`}</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity style={styles.syncBtn} onPress={handleManualSync} disabled={isManualSyncing || isLoading || isSyncing}>
                         <Ionicons name="sync-outline" size={16} color={Colors.primary} />
                         <Text style={styles.syncBtnText}>{isManualSyncing ? 'Syncing...' : 'Sync'}</Text>
@@ -238,7 +387,7 @@ export default function VaultListScreen() {
                 <FlatList
                     data={filtered}
                     keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => <VaultCard entry={item} onDelete={handleDelete} onEdit={openEdit} />}
+                    renderItem={({ item }) => <VaultCard entry={item} onDelete={handleDelete} onEdit={openEdit} onShare={setSharingEntry} />}
                     contentContainerStyle={{ padding: Spacing.md, paddingBottom: 100 }}
                     refreshControl={
                         <RefreshControl
@@ -292,6 +441,67 @@ export default function VaultListScreen() {
                             </TouchableOpacity>
                             <TouchableOpacity style={styles.modalBtnPrimary} onPress={saveEdit}>
                                 <Text style={styles.modalBtnPrimaryText}>Save</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal visible={!!sharingEntry} transparent animationType="fade" onRequestClose={() => setSharingEntry(null)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>Secure Share</Text>
+                        <Text style={styles.conflictText}>
+                            {`Share "${sharingEntry?.site || "credential"}" with recipient email`}
+                        </Text>
+                        <TextInput
+                            style={styles.modalInput}
+                            value={shareRecipientEmail}
+                            onChangeText={setShareRecipientEmail}
+                            placeholder="Recipient email"
+                            placeholderTextColor={Colors.textMuted}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                        />
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity style={styles.modalBtnSecondary} disabled={isSendingShare} onPress={() => setSharingEntry(null)}>
+                                <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.modalBtnPrimary} disabled={isSendingShare} onPress={handleSendShare}>
+                                <Text style={styles.modalBtnPrimaryText}>{isSendingShare ? 'Sharing...' : 'Share'}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal visible={incomingOpen} transparent animationType="fade" onRequestClose={() => setIncomingOpen(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>Incoming Shares</Text>
+                        {incomingShares.length === 0 ? (
+                            <Text style={styles.conflictText}>No pending shares.</Text>
+                        ) : (
+                            <View style={{ maxHeight: 260 }}>
+                                {incomingShares.slice(0, 8).map((share) => (
+                                    <View key={share.id} style={styles.conflictItem}>
+                                        <Text style={styles.siteName}>{share.sender.fullName || share.sender.email}</Text>
+                                        <Text style={styles.siteUsername}>{share.sender.email}</Text>
+                                        <View style={styles.modalActions}>
+                                            <TouchableOpacity style={styles.modalBtnSecondary} onPress={() => handleRejectIncoming(share.id)}>
+                                                <Text style={styles.modalBtnSecondaryText}>Reject</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity style={styles.modalBtnPrimary} onPress={() => handleAcceptIncoming(share.id)}>
+                                                <Text style={styles.modalBtnPrimaryText}>Accept</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                ))}
+                            </View>
+                        )}
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity style={styles.modalBtnSecondary} onPress={() => setIncomingOpen(false)}>
+                                <Text style={styles.modalBtnSecondaryText}>Close</Text>
                             </TouchableOpacity>
                         </View>
                     </View>

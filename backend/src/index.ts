@@ -15,6 +15,7 @@ import { createAuthRouter } from "./routes/authRoutes.js"
 import { createSyncRouter } from "./routes/syncRoutes.js"
 import { createOTPRouter } from "./routes/otpRoutes.js"
 import { createRecoveryRouter } from "./routes/recoveryRoutes.js"
+import { createShareRouter } from "./routes/shareRoutes.js"
 import { initScheduledJobs } from "./services/cronService.js"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -151,6 +152,7 @@ async function start() {
     app.use("/sync", createSyncRouter())
     app.use("/otp", createOTPRouter())
     app.use("/recovery", createRecoveryRouter())
+    app.use("/share", createShareRouter())
 
     // Phase 3 compatibility routes
     app.get("/api/vault/:userId", async (req, res) => {
