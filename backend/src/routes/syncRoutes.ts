@@ -4,7 +4,7 @@
 
 import { Router, type Request, type Response } from "express"
 import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
-import { pushVault, pullVaults, getSyncMetadata } from "../services/syncService.js"
+import { pushVault, pullVaults, getSyncMetadata, pullLatestBlobIfNewer } from "../services/syncService.js"
 import type { SyncPushRequest, SyncPullRequest, SyncPullResponse, ErrorResponse } from "../types/index.js"
 
 export function createSyncRouter(): Router {
@@ -56,7 +56,7 @@ export function createSyncRouter(): Router {
    */
   router.post("/pull", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, deviceId, lastVersion } = req.body as SyncPullRequest
+      const { userId, deviceId, lastVersion, lastTimestamp } = req.body as SyncPullRequest
       const requestingUserId = req.userId
 
       if (userId !== requestingUserId) {
@@ -67,7 +67,7 @@ export function createSyncRouter(): Router {
         } as ErrorResponse)
       }
 
-      const result = await pullVaults(userId, deviceId, lastVersion)
+      const result = await pullVaults(userId, deviceId, lastVersion, lastTimestamp)
 
       if (!result.success) {
         return res.status(400).json({
@@ -94,6 +94,93 @@ export function createSyncRouter(): Router {
         error: "Pull failed",
         code: "INTERNAL_ERROR",
         message: "An error occurred during vault pull",
+      } as ErrorResponse)
+    }
+  })
+
+  /**
+   * POST /sync/blob/push
+   * Mailbox-style endpoint: accepts encrypted blob as-is.
+   */
+  router.post("/blob/push", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId, deviceId, blob } = req.body as any
+      const requestingUserId = req.userId
+
+      if (userId !== requestingUserId) {
+        return res.status(403).json({
+          error: "Forbidden",
+          code: "FORBIDDEN",
+          message: "You can only push blobs for your own account",
+        } as ErrorResponse)
+      }
+
+      const result = await pushVault(userId, deviceId, {
+        ciphertext: blob.ciphertext,
+        salt: blob.salt,
+        iv: blob.iv,
+        authTag: blob.authTag,
+        version: blob.version,
+        timestamp: blob.timestamp,
+        nonce: blob.nonce,
+      })
+
+      if (!result.success) {
+        return res.status(400).json({
+          error: result.error,
+          code: "BLOB_PUSH_FAILED",
+          message: result.error,
+        } as ErrorResponse)
+      }
+
+      return res.status(201).json({ blobId: result.vaultId })
+    } catch (error) {
+      console.error("[VaultSync] Blob push error:", error)
+      return res.status(500).json({
+        error: "Blob push failed",
+        code: "INTERNAL_ERROR",
+        message: "An error occurred during blob push",
+      } as ErrorResponse)
+    }
+  })
+
+  /**
+   * POST /sync/blob/pull
+   * Mailbox-style endpoint: returns latest blob only if newer than client's timestamp.
+   */
+  router.post("/blob/pull", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId, lastKnownTimestamp } = req.body as any
+      const requestingUserId = req.userId
+
+      if (userId !== requestingUserId) {
+        return res.status(403).json({
+          error: "Forbidden",
+          code: "FORBIDDEN",
+          message: "You can only pull blobs for your own account",
+        } as ErrorResponse)
+      }
+
+      const result = await pullLatestBlobIfNewer(userId, lastKnownTimestamp)
+      if (!result.success) {
+        return res.status(400).json({
+          error: result.error,
+          code: "BLOB_PULL_FAILED",
+          message: result.error,
+        } as ErrorResponse)
+      }
+
+      return res.status(200).json({
+        hasUpdate: result.hasUpdate || false,
+        serverTimestamp: result.serverTimestamp || 0,
+        blob: result.blob || null,
+      })
+    } catch (error) {
+      console.error("[VaultSync] Blob pull error:", error)
+      return res.status(500).json({
+        error: "Blob pull failed",
+        code: "INTERNAL_ERROR",
+        message: "An error occurred during blob pull",
       } as ErrorResponse)
     }
   })

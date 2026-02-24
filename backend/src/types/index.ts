@@ -94,6 +94,7 @@ export interface SyncPullRequest {
   deviceId: string
   sessionToken: string
   lastVersion?: number // Only pull changes after this version
+  lastTimestamp?: number // Pull only if server blob timestamp is newer
 }
 
 export interface SyncPullResponse {

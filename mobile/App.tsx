@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useAuthStore } from './src/store/authStore';
 import { Colors } from './src/theme';
+import { BackgroundSyncService } from './src/services/backgroundSyncService';
 
 // Screens
 import {
@@ -87,6 +88,11 @@ export default function App() {
 
   useEffect(() => {
     checkAuth().finally(() => setIsReady(true));
+  }, []);
+
+  useEffect(() => {
+    BackgroundSyncService.start();
+    return () => BackgroundSyncService.stop();
   }, []);
 
   if (!isReady) {

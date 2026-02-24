@@ -72,11 +72,15 @@ export async function pullVaults(
   userId: string,
   deviceId: string,
   lastVersion?: number,
+  lastTimestamp?: number,
 ): Promise<{ success: boolean; vaults?: VaultBlobType[]; error?: string }> {
   try {
     const filter: Record<string, any> = { userId }
     if (lastVersion !== undefined) {
       filter.version = { $gt: lastVersion }
+    }
+    if (lastTimestamp !== undefined) {
+      filter.timestamp = { $gt: lastTimestamp }
     }
 
     // Sort by version descending to get newest first
@@ -98,6 +102,47 @@ export async function pullVaults(
     }))
 
     return { success: true, vaults }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return { success: false, error: message }
+  }
+}
+
+/**
+ * Pulls the latest blob only if it's newer than the client's last-known timestamp.
+ * This is a "mailbox-style" endpoint for whole encrypted blobs.
+ */
+export async function pullLatestBlobIfNewer(
+  userId: string,
+  lastKnownTimestamp?: number,
+): Promise<{ success: boolean; hasUpdate?: boolean; blob?: VaultBlobType; serverTimestamp?: number; error?: string }> {
+  try {
+    const latest = await VaultBlob.findOne({ userId }).sort({ timestamp: -1 })
+    if (!latest) {
+      return { success: true, hasUpdate: false, serverTimestamp: 0 }
+    }
+
+    const latestTimestamp = latest.timestamp || 0
+    if (lastKnownTimestamp !== undefined && latestTimestamp <= lastKnownTimestamp) {
+      return { success: true, hasUpdate: false, serverTimestamp: latestTimestamp }
+    }
+
+    const blob: VaultBlobType = {
+      id: latest._id.toString(),
+      userId: latest.userId.toString(),
+      deviceId: latest.deviceId,
+      ciphertext: latest.ciphertext,
+      salt: latest.salt,
+      iv: latest.iv,
+      authTag: latest.authTag,
+      version: latest.version,
+      timestamp: latest.timestamp,
+      nonce: latest.nonce,
+      createdAt: latest.createdAt,
+      updatedAt: latest.updatedAt,
+    }
+
+    return { success: true, hasUpdate: true, blob, serverTimestamp: latestTimestamp }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error"
     return { success: false, error: message }

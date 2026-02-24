@@ -78,6 +78,10 @@ export default function DashboardPage() {
     updateEntry,
     deleteEntry,
     snoozeEntry,
+    syncNow,
+    isSyncing,
+    lastSyncedAt,
+    syncError,
   } = useVault();
 
   const [mounted, setMounted] = useState(false);
@@ -457,6 +461,25 @@ export default function DashboardPage() {
     void copyWithAutoClear(text);
   };
 
+  const handleManualSync = async () => {
+    const updated = await syncNow();
+    if (updated) {
+      toast.success("Vault synced with latest changes");
+      return;
+    }
+    if (syncError) {
+      toast.error(syncError);
+      return;
+    }
+    toast.info("Already up to date");
+  };
+
+  const formatLastSynced = (ts: number | null) => {
+    if (!ts) return "Never";
+    const date = new Date(ts);
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
   // --- Render Loading State ---
   if (isLoggingOut || !mounted || isInitializing) {
     return (
@@ -751,6 +774,13 @@ export default function DashboardPage() {
               <span className="inline-flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
               Encrypted & Synced
             </CardDescription>
+            <CardDescription className="text-xs mt-1">
+              {isSyncing
+                ? "Sync in progress..."
+                : syncError
+                  ? `Sync issue: ${syncError}`
+                  : `Last synced at ${formatLastSynced(lastSyncedAt)}`}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-4">
@@ -764,6 +794,15 @@ export default function DashboardPage() {
                 </p>
               </div>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleManualSync}
+              disabled={isSyncing}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+              {isSyncing ? "Syncing..." : "Sync Now"}
+            </Button>
           </CardContent>
         </Card>
 

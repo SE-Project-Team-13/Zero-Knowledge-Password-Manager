@@ -153,13 +153,18 @@ async function decryptEntries(record: ServerVaultRecord, derivedKey: DerivedKey)
     return [normalizeEntry(decrypted)];
 }
 
-async function pullVaults(userId: string, version: number): Promise<{ vaults: any[]; currentVersion: number }> {
+async function pullVaults(userId: string, version: number, lastSyncTime: number | null): Promise<{ vaults: any[]; currentVersion: number }> {
     const headers = await getAuthHeaders();
     const deviceId = await getDeviceId();
     // Use -1 for first sync so legacy records with version 0 are not skipped.
     const effectiveLastVersion = version > 0 ? version : -1;
-    console.log('[Sync] Pull request', { userId, deviceId, lastVersion: effectiveLastVersion });
-    const res = await axios.post(`${API_URL}/sync/pull`, { userId, deviceId, lastVersion: effectiveLastVersion }, { headers });
+    const effectiveLastTimestamp = lastSyncTime && lastSyncTime > 0 ? lastSyncTime : undefined;
+    console.log('[Sync] Pull request', { userId, deviceId, lastVersion: effectiveLastVersion, lastTimestamp: effectiveLastTimestamp });
+    const res = await axios.post(
+        `${API_URL}/sync/pull`,
+        { userId, deviceId, lastVersion: effectiveLastVersion, lastTimestamp: effectiveLastTimestamp },
+        { headers },
+    );
     console.log('[Sync] Pull response', {
         status: res.status,
         vaultCount: res.data?.vaults?.length || 0,
@@ -259,7 +264,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     loadVault: async (derivedKey, userId) => {
         set({ isLoading: true, error: null });
         try {
-            const { vaults, currentVersion } = await pullVaults(userId, get().version);
+            const { vaults, currentVersion } = await pullVaults(userId, get().version, get().lastSyncTime);
             let latest: ServerVaultRecord | null = null;
 
             if (vaults.length > 0) {
