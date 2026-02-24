@@ -73,8 +73,8 @@ jobs:
     name: Deploy to Render
     needs: [test-crypto, test-backend, test-frontend, code-quality]
     runs-on: ubuntu-latest
-    # Only deploy on pushes to main, not on PRs
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Only deploy on pushes to main or karthik2, not on PRs
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/karthik2')
     steps:
     - name: Deploy Backend to Render
       run: |
