@@ -78,6 +78,7 @@ export interface SyncPushRequest {
   userId: string
   deviceId: string
   sessionToken: string
+  baseTimestamp?: number // Client's last-known server timestamp for conflict detection
   vault: {
     ciphertext: string
     salt: string

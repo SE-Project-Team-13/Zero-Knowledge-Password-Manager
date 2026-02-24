@@ -30,6 +30,14 @@ interface ServerVaultRecord {
     derivationAlgorithm: 'Argon2id';
 }
 
+interface SyncConflictState {
+    serverEntries: VaultEntryLocal[];
+    localEntries: VaultEntryLocal[];
+    serverBlob: ServerVaultRecord;
+    localBlob: ServerVaultRecord;
+    serverTimestamp: number;
+}
+
 interface VaultState {
     entries: VaultEntryLocal[];
     isLoading: boolean;
@@ -37,12 +45,16 @@ interface VaultState {
     error: string | null;
     lastSyncTime: number | null;
     version: number;
+    pendingSyncCount: number;
+    syncConflict: SyncConflictState | null;
 
     loadVault: (derivedKey: DerivedKey, userId: string) => Promise<void>;
     addEntry: (entry: Omit<VaultEntryLocal, 'id' | 'createdAt' | 'updatedAt'>, derivedKey: DerivedKey, userId: string) => Promise<void>;
     updateEntry: (entry: VaultEntryLocal, derivedKey: DerivedKey, userId: string) => Promise<void>;
     deleteEntry: (id: string, derivedKey: DerivedKey, userId: string) => Promise<void>;
     getDeviceIdForSync: () => Promise<string>;
+    flushSyncQueue: (derivedKey: DerivedKey, userId: string) => Promise<void>;
+    resolveSyncConflict: (choice: 'local' | 'server', derivedKey: DerivedKey, userId: string) => Promise<boolean>;
     clearVault: () => void;
 }
 
@@ -224,7 +236,7 @@ async function pullCompatibilityVault(userId: string): Promise<ServerVaultRecord
     return compatRecord;
 }
 
-async function pushVault(userId: string, record: ServerVaultRecord, version: number): Promise<void> {
+async function pushVault(userId: string, record: ServerVaultRecord, version: number, baseTimestamp?: number): Promise<void> {
     const headers = await getAuthHeaders();
     const deviceId = await getDeviceId();
     console.log('[Sync] Push request', {
@@ -247,10 +259,113 @@ async function pushVault(userId: string, record: ServerVaultRecord, version: num
                 timestamp: Date.now(),
                 nonce: uuidv4(),
             },
+            baseTimestamp,
         },
         { headers },
     );
     console.log('[Sync] Push success', { userId, deviceId, version });
+}
+
+interface OfflineQueueItem {
+    id: string;
+    userId: string;
+    version: number;
+    createdAt: number;
+    vault: ServerVaultRecord;
+}
+
+interface LocalVaultSnapshot {
+    entries: VaultEntryLocal[];
+    version: number;
+    lastSyncTime: number | null;
+    updatedAt: number;
+}
+
+const OFFLINE_QUEUE_PREFIX = 'vault_offline_queue:';
+const LOCAL_SNAPSHOT_PREFIX = 'vault_local_snapshot:';
+
+function queueKey(userId: string): string {
+    return `${OFFLINE_QUEUE_PREFIX}${userId}`;
+}
+
+function snapshotKey(userId: string): string {
+    return `${LOCAL_SNAPSHOT_PREFIX}${userId}`;
+}
+
+function isOfflineLikeError(error: any): boolean {
+    const code = String(error?.code || '');
+    const message = String(error?.message || '');
+    return (
+        !error?.response ||
+        code === 'ECONNABORTED' ||
+        /network error/i.test(message) ||
+        /timeout/i.test(message)
+    );
+}
+
+async function readQueue(userId: string): Promise<OfflineQueueItem[]> {
+    try {
+        const raw = await AsyncStorage.getItem(queueKey(userId));
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+async function writeQueue(userId: string, queue: OfflineQueueItem[]): Promise<void> {
+    await AsyncStorage.setItem(queueKey(userId), JSON.stringify(queue));
+}
+
+async function enqueueSync(userId: string, version: number, vault: ServerVaultRecord): Promise<number> {
+    const queue = await readQueue(userId);
+    queue.push({
+        id: uuidv4(),
+        userId,
+        version,
+        createdAt: Date.now(),
+        vault,
+    });
+    await writeQueue(userId, queue);
+    return queue.length;
+}
+
+async function persistSnapshot(userId: string, snapshot: LocalVaultSnapshot): Promise<void> {
+    await AsyncStorage.setItem(snapshotKey(userId), JSON.stringify(snapshot));
+}
+
+async function loadSnapshot(userId: string): Promise<LocalVaultSnapshot | null> {
+    try {
+        const raw = await AsyncStorage.getItem(snapshotKey(userId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.entries)) return null;
+        return parsed as LocalVaultSnapshot;
+    } catch {
+        return null;
+    }
+}
+
+async function drainQueue(userId: string): Promise<number> {
+    let queue = await readQueue(userId);
+    if (queue.length === 0) return 0;
+
+    const remaining: OfflineQueueItem[] = [];
+    for (const item of queue) {
+        try {
+            await pushVault(userId, item.vault, item.version);
+        } catch (error) {
+            remaining.push(item);
+            if (isOfflineLikeError(error)) {
+                remaining.push(...queue.slice(queue.indexOf(item) + 1));
+                break;
+            }
+        }
+    }
+
+    await writeQueue(userId, remaining);
+    return remaining.length;
 }
 
 export const useVaultStore = create<VaultState>((set, get) => ({
@@ -260,9 +375,20 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     error: null,
     lastSyncTime: null,
     version: 0,
+    pendingSyncCount: 0,
+    syncConflict: null,
 
     loadVault: async (derivedKey, userId) => {
         set({ isLoading: true, error: null });
+        const cached = await loadSnapshot(userId);
+        if (cached) {
+            set({
+                entries: cached.entries,
+                version: Math.max(get().version, cached.version || 0),
+                lastSyncTime: cached.lastSyncTime || get().lastSyncTime,
+                isLoading: true,
+            });
+        }
         try {
             const { vaults, currentVersion } = await pullVaults(userId, get().version, get().lastSyncTime);
             let latest: ServerVaultRecord | null = null;
@@ -287,10 +413,27 @@ export const useVaultStore = create<VaultState>((set, get) => ({
                 localVersion: get().version,
                 serverVersion: resolvedVersion,
             });
-            set({ entries, version: resolvedVersion, lastSyncTime: Date.now(), isLoading: false });
+            const now = Date.now();
+            await persistSnapshot(userId, {
+                entries,
+                version: resolvedVersion,
+                lastSyncTime: now,
+                updatedAt: now,
+            });
+            const pending = await drainQueue(userId);
+            set({ entries, version: resolvedVersion, lastSyncTime: now, pendingSyncCount: pending, syncConflict: null, isLoading: false });
         } catch (e: any) {
             console.error('[Sync] Load failed', e?.response?.data || e?.message || e);
-            set({ error: e.message || 'Failed to load vault', isLoading: false });
+            if (cached) {
+                const pending = (await readQueue(userId)).length;
+                set({
+                    isLoading: false,
+                    pendingSyncCount: pending,
+                    error: isOfflineLikeError(e) ? null : (e.message || 'Failed to load vault'),
+                });
+            } else {
+                set({ error: e.message || 'Failed to load vault', isLoading: false });
+            }
         }
     },
 
@@ -306,9 +449,52 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         try {
             const encrypted = await encryptEntries(newEntries, derivedKey);
             const nextVersion = get().version + 1;
-            await pushVault(userId, encrypted, nextVersion);
-            console.log('[Sync] Add entry synced', { nextVersion, totalEntries: newEntries.length });
-            set({ version: nextVersion, lastSyncTime: Date.now(), isSyncing: false });
+            const now = Date.now();
+            await persistSnapshot(userId, { entries: newEntries, version: nextVersion, lastSyncTime: now, updatedAt: now });
+            try {
+                await pushVault(userId, encrypted, nextVersion, get().lastSyncTime || undefined);
+                const pending = await drainQueue(userId);
+                console.log('[Sync] Add entry synced', { nextVersion, totalEntries: newEntries.length });
+                set({ version: nextVersion, lastSyncTime: now, pendingSyncCount: pending, syncConflict: null, isSyncing: false });
+            } catch (syncError: any) {
+                if (syncError?.response?.status === 409 && syncError?.response?.data?.conflict) {
+                    const conflict = syncError.response.data.conflict;
+                    const serverBlob: ServerVaultRecord = {
+                        ciphertext: conflict.latestServerBlob.ciphertext,
+                        iv: conflict.latestServerBlob.iv,
+                        salt: conflict.latestServerBlob.salt,
+                        tag: conflict.latestServerBlob.tag || conflict.latestServerBlob.authTag,
+                        authTag: conflict.latestServerBlob.authTag || conflict.latestServerBlob.tag,
+                        algorithm: 'AES-256-GCM',
+                        derivationAlgorithm: 'Argon2id',
+                        version: conflict.latestServerBlob.version,
+                        timestamp: conflict.latestServerBlob.timestamp,
+                        nonce: conflict.latestServerBlob.nonce,
+                    };
+                    const serverEntries = await decryptEntries(serverBlob, derivedKey);
+                    set({
+                        syncConflict: {
+                            serverEntries,
+                            localEntries: newEntries,
+                            serverBlob,
+                            localBlob: encrypted,
+                            serverTimestamp: Number(conflict.latestServerTimestamp || 0),
+                        },
+                        isSyncing: false,
+                        error: null,
+                    });
+                    return;
+                }
+                const pending = await enqueueSync(userId, nextVersion, encrypted);
+                console.warn('[Sync] Add entry queued for later sync', { nextVersion, pending });
+                set({
+                    version: nextVersion,
+                    lastSyncTime: now,
+                    pendingSyncCount: pending,
+                    error: isOfflineLikeError(syncError) ? null : syncError?.message,
+                    isSyncing: false,
+                });
+            }
         } catch (e: any) {
             console.error('[Sync] Add entry failed', e?.response?.data || e?.message || e);
             set({ error: e.message, isSyncing: false });
@@ -321,9 +507,52 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         try {
             const encrypted = await encryptEntries(newEntries, derivedKey);
             const nextVersion = get().version + 1;
-            await pushVault(userId, encrypted, nextVersion);
-            console.log('[Sync] Update entry synced', { entryId: entry.id, nextVersion });
-            set({ version: nextVersion, lastSyncTime: Date.now(), isSyncing: false });
+            const now = Date.now();
+            await persistSnapshot(userId, { entries: newEntries, version: nextVersion, lastSyncTime: now, updatedAt: now });
+            try {
+                await pushVault(userId, encrypted, nextVersion, get().lastSyncTime || undefined);
+                const pending = await drainQueue(userId);
+                console.log('[Sync] Update entry synced', { entryId: entry.id, nextVersion });
+                set({ version: nextVersion, lastSyncTime: now, pendingSyncCount: pending, syncConflict: null, isSyncing: false });
+            } catch (syncError: any) {
+                if (syncError?.response?.status === 409 && syncError?.response?.data?.conflict) {
+                    const conflict = syncError.response.data.conflict;
+                    const serverBlob: ServerVaultRecord = {
+                        ciphertext: conflict.latestServerBlob.ciphertext,
+                        iv: conflict.latestServerBlob.iv,
+                        salt: conflict.latestServerBlob.salt,
+                        tag: conflict.latestServerBlob.tag || conflict.latestServerBlob.authTag,
+                        authTag: conflict.latestServerBlob.authTag || conflict.latestServerBlob.tag,
+                        algorithm: 'AES-256-GCM',
+                        derivationAlgorithm: 'Argon2id',
+                        version: conflict.latestServerBlob.version,
+                        timestamp: conflict.latestServerBlob.timestamp,
+                        nonce: conflict.latestServerBlob.nonce,
+                    };
+                    const serverEntries = await decryptEntries(serverBlob, derivedKey);
+                    set({
+                        syncConflict: {
+                            serverEntries,
+                            localEntries: newEntries,
+                            serverBlob,
+                            localBlob: encrypted,
+                            serverTimestamp: Number(conflict.latestServerTimestamp || 0),
+                        },
+                        isSyncing: false,
+                        error: null,
+                    });
+                    return;
+                }
+                const pending = await enqueueSync(userId, nextVersion, encrypted);
+                console.warn('[Sync] Update entry queued for later sync', { entryId: entry.id, nextVersion, pending });
+                set({
+                    version: nextVersion,
+                    lastSyncTime: now,
+                    pendingSyncCount: pending,
+                    error: isOfflineLikeError(syncError) ? null : syncError?.message,
+                    isSyncing: false,
+                });
+            }
         } catch (e: any) {
             console.error('[Sync] Update entry failed', e?.response?.data || e?.message || e);
             set({ error: e.message, isSyncing: false });
@@ -336,9 +565,52 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         try {
             const encrypted = await encryptEntries(newEntries, derivedKey);
             const nextVersion = get().version + 1;
-            await pushVault(userId, encrypted, nextVersion);
-            console.log('[Sync] Delete entry synced', { entryId: id, nextVersion });
-            set({ version: nextVersion, lastSyncTime: Date.now(), isSyncing: false });
+            const now = Date.now();
+            await persistSnapshot(userId, { entries: newEntries, version: nextVersion, lastSyncTime: now, updatedAt: now });
+            try {
+                await pushVault(userId, encrypted, nextVersion, get().lastSyncTime || undefined);
+                const pending = await drainQueue(userId);
+                console.log('[Sync] Delete entry synced', { entryId: id, nextVersion });
+                set({ version: nextVersion, lastSyncTime: now, pendingSyncCount: pending, syncConflict: null, isSyncing: false });
+            } catch (syncError: any) {
+                if (syncError?.response?.status === 409 && syncError?.response?.data?.conflict) {
+                    const conflict = syncError.response.data.conflict;
+                    const serverBlob: ServerVaultRecord = {
+                        ciphertext: conflict.latestServerBlob.ciphertext,
+                        iv: conflict.latestServerBlob.iv,
+                        salt: conflict.latestServerBlob.salt,
+                        tag: conflict.latestServerBlob.tag || conflict.latestServerBlob.authTag,
+                        authTag: conflict.latestServerBlob.authTag || conflict.latestServerBlob.tag,
+                        algorithm: 'AES-256-GCM',
+                        derivationAlgorithm: 'Argon2id',
+                        version: conflict.latestServerBlob.version,
+                        timestamp: conflict.latestServerBlob.timestamp,
+                        nonce: conflict.latestServerBlob.nonce,
+                    };
+                    const serverEntries = await decryptEntries(serverBlob, derivedKey);
+                    set({
+                        syncConflict: {
+                            serverEntries,
+                            localEntries: newEntries,
+                            serverBlob,
+                            localBlob: encrypted,
+                            serverTimestamp: Number(conflict.latestServerTimestamp || 0),
+                        },
+                        isSyncing: false,
+                        error: null,
+                    });
+                    return;
+                }
+                const pending = await enqueueSync(userId, nextVersion, encrypted);
+                console.warn('[Sync] Delete entry queued for later sync', { entryId: id, nextVersion, pending });
+                set({
+                    version: nextVersion,
+                    lastSyncTime: now,
+                    pendingSyncCount: pending,
+                    error: isOfflineLikeError(syncError) ? null : syncError?.message,
+                    isSyncing: false,
+                });
+            }
         } catch (e: any) {
             console.error('[Sync] Delete entry failed', e?.response?.data || e?.message || e);
             set({ error: e.message, isSyncing: false });
@@ -349,5 +621,63 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         return getDeviceId();
     },
 
-    clearVault: () => set({ entries: [], version: 0, lastSyncTime: null }),
+    flushSyncQueue: async (_derivedKey, userId) => {
+        set({ isSyncing: true });
+        try {
+            const pending = await drainQueue(userId);
+            set({ pendingSyncCount: pending, isSyncing: false });
+        } catch (e: any) {
+            set({ error: e?.message || 'Failed to flush sync queue', isSyncing: false });
+        }
+    },
+
+    resolveSyncConflict: async (choice, _derivedKey, userId) => {
+        const conflict = get().syncConflict;
+        if (!conflict) return false;
+        try {
+            const headers = await getAuthHeaders();
+            const deviceId = await getDeviceId();
+            const chosenBlob = choice === 'local' ? conflict.localBlob : conflict.serverBlob;
+
+            const response = await axios.post(
+                `${API_URL}/sync/blob/resolve`,
+                {
+                    userId,
+                    deviceId,
+                    chosenBlob: {
+                        ciphertext: chosenBlob.ciphertext,
+                        iv: chosenBlob.iv,
+                        salt: chosenBlob.salt,
+                        authTag: chosenBlob.authTag || chosenBlob.tag,
+                    },
+                    expectedServerTimestamp: conflict.serverTimestamp,
+                },
+                { headers },
+            );
+
+            const resolvedEntries = choice === 'local' ? conflict.localEntries : conflict.serverEntries;
+            const resolvedVersion = Number(response.data?.resolvedVersion || get().version + 1);
+            const resolvedTimestamp = Number(response.data?.resolvedTimestamp || Date.now());
+            await persistSnapshot(userId, {
+                entries: resolvedEntries,
+                version: resolvedVersion,
+                lastSyncTime: resolvedTimestamp,
+                updatedAt: Date.now(),
+            });
+
+            set({
+                entries: resolvedEntries,
+                version: resolvedVersion,
+                lastSyncTime: resolvedTimestamp,
+                syncConflict: null,
+                error: null,
+            });
+            return true;
+        } catch (e: any) {
+            set({ error: e?.response?.data?.message || e?.message || 'Failed to resolve conflict' });
+            return false;
+        }
+    },
+
+    clearVault: () => set({ entries: [], version: 0, lastSyncTime: null, pendingSyncCount: 0, syncConflict: null }),
 }));

@@ -17,6 +17,7 @@ async function runSync(reason: 'interval' | 'app_active') {
     isSyncRunning = true;
     try {
         console.log('[BackgroundSync] Running sync', { reason, userId });
+        await useVaultStore.getState().flushSyncQueue(masterKey, userId);
         await useVaultStore.getState().loadVault(masterKey, userId);
         console.log('[BackgroundSync] Sync complete', { reason });
     } catch (error) {
@@ -54,4 +55,3 @@ export const BackgroundSyncService = {
         console.log('[BackgroundSync] Stopped');
     },
 };
-

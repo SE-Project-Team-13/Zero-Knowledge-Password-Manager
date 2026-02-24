@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 // Prefer explicit env override first.
 // Examples:
 // - Web: EXPO_PUBLIC_API_URL=http://localhost:3001

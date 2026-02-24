@@ -8,6 +8,8 @@ import { buildApiUrl } from "@/lib/api-base-url";
 
 const WEB_SYNC_INTERVAL_MS = 3 * 60 * 1000;
 const LAST_SYNC_TS_KEY = "vault_last_sync_ts";
+const WEB_OFFLINE_QUEUE_KEY = "vault_offline_sync_queue";
+const WEB_LOCAL_BLOB_PREFIX = "vault_local_blob:";
 
 // Define the DecryptedEntry type
 export interface DecryptedEntry {
@@ -40,6 +42,9 @@ interface VaultContextType {
     isSyncing: boolean;
     lastSyncedAt: number | null;
     syncError: string | null;
+    pendingSyncCount: number;
+    syncConflict: SyncConflictState | null;
+    resolveSyncConflict: (choice: "local" | "server") => Promise<boolean>;
 }
 
 const VaultContext = createContext<VaultContextType | undefined>(undefined);
@@ -54,6 +59,33 @@ interface StorageVaultEntry {
     createdAt: string;
     updatedAt: string;
     reminderSnoozeUntil: string;
+}
+
+interface SyncBlobPayload {
+    ciphertext: string;
+    iv: string;
+    salt: string;
+    authTag?: string;
+    tag?: string;
+    version?: number;
+    timestamp?: number;
+    nonce?: string;
+}
+
+interface OfflineQueueItem {
+    id: string;
+    userId: string;
+    deviceId: string;
+    createdAt: number;
+    blob: SyncBlobPayload;
+}
+
+interface SyncConflictState {
+    serverEntries: DecryptedEntry[];
+    localEntries: DecryptedEntry[];
+    serverBlob: SyncBlobPayload;
+    localBlob: SyncBlobPayload;
+    serverTimestamp: number;
 }
 
 function parseHexToBytes(hex: string, fieldName: string): Uint8Array {
@@ -90,8 +122,85 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncError, setSyncError] = useState<string | null>(null);
     const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+    const [pendingSyncCount, setPendingSyncCount] = useState(0);
+    const [syncConflict, setSyncConflict] = useState<SyncConflictState | null>(null);
     const syncInFlightRef = useRef(false);
     const [session] = useVaultSync();
+
+    const getLocalBlobKey = React.useCallback((userId: string) => `${WEB_LOCAL_BLOB_PREFIX}${userId}`, []);
+
+    const readOfflineQueue = React.useCallback((): OfflineQueueItem[] => {
+        if (typeof window === "undefined") return [];
+        try {
+            const raw = localStorage.getItem(WEB_OFFLINE_QUEUE_KEY);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }, []);
+
+    const writeOfflineQueue = React.useCallback((queue: OfflineQueueItem[]) => {
+        if (typeof window === "undefined") return;
+        localStorage.setItem(WEB_OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+        setPendingSyncCount(queue.length);
+    }, []);
+
+    const enqueueOfflineSync = React.useCallback((item: Omit<OfflineQueueItem, "id" | "createdAt">) => {
+        const queue = readOfflineQueue();
+        queue.push({
+            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            createdAt: Date.now(),
+            ...item,
+        });
+        writeOfflineQueue(queue);
+    }, [readOfflineQueue, writeOfflineQueue]);
+
+    const drainOfflineQueue = React.useCallback(async (): Promise<number> => {
+        const queue = readOfflineQueue();
+        if (queue.length === 0) {
+            setPendingSyncCount(0);
+            return 0;
+        }
+
+        const remaining: OfflineQueueItem[] = [];
+        for (const item of queue) {
+            const token = localStorage.getItem("auth_token");
+            if (!token) {
+                remaining.push(item);
+                continue;
+            }
+            try {
+                const syncResponse = await fetch(buildApiUrl("/sync/blob/push"), {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        userId: item.userId,
+                        deviceId: item.deviceId,
+                        blob: item.blob,
+                    }),
+                });
+                if (!syncResponse.ok) {
+                    remaining.push(item);
+                    if (syncResponse.status >= 500) {
+                        remaining.push(...queue.slice(queue.indexOf(item) + 1));
+                        break;
+                    }
+                }
+            } catch {
+                remaining.push(item);
+                remaining.push(...queue.slice(queue.indexOf(item) + 1));
+                break;
+            }
+        }
+
+        writeOfflineQueue(remaining);
+        return remaining.length;
+    }, [readOfflineQueue, writeOfflineQueue]);
 
     const parseDecryptedEntries = React.useCallback((decryptedEntry: unknown): DecryptedEntry[] => {
         let entries: Array<Record<string, unknown>> = [];
@@ -146,6 +255,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if (saved > 0) {
             setLastSyncedAt(saved);
         }
+        setPendingSyncCount(readOfflineQueue().length);
     }, []);
 
     const unlockVault = React.useCallback(async () => {
@@ -258,13 +368,30 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
                  // 3. Fallback to Compatibility API
                  if (!userId) throw new Error("No user ID found");
-                 const response = await fetch(buildApiUrl(`/api/vault/${encodeURIComponent(userId)}`), {
-                    method: "GET",
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    },
-                    cache: "no-store"
-                });
+                 let response: Response;
+                 try {
+                    response = await fetch(buildApiUrl(`/api/vault/${encodeURIComponent(userId)}`), {
+                        method: "GET",
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        },
+                        cache: "no-store"
+                    });
+                 } catch {
+                    const cachedRaw = localStorage.getItem(getLocalBlobKey(userId));
+                    if (cachedRaw) {
+                        try {
+                            const cachedBlob = JSON.parse(cachedRaw);
+                            if (cachedBlob?.ciphertext) {
+                                console.log("[VaultContext] Loaded vault from local offline cache");
+                                return { ok: true, status: 200, json: async () => cachedBlob };
+                            }
+                        } catch {
+                            // no-op
+                        }
+                    }
+                    throw new Error("Network unavailable and no local vault cache found");
+                 }
                 
                 console.log("[VaultContext] Compatibility API status:", response.status);
                 if (response.ok) {
@@ -344,6 +471,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                         localStorage.setItem(LAST_SYNC_TS_KEY, String(ts));
                         setLastSyncedAt(ts);
                     }
+                    const resolvedUserId = (session.userId || localStorage.getItem("user_id") || "").trim();
+                    if (typeof window !== "undefined" && resolvedUserId && data?.ciphertext) {
+                        localStorage.setItem(getLocalBlobKey(resolvedUserId), JSON.stringify(data));
+                    }
                     setIsUnlocked(true);
                     // toast.success(`Vault loaded: ${entriesWithVisibility.length} entries`);
                 } else {
@@ -373,7 +504,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoadingVault(false);
         }
-    }, [isUnlocked, decryptedEntries.length, session.userId, parseDecryptedEntries]);
+    }, [isUnlocked, decryptedEntries.length, session.userId, parseDecryptedEntries, getLocalBlobKey]);
 
     const addEntry = async (entryCtx: { site: string; username: string; password: string; url: string; notes: string }) => {
         if (!derivedKeys) {
@@ -422,7 +553,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             toast.success("Credential saved successfully!");
         } catch (err) {
             console.error("Add entry error:", err);
-            toast.error("Failed to save credential");
+            if (err instanceof Error && err.message === "SYNC_CONFLICT_DETECTED") {
+                toast.error("Conflict detected. Choose which version to keep.");
+            } else {
+                toast.error("Failed to save credential");
+            }
         }
     };
 
@@ -439,6 +574,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             if (!token || !userId || !sessionPassword || !isUnlocked) {
                 return false;
             }
+            await drainOfflineQueue();
 
             const lastKnownTimestamp = Number(localStorage.getItem(LAST_SYNC_TS_KEY) || "0");
             const response = await fetch(buildApiUrl("/sync/blob/pull"), {
@@ -479,6 +615,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             setDecryptedEntries(nextEntries);
             const ts = Number(payload.serverTimestamp || blob.timestamp || Date.now());
             localStorage.setItem(LAST_SYNC_TS_KEY, String(ts));
+            localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(blob));
             setLastSyncedAt(ts);
             return true;
         } catch (err) {
@@ -489,7 +626,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             setIsSyncing(false);
             syncInFlightRef.current = false;
         }
-    }, [session.userId, isUnlocked, parseDecryptedEntries]);
+    }, [session.userId, isUnlocked, parseDecryptedEntries, drainOfflineQueue, getLocalBlobKey]);
 
     const updateEntry = async (entry: DecryptedEntry) => {
         if (!derivedKeys) return;
@@ -512,7 +649,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             toast.success("Credential updated!");
         } catch (err) {
             console.error("Update entry error:", err);
-            toast.error("Failed to update credential");
+            if (err instanceof Error && err.message === "SYNC_CONFLICT_DETECTED") {
+                toast.error("Conflict detected. Choose which version to keep.");
+            } else {
+                toast.error("Failed to update credential");
+            }
         }
     };
 
@@ -531,7 +672,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             toast.success("Credential deleted!");
         } catch (err) {
             console.error("Delete entry error:", err);
-            toast.error("Failed to delete credential");
+            if (err instanceof Error && err.message === "SYNC_CONFLICT_DETECTED") {
+                toast.error("Conflict detected. Choose which version to keep.");
+            } else {
+                toast.error("Failed to delete credential");
+            }
         }
     };
 
@@ -597,10 +742,26 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if (!userId) throw new Error("User ID not found for sync");
 
         console.log(`[VaultContext] Saving vault for ${userId}...`);
+        const syncUserId = session.userId || localStorage.getItem("user_id");
+        const deviceId = localStorage.getItem("device_id") || "web-dashboard";
+        const nowTs = Date.now();
+        const blobPayload: SyncBlobPayload = {
+            ciphertext: encryptedVault.ciphertext,
+            iv: encryptedVault.iv,
+            salt: encryptedVault.salt,
+            authTag: encryptedVault.tag,
+            version: nowTs,
+            timestamp: nowTs,
+            nonce: Math.random().toString(36).substring(7),
+        };
+        localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(blobPayload));
+        const baseTimestamp = Number(localStorage.getItem(LAST_SYNC_TS_KEY) || "0") || 0;
 
         // 1. Update Compatibility API (Legacy/Simple)
         const compatUrl = buildApiUrl(`/api/vault/${encodeURIComponent(userId)}`);
-        const response = await fetch(compatUrl, {
+        let compatOk = false;
+        try {
+            const response = await fetch(compatUrl, {
                 method: "PUT",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -610,24 +771,23 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     encryptedVault,
                     labels,
                 }),
-            },
-        );
-
-        if (!response.ok) {
-            console.error(`[VaultContext] Compatibility API save failed: ${response.status}`);
-            throw new Error("Failed to save to compatibility backend");
+            });
+            compatOk = response.ok;
+            if (!response.ok) {
+                console.warn(`[VaultContext] Compatibility API save failed: ${response.status}`);
+            }
+        } catch (compatErr) {
+            console.warn("[VaultContext] Compatibility API save failed", compatErr);
         }
 
-        console.log("[VaultContext] Compatibility API save successful");
+        if (compatOk) {
+            console.log("[VaultContext] Compatibility API save successful");
+        }
 
         // 2. Also push to Modern Sync API for consistency
-        const syncUserId = session.userId || localStorage.getItem("user_id");
-        const deviceId = localStorage.getItem("device_id") || "web-dashboard";
-        
         if (syncUserId && deviceId && token) {
             try {
                 const syncUrl = buildApiUrl("/sync/blob/push");
-                const nowTs = Date.now();
                 const syncResponse = await fetch(syncUrl, {
                     method: "POST",
                     headers: {
@@ -637,15 +797,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     body: JSON.stringify({
                         userId: syncUserId,
                         deviceId,
-                        blob: {
-                            ciphertext: encryptedVault.ciphertext,
-                            iv: encryptedVault.iv,
-                            salt: encryptedVault.salt,
-                            authTag: encryptedVault.tag,
-                            version: Date.now(), // Using timestamp as a simple version to ensure it's always "newer"
-                            timestamp: nowTs,
-                            nonce: Math.random().toString(36).substring(7)
-                        }
+                        blob: blobPayload,
+                        baseTimestamp,
                     })
                 });
                 
@@ -653,14 +806,107 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     console.log("[VaultContext] Sync API push successful");
                     localStorage.setItem(LAST_SYNC_TS_KEY, String(nowTs));
                     setLastSyncedAt(nowTs);
+                    await drainOfflineQueue();
                 } else {
+                    if (syncResponse.status === 409) {
+                        const payload = await syncResponse.json();
+                        const conflict = payload?.conflict;
+                        const sessionPassword = sessionStorage.getItem("session_master_password");
+                        if (conflict?.latestServerBlob?.ciphertext && sessionPassword) {
+                            const cryptoEngine = await import("@password-manager/crypto-engine");
+                            const serverDecrypt = await cryptoEngine.decryptVault(sessionPassword, {
+                                ciphertext: conflict.latestServerBlob.ciphertext,
+                                iv: conflict.latestServerBlob.iv,
+                                salt: conflict.latestServerBlob.salt,
+                                tag: conflict.latestServerBlob.authTag || conflict.latestServerBlob.tag,
+                                algorithm: "AES-256-GCM" as const,
+                                derivationAlgorithm: "Argon2id" as const,
+                            });
+                            const serverEntries = serverDecrypt.success && serverDecrypt.data
+                                ? parseDecryptedEntries(serverDecrypt.data)
+                                : [];
+                            const localEntries = entries.map((entry) => ({
+                                id: String(entry.id),
+                                site: String(entry.siteName || "Unknown"),
+                                siteUrl: String(entry.siteUrl || ""),
+                                username: String(entry.username || ""),
+                                password: String(entry.password || ""),
+                                notes: String(entry.notes || ""),
+                                createdAt: String(entry.createdAt || new Date().toISOString()),
+                                updatedAt: String(entry.updatedAt || new Date().toISOString()),
+                                lastUpdated: String(entry.updatedAt || new Date().toISOString()),
+                                reminderSnoozeUntil: String(entry.reminderSnoozeUntil || ""),
+                                isPasswordVisible: false,
+                            }));
+                            setSyncConflict({
+                                serverEntries,
+                                localEntries,
+                                serverBlob: conflict.latestServerBlob,
+                                localBlob: blobPayload,
+                                serverTimestamp: Number(conflict.latestServerTimestamp || 0),
+                            });
+                            throw new Error("SYNC_CONFLICT_DETECTED");
+                        }
+                    }
                     console.warn(`[VaultContext] Sync API push failed with status: ${syncResponse.status}`);
+                    enqueueOfflineSync({ userId: syncUserId, deviceId, blob: blobPayload });
                 }
             } catch (syncErr) {
+                if (syncErr instanceof Error && syncErr.message === "SYNC_CONFLICT_DETECTED") {
+                    throw syncErr;
+                }
                 console.warn("[VaultContext] Sync API push failed:", syncErr);
+                enqueueOfflineSync({ userId: syncUserId, deviceId, blob: blobPayload });
             }
         }
     };
+
+    const resolveSyncConflict = React.useCallback(async (choice: "local" | "server"): Promise<boolean> => {
+        if (!syncConflict) return false;
+        const token = localStorage.getItem("auth_token");
+        const userId = (session.userId || localStorage.getItem("user_id") || "").trim();
+        const deviceId = localStorage.getItem("device_id") || "web-dashboard";
+        if (!token || !userId) return false;
+
+        const chosenBlob = choice === "local" ? syncConflict.localBlob : syncConflict.serverBlob;
+        const response = await fetch(buildApiUrl("/sync/blob/resolve"), {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+                userId,
+                deviceId,
+                chosenBlob: {
+                    ciphertext: chosenBlob.ciphertext,
+                    iv: chosenBlob.iv,
+                    salt: chosenBlob.salt,
+                    authTag: chosenBlob.authTag || chosenBlob.tag,
+                },
+                expectedServerTimestamp: syncConflict.serverTimestamp,
+            }),
+        });
+
+        if (!response.ok) {
+            return false;
+        }
+
+        const payload = await response.json();
+        const resolvedTs = Number(payload?.resolvedTimestamp || Date.now());
+        localStorage.setItem(LAST_SYNC_TS_KEY, String(resolvedTs));
+        setLastSyncedAt(resolvedTs);
+
+        if (choice === "local") {
+            setDecryptedEntries(syncConflict.localEntries);
+            localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(syncConflict.localBlob));
+        } else {
+            setDecryptedEntries(syncConflict.serverEntries);
+            localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(syncConflict.serverBlob));
+        }
+        setSyncConflict(null);
+        return true;
+    }, [syncConflict, session.userId, getLocalBlobKey]);
 
     // Auto-unlock effect
     useEffect(() => {
@@ -705,6 +951,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         };
     }, [isUnlocked, session.isAuthenticated, syncNow]);
 
+    useEffect(() => {
+        const onOnline = () => {
+            void drainOfflineQueue();
+        };
+        window.addEventListener("online", onOnline);
+        return () => window.removeEventListener("online", onOnline);
+    }, [drainOfflineQueue]);
+
     return (
         <VaultContext.Provider value={{
             decryptedEntries,
@@ -722,6 +976,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             isSyncing,
             lastSyncedAt,
             syncError,
+            pendingSyncCount,
+            syncConflict,
+            resolveSyncConflict,
         }}>
             {children}
         </VaultContext.Provider>

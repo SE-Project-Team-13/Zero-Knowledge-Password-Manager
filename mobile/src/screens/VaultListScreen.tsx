@@ -94,7 +94,7 @@ function VaultCard({
 
 export default function VaultListScreen() {
     const { masterKey, userId } = useAuthStore();
-    const { entries, isLoading, isSyncing, loadVault, deleteEntry, updateEntry } = useVaultStore();
+    const { entries, isLoading, isSyncing, loadVault, deleteEntry, updateEntry, syncConflict, resolveSyncConflict } = useVaultStore();
     const [search, setSearch] = useState('');
     const [editingEntry, setEditingEntry] = useState<VaultEntryLocal | null>(null);
     const [editSite, setEditSite] = useState('');
@@ -104,6 +104,7 @@ export default function VaultListScreen() {
     const [editNotes, setEditNotes] = useState('');
     const [showEditPassword, setShowEditPassword] = useState(false);
     const [isManualSyncing, setIsManualSyncing] = useState(false);
+    const [isResolvingConflict, setIsResolvingConflict] = useState(false);
     const navigation = useNavigation<any>();
 
     useEffect(() => {
@@ -170,6 +171,21 @@ export default function VaultListScreen() {
             Alert.alert('Sync failed', e?.message || 'Unable to sync right now.');
         } finally {
             setIsManualSyncing(false);
+        }
+    };
+
+    const handleResolveConflict = async (choice: 'local' | 'server') => {
+        if (!masterKey || !userId) return;
+        setIsResolvingConflict(true);
+        try {
+            const ok = await resolveSyncConflict(choice, masterKey, userId);
+            if (ok) {
+                Alert.alert('Conflict Resolved', choice === 'local' ? 'Kept your local version.' : 'Kept server version.');
+            } else {
+                Alert.alert('Resolve Failed', 'Could not resolve conflict. Try again.');
+            }
+        } finally {
+            setIsResolvingConflict(false);
         }
     };
 
@@ -281,6 +297,53 @@ export default function VaultListScreen() {
                     </View>
                 </View>
             </Modal>
+
+            <Modal visible={!!syncConflict} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>Sync Conflict Detected</Text>
+                        <Text style={styles.conflictText}>You changed data on two devices. Choose which version to keep.</Text>
+
+                        <View style={styles.conflictColumns}>
+                            <View style={styles.conflictCol}>
+                                <Text style={styles.conflictHeading}>Local ({syncConflict?.localEntries.length || 0})</Text>
+                                {(syncConflict?.localEntries || []).slice(0, 6).map((entry) => (
+                                    <View key={`local-${entry.id}`} style={styles.conflictItem}>
+                                        <Text style={styles.siteName}>{entry.site}</Text>
+                                        <Text style={styles.siteUsername}>{entry.username}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                            <View style={styles.conflictCol}>
+                                <Text style={styles.conflictHeading}>Server ({syncConflict?.serverEntries.length || 0})</Text>
+                                {(syncConflict?.serverEntries || []).slice(0, 6).map((entry) => (
+                                    <View key={`server-${entry.id}`} style={styles.conflictItem}>
+                                        <Text style={styles.siteName}>{entry.site}</Text>
+                                        <Text style={styles.siteUsername}>{entry.username}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        </View>
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                style={styles.modalBtnSecondary}
+                                disabled={isResolvingConflict}
+                                onPress={() => handleResolveConflict('server')}
+                            >
+                                <Text style={styles.modalBtnSecondaryText}>Keep Server</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.modalBtnPrimary}
+                                disabled={isResolvingConflict}
+                                onPress={() => handleResolveConflict('local')}
+                            >
+                                <Text style={styles.modalBtnPrimaryText}>{isResolvingConflict ? 'Resolving...' : 'Keep Mine'}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -384,6 +447,24 @@ const styles = StyleSheet.create({
         gap: Spacing.sm,
     },
     modalTitle: { ...Typography.heading, fontSize: 18, marginBottom: Spacing.xs },
+    conflictText: { ...Typography.muted, marginBottom: Spacing.sm },
+    conflictColumns: { flexDirection: 'row', gap: Spacing.sm },
+    conflictCol: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: Radius.md,
+        padding: Spacing.xs,
+        maxHeight: 180,
+    },
+    conflictHeading: { ...Typography.subheading, fontSize: 13, marginBottom: 6 },
+    conflictItem: {
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: Radius.sm,
+        padding: 6,
+        marginBottom: 6,
+    },
     modalInput: {
         ...Typography.body,
         backgroundColor: Colors.surfaceElevated,

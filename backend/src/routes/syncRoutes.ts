@@ -4,7 +4,7 @@
 
 import { Router, type Request, type Response } from "express"
 import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
-import { pushVault, pullVaults, getSyncMetadata, pullLatestBlobIfNewer } from "../services/syncService.js"
+import { pushVault, pullVaults, getSyncMetadata, pullLatestBlobIfNewer, resolveVaultConflict } from "../services/syncService.js"
 import type { SyncPushRequest, SyncPullRequest, SyncPullResponse, ErrorResponse } from "../types/index.js"
 
 export function createSyncRouter(): Router {
@@ -16,7 +16,7 @@ export function createSyncRouter(): Router {
    */
   router.post("/push", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, deviceId, vault } = req.body as SyncPushRequest
+      const { userId, deviceId, vault, baseTimestamp } = req.body as SyncPushRequest & { baseTimestamp?: number }
       const requestingUserId = req.userId
 
       if (userId !== requestingUserId) {
@@ -27,9 +27,17 @@ export function createSyncRouter(): Router {
         } as ErrorResponse)
       }
 
-      const result = await pushVault(userId, deviceId, vault)
+      const result = await pushVault(userId, deviceId, vault, { baseTimestamp })
 
       if (!result.success) {
+        if (result.conflict) {
+          return res.status(409).json({
+            error: result.error,
+            code: "CONFLICT_DETECTED",
+            message: result.error,
+            conflict: result.conflict,
+          } as ErrorResponse & { conflict: unknown })
+        }
         return res.status(400).json({
           error: result.error,
           code: "PUSH_FAILED",
@@ -104,7 +112,7 @@ export function createSyncRouter(): Router {
    */
   router.post("/blob/push", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, deviceId, blob } = req.body as any
+      const { userId, deviceId, blob, baseTimestamp } = req.body as any
       const requestingUserId = req.userId
 
       if (userId !== requestingUserId) {
@@ -123,9 +131,17 @@ export function createSyncRouter(): Router {
         version: blob.version,
         timestamp: blob.timestamp,
         nonce: blob.nonce,
-      })
+      }, { baseTimestamp })
 
       if (!result.success) {
+        if (result.conflict) {
+          return res.status(409).json({
+            error: result.error,
+            code: "CONFLICT_DETECTED",
+            message: result.error,
+            conflict: result.conflict,
+          } as ErrorResponse & { conflict: unknown })
+        }
         return res.status(400).json({
           error: result.error,
           code: "BLOB_PUSH_FAILED",
@@ -140,6 +156,56 @@ export function createSyncRouter(): Router {
         error: "Blob push failed",
         code: "INTERNAL_ERROR",
         message: "An error occurred during blob push",
+      } as ErrorResponse)
+    }
+  })
+
+  /**
+   * POST /sync/blob/resolve
+   * Conflict overwrite endpoint: client selects local/server version and server writes chosen blob as latest.
+   */
+  router.post("/blob/resolve", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId, deviceId, chosenBlob, expectedServerTimestamp } = req.body as any
+      const requestingUserId = req.userId
+
+      if (userId !== requestingUserId) {
+        return res.status(403).json({
+          error: "Forbidden",
+          code: "FORBIDDEN",
+          message: "You can only resolve conflicts for your own account",
+        } as ErrorResponse)
+      }
+
+      const result = await resolveVaultConflict(userId, deviceId, chosenBlob, expectedServerTimestamp)
+      if (!result.success) {
+        if (result.conflict) {
+          return res.status(409).json({
+            error: result.error,
+            code: "CONFLICT_DETECTED",
+            message: result.error,
+            conflict: result.conflict,
+          } as ErrorResponse & { conflict: unknown })
+        }
+        return res.status(400).json({
+          error: result.error,
+          code: "CONFLICT_RESOLVE_FAILED",
+          message: result.error,
+        } as ErrorResponse)
+      }
+
+      return res.status(200).json({
+        success: true,
+        vaultId: result.vaultId,
+        resolvedVersion: result.resolvedVersion,
+        resolvedTimestamp: result.resolvedTimestamp,
+      })
+    } catch (error) {
+      console.error("[VaultSync] Blob resolve error:", error)
+      return res.status(500).json({
+        error: "Blob resolve failed",
+        code: "INTERNAL_ERROR",
+        message: "An error occurred while resolving conflict",
       } as ErrorResponse)
     }
   })

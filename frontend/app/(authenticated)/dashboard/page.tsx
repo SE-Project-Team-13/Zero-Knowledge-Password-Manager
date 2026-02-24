@@ -82,6 +82,9 @@ export default function DashboardPage() {
     isSyncing,
     lastSyncedAt,
     syncError,
+    pendingSyncCount,
+    syncConflict,
+    resolveSyncConflict,
   } = useVault();
 
   const [mounted, setMounted] = useState(false);
@@ -123,6 +126,7 @@ export default function DashboardPage() {
   const [editingEntry, setEditingEntry] = useState<DecryptedEntry | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isResolvingConflict, setIsResolvingConflict] = useState(false);
 
   // Auto-logout after inactivity
   const lastActivityRef = useRef<number>(Date.now());
@@ -480,6 +484,20 @@ export default function DashboardPage() {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  const handleResolveConflict = async (choice: "local" | "server") => {
+    setIsResolvingConflict(true);
+    try {
+      const ok = await resolveSyncConflict(choice);
+      if (ok) {
+        toast.success(choice === "local" ? "Kept local changes and overwrote server copy" : "Kept server version");
+      } else {
+        toast.error("Failed to resolve conflict. Please try again.");
+      }
+    } finally {
+      setIsResolvingConflict(false);
+    }
+  };
+
   // --- Render Loading State ---
   if (isLoggingOut || !mounted || isInitializing) {
     return (
@@ -777,6 +795,8 @@ export default function DashboardPage() {
             <CardDescription className="text-xs mt-1">
               {isSyncing
                 ? "Sync in progress..."
+                : pendingSyncCount > 0
+                  ? `${pendingSyncCount} change(s) queued offline`
                 : syncError
                   ? `Sync issue: ${syncError}`
                   : `Last synced at ${formatLastSynced(lastSyncedAt)}`}
@@ -925,6 +945,53 @@ export default function DashboardPage() {
         entry={editingEntry}
         onSave={handleSaveEdit}
       />
+
+      {syncConflict && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <Card className="w-full max-w-6xl border-primary/30">
+            <CardHeader>
+              <CardTitle>Sync Conflict Detected</CardTitle>
+              <CardDescription>
+                Two devices changed vault data at nearly the same time. Choose which version to keep as the new master copy.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-border p-3">
+                <h4 className="font-semibold mb-2">Your Local Version ({syncConflict.localEntries.length})</h4>
+                <div className="max-h-64 overflow-auto space-y-2 text-sm">
+                  {syncConflict.localEntries.slice(0, 8).map((entry) => (
+                    <div key={`local-${entry.id}`} className="rounded border border-border/60 p-2">
+                      <div className="font-medium">{entry.site}</div>
+                      <div className="text-muted-foreground">{entry.username}</div>
+                      <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <h4 className="font-semibold mb-2">Server Version ({syncConflict.serverEntries.length})</h4>
+                <div className="max-h-64 overflow-auto space-y-2 text-sm">
+                  {syncConflict.serverEntries.slice(0, 8).map((entry) => (
+                    <div key={`server-${entry.id}`} className="rounded border border-border/60 p-2">
+                      <div className="font-medium">{entry.site}</div>
+                      <div className="text-muted-foreground">{entry.username}</div>
+                      <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-end gap-3">
+              <Button variant="outline" disabled={isResolvingConflict} onClick={() => handleResolveConflict("server")}>
+                Keep Server Version
+              </Button>
+              <Button disabled={isResolvingConflict} onClick={() => handleResolveConflict("local")}>
+                Keep My Version
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
