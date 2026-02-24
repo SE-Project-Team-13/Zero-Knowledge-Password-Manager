@@ -88,5 +88,5 @@ jobs:
     steps:
     - name: Trigger Frontend Deploy
       run: |
-        curl -f -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}" \
+        curl -f -s "${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}" \
           -o /dev/null -w "Frontend deploy triggered: HTTP %{http_code}\n"
