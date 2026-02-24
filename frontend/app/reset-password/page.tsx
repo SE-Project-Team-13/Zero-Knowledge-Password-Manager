@@ -12,6 +12,7 @@ import { Shield, Key, Loader2, AlertCircle, Eye, EyeOff, Lock, Check } from "luc
 import { toast } from "sonner"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { deriveKey, generateVerifier } from "@password-manager/crypto-engine"
+import { buildApiUrl } from "@/lib/api-base-url"
 
 export default function ResetPasswordPage() {
     const router = useRouter()
@@ -69,7 +70,7 @@ export default function ResetPasswordPage() {
                     // 1. Try Sync API first
                     console.log("[ResetPassword] Trying Sync API for vault data...")
                     const pullResponse = await fetch(
-                        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/sync/pull`, 
+                        buildApiUrl("/sync/pull"), 
                         { 
                             method: "POST",
                             headers: { 
@@ -96,7 +97,7 @@ export default function ResetPasswordPage() {
                     if (!vaultData && userId) {
                         console.log("[ResetPassword] Sync API empty, trying Compatibility API...")
                         const compatResponse = await fetch(
-                            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(userId)}`,
+                            buildApiUrl(`/api/vault/${encodeURIComponent(userId)}`),
                             {
                                 method: "GET",
                                 headers: {
@@ -180,7 +181,7 @@ export default function ResetPasswordPage() {
             
             const token = localStorage.getItem("auth_token")
             const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/auth/reset-password`, 
+                buildApiUrl("/auth/reset-password"), 
                 {
                     method: "POST",
                     headers: {

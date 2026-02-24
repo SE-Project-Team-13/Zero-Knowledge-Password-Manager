@@ -6,7 +6,7 @@ global.Buffer = Buffer;
 
 // Polyfill for setImmediate if not available
 if (typeof global.setImmediate === 'undefined') {
-  global.setImmediate = (callback: (...args: any[]) => void, ...args: any[]) => {
+  (global as any).setImmediate = (callback: (...args: any[]) => void, ...args: any[]) => {
     return setTimeout(callback, 0, ...args);
   };
 }

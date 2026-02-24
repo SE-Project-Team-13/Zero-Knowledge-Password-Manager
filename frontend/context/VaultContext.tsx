@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useVaultSync } from "@/hooks/useVaultSync";
 import { deriveKey, DerivedKey, EncryptedVault } from "@password-manager/crypto-engine"; // Using crypto-engine directly
 import { toast } from "sonner";
+import { buildApiUrl } from "@/lib/api-base-url";
 
 // Define the DecryptedEntry type
 export interface DecryptedEntry {
@@ -129,7 +130,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                  // 1. Try Modern Sync API first (supports multiple devices/blobs)
                  if (userId && token) {
                      try {
-                         const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/sync/pull`, {
+                         const syncResponse = await fetch(buildApiUrl("/sync/pull"), {
                             method: "POST",
                             headers: {
                                 "Content-Type": "application/json",
@@ -168,7 +169,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
                  // 2. Fallback to Compatibility API
                  if (!userId) throw new Error("No user ID found");
-                 const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(userId)}`, {
+                 const response = await fetch(buildApiUrl(`/api/vault/${encodeURIComponent(userId)}`), {
                     method: "GET",
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -490,7 +491,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         console.log(`[VaultContext] Saving vault for ${userId}...`);
 
         // 1. Update Compatibility API (Legacy/Simple)
-        const compatUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(userId)}`;
+        const compatUrl = buildApiUrl(`/api/vault/${encodeURIComponent(userId)}`);
         const response = await fetch(compatUrl, {
                 method: "PUT",
                 headers: {
@@ -517,7 +518,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         
         if (syncUserId && deviceId && token) {
             try {
-                const syncUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/sync/push`;
+                const syncUrl = buildApiUrl("/sync/push");
                 const syncResponse = await fetch(syncUrl, {
                     method: "POST",
                     headers: {

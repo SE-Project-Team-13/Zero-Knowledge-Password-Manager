@@ -40,6 +40,7 @@ import {
 import { toast } from "sonner";
 import { copyWithAutoClear } from "@/lib/clipboard";
 import { useRouter } from "next/navigation";
+import { buildApiUrl } from "@/lib/api-base-url";
 // --- Helpers ---
 const calculatePasswordStrength = (password: string) => {
   if (!password) return { score: 0, label: "None", color: "bg-gray-200" };
@@ -128,14 +129,14 @@ export default function DashboardPage() {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
-      
+
       const token = typeof window !== 'undefined' && localStorage.getItem("auth_token");
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/otp/send`,
+        buildApiUrl("/otp/send"),
         {
           method: "POST",
           headers,
@@ -144,11 +145,13 @@ export default function DashboardPage() {
       );
 
       if (response.ok) {
+        const data = await response.json();
         setOtpSent(true);
         setTimeLeft(600); // Reset timer to 10 minutes
-        toast.success("OTP sent to your email");
+        toast.success(data.message || "OTP sent to your email");
       } else {
         const error = await response.json();
+        console.error("[OTP] Send failed with details:", error);
         toast.error(error.message || "Failed to send OTP");
       }
     } catch (error) {
@@ -178,7 +181,7 @@ export default function DashboardPage() {
       sessionStorage.setItem("session_master_password", passwordToUse);
 
       await contextUnlockVault();
-      
+
       // Removed setIsUnlocked(true) as we rely on context now
       toast.success("Vault unlocked successfully");
     } catch (err) {
@@ -275,14 +278,14 @@ export default function DashboardPage() {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
-      
+
       const token = typeof window !== 'undefined' && localStorage.getItem("auth_token");
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/otp/verify`,
+        buildApiUrl("/otp/verify"),
         {
           method: "POST",
           headers,
@@ -296,10 +299,10 @@ export default function DashboardPage() {
       if (response.ok) {
         setOtpVerified(true);
         sessionStorage.setItem("otp_verified", "true"); // Persist verification
-        
+
         // Dispatch custom event to notify layout about OTP verification
         window.dispatchEvent(new Event("otpVerified"));
-        
+
         toast.success("OTP verified successfully!");
         // Automatically proceed to unlock vault
         await unlockVault();
@@ -809,8 +812,8 @@ export default function DashboardPage() {
                         <h4 className="font-semibold truncate">{entry.site}</h4>
                         {/* Show siteUrl if it exists */}
                         <div className="text-xs text-blue-500 hover:text-blue-600 truncate mt-0.5">
-                            <span className="text-muted-foreground mr-1">URL:</span>
-                            {entry.siteUrl}
+                          <span className="text-muted-foreground mr-1">URL:</span>
+                          {entry.siteUrl}
                         </div>
                         <p className="text-sm font-mono mt-0.5 text-foreground">
                           <span className="text-muted-foreground mr-1 font-sans">Username:</span>
@@ -871,9 +874,9 @@ export default function DashboardPage() {
       </Card>
 
       {/* Change Password Modal - still useful if we want to trigger it from dashboard alerts */}
-      <ChangePasswordModal 
-         isOpen={isChangePasswordOpen}
-         onClose={() => setIsChangePasswordOpen(false)}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
       />
 
       {/* Edit Credential Modal */}

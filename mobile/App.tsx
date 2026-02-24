@@ -11,11 +11,15 @@ import { Colors } from './src/theme';
 // Screens
 import {
   LoginScreen,
+  OtpScreen,
+  ResetPasswordScreen,
   DashboardScreen,
   VaultListScreen,
   AddCredentialScreen,
+  ChangePasswordScreen,
   SettingsScreen,
 } from './src/screens';
+import RecoveryLoginScreen from './src/screens/RecoveryLoginScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -62,6 +66,7 @@ function AppAuthenticated() {
         component={AddCredentialScreen}
         options={{ presentation: 'modal' }}
       />
+      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
     </Stack.Navigator>
   );
 }
@@ -70,12 +75,14 @@ function AppUnauthenticated() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="RecoveryLogin" component={RecoveryLoginScreen} />
+      <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </Stack.Navigator>
   );
 }
 
 export default function App() {
-  const { isAuthenticated, checkAuth } = useAuthStore();
+  const { isAuthenticated, isOtpPending, pendingEmail, completeOtpVerification, checkAuth } = useAuthStore();
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -95,7 +102,17 @@ export default function App() {
   return (
     <NavigationContainer>
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
-      {isAuthenticated ? <AppAuthenticated /> : <AppUnauthenticated />}
+      {isAuthenticated ? (
+        <AppAuthenticated />
+      ) : isOtpPending && pendingEmail ? (
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Otp">
+            {() => <OtpScreen email={pendingEmail} onVerified={completeOtpVerification} />}
+          </Stack.Screen>
+        </Stack.Navigator>
+      ) : (
+        <AppUnauthenticated />
+      )}
     </NavigationContainer>
   );
 }

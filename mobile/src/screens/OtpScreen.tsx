@@ -8,6 +8,7 @@ import { Colors, Spacing, Radius, Typography } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '../config';
 import { SecureStorageService } from '../services/secureStorage';
+import { useAuthStore } from '../store/authStore';
 
 interface Props {
     email: string;
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function OtpScreen({ email, onVerified }: Props) {
+    const { logout } = useAuthStore();
     const [code, setCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isSending, setIsSending] = useState(false);
@@ -31,20 +33,55 @@ export default function OtpScreen({ email, onVerified }: Props) {
         return () => clearTimeout(t);
     }, [countdown]);
 
+    const getApiErrorMessage = (e: any, fallback: string) => {
+        return (
+            e?.response?.data?.message ||
+            e?.response?.data?.error ||
+            e?.message ||
+            fallback
+        );
+    };
+
     const sendOtp = async () => {
         setIsSending(true);
         setError(null);
         try {
             const token = await SecureStorageService.getSessionId();
-            await axios.post(`${API_URL}/otp/send`, { email }, {
+            if (!token) {
+                throw new Error('Missing session token. Please login again.');
+            }
+            console.log('[OTP] Sending OTP', { apiUrl: API_URL, email: email.trim().toLowerCase() });
+            const response = await axios.post(`${API_URL}/otp/send`, { email: email.trim().toLowerCase() }, {
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                timeout: 60000,
             });
+            console.log('[OTP] Send response', response.status, response.data);
+
+            if (response.data?.message && response.data.message.includes('MOCK MODE')) {
+                Alert.alert('Mock Mode Active', response.data.message);
+            }
+
             setCountdown(60);
         } catch (e: any) {
-            const msg = e?.response?.data?.message || 'Failed to send OTP';
+            console.error('[OTP] Send failed', {
+                status: e?.response?.status,
+                data: e?.response?.data,
+                message: e?.message,
+            });
+            const msg = e?.response?.status === 429
+                ? 'Too many OTP attempts. Please wait a minute and try again.'
+                : getApiErrorMessage(e, 'Failed to send OTP');
             setError(msg);
         } finally {
             setIsSending(false);
+        }
+    };
+
+    const handleSignOut = async () => {
+        try {
+            await logout();
+        } catch (e) {
+            console.error('[OTP] Sign out failed', e);
         }
     };
 
@@ -54,12 +91,22 @@ export default function OtpScreen({ email, onVerified }: Props) {
         setError(null);
         try {
             const token = await SecureStorageService.getSessionId();
-            await axios.post(`${API_URL}/otp/verify`, { email, code }, {
+            if (!token) {
+                throw new Error('Missing session token. Please login again.');
+            }
+            const response = await axios.post(`${API_URL}/otp/verify`, { email: email.trim().toLowerCase(), code }, {
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                timeout: 60000,
             });
+            console.log('[OTP] Verify response', response.status, response.data);
             onVerified();
         } catch (e: any) {
-            const msg = e?.response?.data?.message || 'Invalid OTP code';
+            console.error('[OTP] Verify failed', {
+                status: e?.response?.status,
+                data: e?.response?.data,
+                message: e?.message,
+            });
+            const msg = getApiErrorMessage(e, 'Invalid OTP code');
             setError(msg);
         } finally {
             setIsLoading(false);
@@ -126,6 +173,11 @@ export default function OtpScreen({ email, onVerified }: Props) {
                         </Text>}
                 </TouchableOpacity>
 
+                <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+                    <Ionicons name="log-out-outline" size={14} color={Colors.textMuted} />
+                    <Text style={styles.signOutText}>Sign Out</Text>
+                </TouchableOpacity>
+
                 {/* Security note */}
                 <View style={styles.note}>
                     <Ionicons name="shield-checkmark" size={12} color={Colors.success} />
@@ -168,6 +220,15 @@ const styles = StyleSheet.create({
     resendBtn: { padding: Spacing.sm, marginBottom: Spacing.lg },
     resendText: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
     resendDisabled: { color: Colors.textMuted },
+    signOutBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: Spacing.lg,
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: 4,
+    },
+    signOutText: { color: Colors.textMuted, fontSize: 13, fontWeight: '600' },
     note: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         backgroundColor: Colors.surface, borderRadius: Radius.full,

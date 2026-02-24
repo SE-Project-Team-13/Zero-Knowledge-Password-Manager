@@ -71,7 +71,7 @@ export default function AddCredentialScreen() {
             return;
         }
         try {
-            await addEntry({ site: site.trim(), username: username.trim(), password, notes }, masterKey, userId);
+            await addEntry({ site: site.trim(), username: username.trim(), password, notes, siteUrl: '' }, masterKey, userId);
             navigation.goBack();
         } catch (e) {
             Alert.alert('Error', (e as Error).message);
