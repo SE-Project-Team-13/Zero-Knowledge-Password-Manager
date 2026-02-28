@@ -244,7 +244,7 @@ async function handleUnlockVault(message: UnlockVaultMessage): Promise<{ success
     const email = message.userId
 
     // Step 1: Get user salt from backend
-    const { salt: saltHex, challenge: challengeHex } = await apiRequest<{ salt: string, challenge: string }>(`/auth/salt/${encodeURIComponent(email)}`)
+    const { salt: saltHex, challenge: challengeHex, argon2Memory, argon2Iterations } = await apiRequest<{ salt: string, challenge: string, argon2Memory?: number, argon2Iterations?: number }>(`/auth/salt/${encodeURIComponent(email)}`)
     const saltChunks = saltHex.match(/.{1,2}/g)
     if (!saltChunks) {
       throw new Error('Invalid salt format returned by server')
@@ -255,7 +255,10 @@ async function handleUnlockVault(message: UnlockVaultMessage): Promise<{ success
     // SECURITY NOTE: Dashboard currently uses email as salt for vault encryption in prototype
     // For compatibility, we'll try to decrypt with the real password first, then fallback to email
     // if decryption fails, as the dashboard currently has this "feature".
-    const derivedKeys = await deriveKey(message.masterPassword, saltBuffer)
+    const derivedKeys = await deriveKey(message.masterPassword, saltBuffer, {
+      memorySize: argon2Memory || undefined,
+      iterations: argon2Iterations || undefined
+    })
     // Step 3: Login to get session token using ZKP auth utilities
     
     const verifierHex = await generateVerifier(derivedKeys.authKey)

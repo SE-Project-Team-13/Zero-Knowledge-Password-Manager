@@ -18,16 +18,8 @@ global.TextDecoder = TextDecoder as any;
 
 describe('Crypto Engine - AES-256-GCM', () => {
     async function createMockDerivedKey(): Promise<DerivedKey> {
-        const encryptionKey = await crypto.subtle.generateKey(
-            { name: 'AES-GCM', length: 256 },
-            true,
-            ['encrypt', 'decrypt']
-        );
-        const authKey = await crypto.subtle.generateKey(
-            { name: 'HMAC', hash: 'SHA-256' },
-            true,
-            ['sign', 'verify']
-        );
+        const encryptionKey = crypto.getRandomValues(new Uint8Array(32));
+        const authKey = crypto.getRandomValues(new Uint8Array(32));
         const salt = new Uint8Array(16);
         return { encryptionKey, authKey, salt, key: encryptionKey };
     }

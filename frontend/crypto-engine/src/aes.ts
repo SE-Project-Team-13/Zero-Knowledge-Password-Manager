@@ -12,8 +12,7 @@
  */
 
 import type { DerivedKey, EncryptedVault, VaultEntry } from "./types"
-
-const ALGORITHM = "AES-GCM"
+import { gcm } from "@noble/ciphers/aes.js";
 const IV_LENGTH = 12 // 96 bits - recommended for GCM
 // TAG_LENGTH is 128 bits (16 bytes) - automatically handled by GCM mode
 
@@ -38,17 +37,11 @@ export async function encrypt(entry: VaultEntry, derivedKey: DerivedKey): Promis
   const plaintext = JSON.stringify(entry)
   const plaintextBytes = new TextEncoder().encode(plaintext)
 
-  // Encrypt using AES-256-GCM
-  const encryptedBuffer = await crypto.subtle.encrypt(
-    {
-      name: ALGORITHM,
-      iv: iv as any,
-    },
-    derivedKey.encryptionKey,
-    plaintextBytes as any,
-  )
+  // Encrypt using AES-256-GCM via @noble/ciphers
+  const cipher = gcm(derivedKey.encryptionKey, iv);
+  const encryptedBuffer = cipher.encrypt(plaintextBytes);
 
-  // Split ciphertext and tag (Web Crypto API appends tag at the end)
+  // Split ciphertext and tag (@noble/ciphers appended tag at the end)
   const TAG_LENGTH_BYTES = 16
   const ciphertextBody = encryptedBuffer.slice(0, encryptedBuffer.byteLength - TAG_LENGTH_BYTES)
   const tag = encryptedBuffer.slice(encryptedBuffer.byteLength - TAG_LENGTH_BYTES)
@@ -93,15 +86,9 @@ export async function decrypt(encrypted: EncryptedVault, derivedKey: DerivedKey)
   }
 
   try {
-    // Decrypt using AES-256-GCM
-    const plaintext = await crypto.subtle.decrypt(
-      {
-        name: ALGORITHM,
-        iv: iv as any,
-      },
-      derivedKey.encryptionKey,
-      combinedBuffer as any,
-    )
+    // Decrypt using AES-256-GCM via @noble/ciphers
+    const decipher = gcm(derivedKey.encryptionKey, iv);
+    const plaintext = decipher.decrypt(combinedBuffer);
 
     // Parse the decrypted JSON
     const plaintextString = new TextDecoder().decode(plaintext)

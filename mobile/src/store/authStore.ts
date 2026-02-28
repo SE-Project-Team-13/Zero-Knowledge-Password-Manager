@@ -61,25 +61,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log(`[Auth] API_URL=${API_URL}`);
       console.log(`Fetching salt for ${email}`);
       const saltResponse = await axios.get(`${API_URL}/auth/salt/${encodeURIComponent(email)}`);
-      const { salt, challenge } = saltResponse.data;
+      console.log(`[Auth] Salt fetched successfully`);
+      const { salt, challenge, argon2Memory, argon2Iterations } = saltResponse.data;
 
       if (!salt || !challenge) throw new Error("User not found or invalid response");
 
       // 2. Derive Key
       const saltBuffer = hexToBytes(salt);
-      const derivedKey = await deriveKey(password, saltBuffer);
+      console.log(`[Auth] Starting key derivation (Argon2)...`);
+      const derivedKey = await deriveKey(password, saltBuffer, { 
+        // Fallback to undefined for legacy accounts to use the default 8192 memory (slow on mobile, but preserves access)
+        memorySize: argon2Memory || undefined, 
+        iterations: argon2Iterations || undefined 
+      });
+      console.log(`[Auth] Key derived successfully`);
 
       // 3. Generate Client Proof
-      // Based on crypto-engine: generateClientProof(verifierHex, challengeHex)
-      // Wait. The client does NOT know the verifier. The client derives the verifier from the authKey.
-      // Let's check crypto-engine/auth.ts
-      // generateClientProof(verifierHex: string, challengeHex: string)
-      // The CLIENT needs the verifier to generate the proof?
-      // Yes, if following SRP or similar where client proves knowledge of verifier.
-      // So client must generate verifier from its derived key.
-      
+      console.log(`[Auth] Generating verifier...`);
       const verifierHex = await generateVerifier(derivedKey.authKey);
+      console.log(`[Auth] Generating client proof...`);
       const clientProof = await generateClientProof(verifierHex, challenge);
+      console.log(`[Auth] Proof generated successfully`);
 
       // 4. Login
       const response = await axios.post(`${API_URL}/auth/login`, {
@@ -118,22 +120,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   register: async (email: string, fullName: string, password: string) => {
     set({ isLoading: true, error: null });
     try {
+      console.log(`[Auth] Starting registration for ${email}...`);
       // 1. Generate new salt
       const salt = crypto.getRandomValues(new Uint8Array(16));
+      console.log(`[Auth] Generated salt`);
       
       // 2. Derive Key
-      const derivedKey = await deriveKey(password, salt);
+      console.log(`[Auth] Deriving key for registration...`);
+      const derivedKey = await deriveKey(password, salt, { memorySize: 128 });
+      console.log(`[Auth] Registration key derived`);
       
       // 3. Generate Verifier
+      console.log(`[Auth] Generating registration verifier...`);
       const verifier = await generateVerifier(derivedKey.authKey);
+      console.log(`[Auth] Registration verifier generated`);
       
       // 4. Register on Backend
+      console.log(`[Auth] Sending registration request to backend...`);
       const response = await axios.post(`${API_URL}/auth/register`, {
         email,
         fullName,
         salt: bytesToHex(salt),
-        verifier
+        verifier,
+        argon2Memory: 128,
+        argon2Iterations: 1
       });
+      console.log(`[Auth] Registration request successful`);
       
       const { sessionToken, userId } = response.data;
       
@@ -151,10 +163,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
       });
     } catch (e) {
-      console.error(e);
+      console.error("[Auth] Registration failed", e);
       let msg = (e as Error).message;
       if (axios.isAxiosError(e) && e.response) {
           msg = e.response.data.message || msg;
+          console.error(`[Auth] Backend Error (Status ${e.response.status}):`, e.response.data);
       }
       set({ error: msg, isLoading: false });
     }

@@ -108,17 +108,17 @@ export default function App() {
   return (
     <NavigationContainer>
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
-      {isAuthenticated ? (
-        <AppAuthenticated />
-      ) : isOtpPending && pendingEmail ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Otp">
-            {() => <OtpScreen email={pendingEmail} onVerified={completeOtpVerification} />}
-          </Stack.Screen>
-        </Stack.Navigator>
-      ) : (
-        <AppUnauthenticated />
-      )}
+    {isAuthenticated ? (
+      <AppAuthenticated />
+    ) : isOtpPending && pendingEmail ? (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Otp">
+          {() => <OtpScreen email={pendingEmail} onVerified={completeOtpVerification} />}
+        </Stack.Screen>
+      </Stack.Navigator>
+    ) : (
+      <AppUnauthenticated />
+    )}
     </NavigationContainer>
   );
 }

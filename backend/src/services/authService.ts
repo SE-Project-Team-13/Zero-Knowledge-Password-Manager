@@ -45,12 +45,14 @@ function hashToken(token: string): string {
  * @param verifier - The verifier for ZKP authentication.
  * @returns The newly created user object.
  */
-export async function registerUser(email: string, fullName: string, salt: string, verifier: string): Promise<UserType> {
+export async function registerUser(email: string, fullName: string, salt: string, verifier: string, argon2Memory: number = 8192, argon2Iterations: number = 1): Promise<UserType> {
   const user = new User({
     email: email.trim().toLowerCase(),
     fullName: fullName.trim(),
     salt,
     verifier,
+    argon2Memory,
+    argon2Iterations,
   })
 
   await user.save()
@@ -255,9 +257,9 @@ export async function checkUserExists(email: string): Promise<boolean> {
  * @param email - User's email.
  * @returns The user's salt or null if not found.
  */
-export async function getUserSalt(email: string): Promise<string | null> {
+export async function getUserSalt(email: string): Promise<{ salt: string, argon2Memory?: number, argon2Iterations?: number } | null> {
   const user = await User.findOne({ email: email.trim().toLowerCase() })
-  return user ? user.salt : null
+  return user ? { salt: user.salt, argon2Memory: user.argon2Memory, argon2Iterations: user.argon2Iterations } : null
 }
 
 /**

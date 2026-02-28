@@ -88,18 +88,18 @@ class ApiClient {
   }
 
   // Authentication Endpoints
-  async getSalt(email: string): Promise<{ salt: string, challenge: string }> {
-    return this.request<{ salt: string, challenge: string }>(`/auth/salt/${encodeURIComponent(email)}`)
+  async getSalt(email: string): Promise<{ salt: string, challenge: string, argon2Memory?: number, argon2Iterations?: number }> {
+    return this.request<{ salt: string, challenge: string, argon2Memory?: number, argon2Iterations?: number }>(`/auth/salt/${encodeURIComponent(email)}`)
   }
 
   async checkEmail(email: string): Promise<{ exists: boolean }> {
     return this.request<{ exists: boolean }>(`/auth/check-email/${encodeURIComponent(email)}`)
   }
 
-  async register(email: string, fullName: string, verifier: string, salt: string): Promise<AuthResponse> {
+  async register(email: string, fullName: string, verifier: string, salt: string, argon2Memory?: number, argon2Iterations?: number): Promise<AuthResponse> {
     return this.request<AuthResponse>("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, fullName, verifier, salt }),
+      body: JSON.stringify({ email, fullName, verifier, salt, argon2Memory, argon2Iterations }),
     })
   }
 
