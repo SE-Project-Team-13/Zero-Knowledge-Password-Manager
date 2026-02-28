@@ -54,9 +54,12 @@ describe('AuthService - Registration Helper Integration Tests', () => {
 
         const result = await authService.getUserSalt(email);
 
-        console.log(`[Output] Salt: ${result}`);
+        console.log(`[Output] Salt: ${result?.salt}`);
 
-        expect(result).toBe(expectedSalt);
+        expect(result).not.toBeNull();
+        expect(result?.salt).toBe(expectedSalt);
+        expect(result?.argon2Memory).toBeDefined();
+        expect(result?.argon2Iterations).toBeDefined();
         console.log('Result: Success - Salt retrieved correctly.');
     });
 });
