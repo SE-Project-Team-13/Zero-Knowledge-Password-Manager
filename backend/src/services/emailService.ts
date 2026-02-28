@@ -1,6 +1,5 @@
-import { Resend } from 'resend';
+import { fetch } from 'undici';
 
-const resend = new Resend(process.env.RESEND_API_KEY || 're_mock_key');
 const isProduction = process.env.NODE_ENV === "production"
 const isDebug = process.env.DEBUG === "true"
 
@@ -12,32 +11,49 @@ export interface MailOptions {
     text: string;
 }
 
+/**
+ * Sends a transactional email via SendGrid's v3 REST API.
+ * Uses port 443 (HTTPS) so it works on Render and bypasses SMTP port blocking.
+ */
 export async function sendEmail(options: MailOptions, contextInfo?: string): Promise<void> {
-    if (process.env.RESEND_API_KEY) {
-        try {
-            const { data, error } = await resend.emails.send({
-                from: process.env.SMTP_FROM || 'ZeroKnowledge Vault <noreply@zeroknowledge.dev>',
-                to: options.to,
-                subject: options.subject,
-                html: options.html,
-                text: options.text,
-            });
+    const apiKey = process.env.SENDGRID_API_KEY
+    if (!apiKey) {
+        throw new Error("SENDGRID_API_KEY missing")
+    }
 
-            if (error) {
-                console.error(`[VaultSync:${contextInfo || 'Email'}] Resend API Error:`, error);
-                throw new Error(error.message);
-            }
+    const fromAddress = process.env.SMTP_FROM || 'ZeroKnowledge Vault <zeroauthpass@gmail.com>'
+    // Parse "Name <email>" format
+    const fromMatch = fromAddress.match(/^(.*?)\s*<(.+?)>$/)
+    const fromName = fromMatch ? fromMatch[1].replace(/"/g, '').trim() : 'ZeroKnowledge Vault'
+    const fromEmail = fromMatch ? fromMatch[2].trim() : fromAddress.trim()
 
-            if (!isProduction || isDebug) {
-                console.log(`[VaultSync:${contextInfo || 'Email'}] ✅ Sent OTP email to ${options.to} via Resend. ID: ${data?.id}`);
-            }
-        } catch (emailError: unknown) {
-            const errorMessage = emailError instanceof Error ? emailError.message : "Unknown Resend error";
-            console.error(`[VaultSync:${contextInfo || 'Email'}] Email failed:`, errorMessage);
-            throw emailError;
-        }
-    } else {
-        console.warn(`[VaultSync:${contextInfo || 'Email'}] Dev mode fallback triggered: RESEND_API_KEY is not defined. Logging OTP to console rather than sending.`);
-        throw new Error("RESEND_API_KEY missing");
+    const payload = {
+        personalizations: [{ to: [{ email: options.to }] }],
+        from: { email: fromEmail, name: fromName },
+        reply_to: { email: fromEmail, name: fromName },
+        subject: options.subject,
+        content: [
+            { type: 'text/plain', value: options.text },
+            { type: 'text/html', value: options.html }
+        ]
+    }
+
+    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    })
+
+    if (response.status !== 202) {
+        const errorBody = await response.json().catch(() => ({})) as any
+        console.error(`[VaultSync:${contextInfo || 'Email'}] SendGrid API Error:`, JSON.stringify(errorBody, null, 2))
+        throw new Error(errorBody?.errors?.[0]?.message || `SendGrid error: ${response.status}`)
+    }
+
+    if (!isProduction || isDebug) {
+        console.log(`[VaultSync:${contextInfo || 'Email'}] ✅ Sent OTP email to ${options.to} via SendGrid.`)
     }
 }
