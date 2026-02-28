@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useCallback, useRef, useEffect } from "react"
-import { apiClient, type VaultEntry, type SyncPayload } from "@/lib/api-client"
+import { apiClient, type VaultEntry, type SyncPayload } from "../../lib/api-client"
 import { v4 as uuidv4 } from "uuid"
-import { deriveKey } from "@password-manager/crypto-engine"
+import { deriveKey, generateVerifier, generateClientProof } from "@password-manager/crypto-engine"
 
 export interface UseVaultSyncState {
   userId: string | null
@@ -92,19 +92,22 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("")
 
-      // Derive keys using Argon2id
-      const { authKey } = await deriveKey(masterPassword, saltBuffer)
+      // Use lightweight Argon2 params for cross-platform compatibility.
+      // Mobile (React Native JS) cannot handle the 8192 default without freezing.
+      const argon2Memory = 128
+      const argon2Iterations = 1
+
+      // Derive keys using Argon2id with shared parameters
+      const { authKey } = await deriveKey(masterPassword, saltBuffer, {
+        memorySize: argon2Memory,
+        iterations: argon2Iterations,
+      })
 
       // Create proof by computing HMAC of a known string
-      const encoder = new TextEncoder()
-      const proofData = encoder.encode("auth-proof")
-      const proof = await crypto.subtle.sign("HMAC", authKey, proofData)
-      const proofHex = Array.from(new Uint8Array(proof))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
+      const proofHex = await generateVerifier(authKey)
 
-      // Register with server
-      const response = await apiClient.register(email, fullName, proofHex, salt)
+      // Register with server, sending Argon2 params so they're stored per-user
+      const response = await apiClient.register(email, fullName, proofHex, salt, argon2Memory, argon2Iterations)
 
       apiClient.setToken(response.sessionToken)
       localStorage.setItem("user_salt", salt)
@@ -131,21 +134,19 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     setState((prev) => ({ ...prev, isLoading: true, error: null }))
     try {
       // 1. Get salt from server
-      const { salt } = await apiClient.getSalt(email)
+      const { salt, argon2Memory, argon2Iterations } = await apiClient.getSalt(email)
 
       // Convert salt hex to buffer
-      const saltBuffer = new Uint8Array(salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)))
+      const saltBuffer = new Uint8Array(salt.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)))
 
       // 2. Derive keys using Argon2id (same as during registration)
-      const { authKey } = await deriveKey(masterPassword, saltBuffer)
+      const { authKey } = await deriveKey(masterPassword, saltBuffer, {
+        memorySize: argon2Memory || undefined,
+        iterations: argon2Iterations || undefined
+      })
 
       // 3. Re-compute verifier (proof of knowledge of password)
-      const encoder = new TextEncoder()
-      const proofData = encoder.encode("auth-proof")
-      const verifierBuffer = await crypto.subtle.sign("HMAC", authKey, proofData)
-      const verifier = Array.from(new Uint8Array(verifierBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
+      const verifier = await generateVerifier(authKey)
 
       // 4. Generate random challenge
       const challengeBuffer = crypto.getRandomValues(new Uint8Array(16))
@@ -155,11 +156,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
 
       // 5. Compute client proof = SHA-256(verifier + challenge)
       // This proves we have the verifier without sending it over the wire
-      const combined = new TextEncoder().encode(verifier + challenge)
-      const clientProofBuffer = await crypto.subtle.digest("SHA-256", combined)
-      const clientProof = Array.from(new Uint8Array(clientProofBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
+      const clientProof = await generateClientProof(verifier, challenge)
 
       // 6. Send login request
       const response = await apiClient.login(email, challenge, clientProof)

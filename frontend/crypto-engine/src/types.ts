@@ -8,11 +8,11 @@
  * This type is never serialized or persisted.
  */
 export interface DerivedKey {
-  readonly encryptionKey: CryptoKey
-  readonly authKey: CryptoKey
+  readonly encryptionKey: Uint8Array
+  readonly authKey: Uint8Array
   readonly salt: Uint8Array
   /** @deprecated Use encryptionKey instead */
-  readonly key: CryptoKey
+  readonly key: Uint8Array
 }
 
 /**

@@ -102,6 +102,10 @@ export async function ensureShareKeyPair(): Promise<ShareKeyPair> {
     }
   }
 
+  if (!global.crypto?.subtle) {
+    throw new Error("Web Crypto API not available. Sharing is currently unsupported on mobile.");
+  }
+
   const pair = await crypto.subtle.generateKey(
     {
       name: "RSA-OAEP",

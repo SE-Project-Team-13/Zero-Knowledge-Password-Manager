@@ -27,7 +27,7 @@ services:
   - type: web
     name: password-manager-frontend
     env: node
-    buildCommand: npm install && npm run crypto:build && npm run build -w frontend
+    buildCommand: rm -rf node_modules package-lock.json && npm install --include=dev && npm install @tailwindcss/oxide-linux-x64-gnu@4.1.18 lightningcss-linux-x64-gnu@1.30.2 && npm run crypto:build && npm run build -w frontend
     startCommand: npm start -w frontend
     envVars:
       - key: NEXT_PUBLIC_API_URL

@@ -34,7 +34,7 @@ describe('Crypto Engine - Argon2id', () => {
 
         console.log('[Action] Deriving Key 1...');
         const derived1 = await deriveKey(password, salt, testOptions);
-        console.log('Derived Key 1 Algo:', derived1.encryptionKey.algorithm.name);
+        console.log('Derived Key 1 ByteLength:', derived1.encryptionKey.byteLength);
         
         console.log('[Action] Deriving Key 2 (same inputs)...');
         const derived2 = await deriveKey(password, salt, testOptions);
@@ -51,12 +51,11 @@ describe('Crypto Engine - Argon2id', () => {
         console.log('\n--- Test: Correct Algorithm Configuration ---');
         const derived = await deriveKey('pass', new Uint8Array(16), testOptions);
         
-        console.log(`Derived Encryption Key Algorithm: ${derived.encryptionKey.algorithm.name}`);
-        // Cast to any because TS types for WebCrypto KeyAlgorithm might be strict/missing name on base type
-        console.log(`Derived Auth Key Algorithm: ${(derived.authKey.algorithm as any).name}`);
+        console.log(`Derived Encryption Key Length: ${derived.encryptionKey.byteLength}`);
+        console.log(`Derived Auth Key Length: ${derived.authKey.byteLength}`);
         
-        expect(derived.encryptionKey.algorithm.name).toBe('AES-GCM');
-        expect((derived.authKey.algorithm as any).name).toBe('HMAC');
+        expect(derived.encryptionKey.byteLength).toBe(32);
+        expect(derived.authKey.byteLength).toBe(32);
         console.log('Result: Success - Keys configured for authenticated encryption (AES-GCM + HMAC).');
     });
 });

@@ -15,6 +15,8 @@ export interface IUser extends Document {
   lastBreachCheck?: string
   sharePublicKey?: string
   shareSigningPublicKey?: string
+  argon2Memory?: number
+  argon2Iterations?: number
 }
 
 const UserSchema = new Schema<IUser>({
@@ -28,6 +30,8 @@ const UserSchema = new Schema<IUser>({
   lastBreachCheck: { type: String },
   sharePublicKey: { type: String },
   shareSigningPublicKey: { type: String },
+  argon2Memory: { type: Number, default: 8192 },
+  argon2Iterations: { type: Number, default: 1 },
 })
 
 /**

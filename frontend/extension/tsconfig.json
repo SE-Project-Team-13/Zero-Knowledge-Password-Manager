@@ -8,7 +8,7 @@
     ],
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "noEmit": false,
+    "noEmit": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

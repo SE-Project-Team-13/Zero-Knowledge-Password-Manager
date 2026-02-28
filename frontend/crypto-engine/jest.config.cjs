@@ -6,6 +6,8 @@ module.exports = {
   testMatch: ['**/test/**/*.test.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
+    '^@noble/hashes/(.*)$': '<rootDir>/../../node_modules/@noble/hashes/$1.js',
+    '^@noble/ciphers/(.*)$': '<rootDir>/../../node_modules/@noble/ciphers/$1.js'
   },
   transform: {
     '^.+\\.tsx?$': [

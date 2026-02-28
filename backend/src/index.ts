@@ -129,7 +129,7 @@ async function start() {
 
     const authLimiter = rateLimit({
       windowMs: 60 * 60 * 1000, // 1 hour
-      max: 20, // Limit each IP to 20 auth attempts per hour
+      max: 20, // 20 auth attempts per hour per IP
       standardHeaders: true,
       legacyHeaders: false,
       message: { error: "Too many authentication attempts, please try again in an hour." }

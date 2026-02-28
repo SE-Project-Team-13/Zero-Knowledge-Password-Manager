@@ -17,9 +17,9 @@ import type { Argon2idOptions, DerivedKey } from "./types";
  * These provide strong security without being prohibitively slow.
  */
 const DEFAULT_OPTIONS: Required<Argon2idOptions> = {
-  iterations: 3,
-  parallelism: 4,
-  memorySize: 2 ** 16, // 64MB
+  iterations: 1, // Reduced for React Native JS compatibility
+  parallelism: 1, // Reduced for React Native JS compatibility
+  memorySize: 8192, // 8MB - Default for web, mobile overrides to 1MB
   hashLength: 32, // 256 bits for AES-256
   type: "id",
 };
@@ -42,7 +42,11 @@ export async function deriveKey(
   salt?: Uint8Array,
   options?: Argon2idOptions,
 ): Promise<DerivedKey> {
-  const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
+  // Strip undefined values from options so they don't overwrite defaults
+  const cleanOptions = options 
+    ? Object.fromEntries(Object.entries(options).filter(([_, v]) => v !== undefined))
+    : {};
+  const mergedOptions = { ...DEFAULT_OPTIONS, ...cleanOptions };
 
   // Generate random salt if not provided
   if (!salt) {
@@ -64,23 +68,9 @@ export async function deriveKey(
     p: mergedOptions.parallelism,
   });
 
-  // Import for AES-GCM (Encryption)
-  const encryptionKey = await crypto.subtle.importKey(
-    "raw",
-    derivedKeyMaterial.slice(0, mergedOptions.hashLength) as any,
-    { name: "AES-GCM" },
-    false, // non-extractable
-    ["encrypt", "decrypt"],
-  );
-
-  // Import for HMAC-SHA256 (Authentication Proofs)
-  const authKey = await crypto.subtle.importKey(
-    "raw",
-    derivedKeyMaterial.slice(0, mergedOptions.hashLength) as any,
-    { name: "HMAC", hash: "SHA-256" },
-    false, // non-extractable
-    ["sign", "verify"],
-  );
+  // Split the key material
+  const encryptionKey = new Uint8Array(derivedKeyMaterial.slice(0, mergedOptions.hashLength));
+  const authKey = new Uint8Array(derivedKeyMaterial.slice(0, mergedOptions.hashLength));
 
   return {
     encryptionKey,

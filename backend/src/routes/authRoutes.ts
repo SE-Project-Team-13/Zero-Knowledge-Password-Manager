@@ -28,7 +28,7 @@ export function createAuthRouter(): Router {
    */
   router.post("/register", async (req: Request, res: Response) => {
     try {
-      let { email, fullName, salt, verifier } = req.body
+      let { email, fullName, salt, verifier, argon2Memory, argon2Iterations } = req.body
 
       if (!email || !fullName || !salt || !verifier) {
         return res.status(400).json({
@@ -50,7 +50,7 @@ export function createAuthRouter(): Router {
       }
 
       try {
-        const user = await registerUser(email, fullName, salt, verifier)
+        const user = await registerUser(email, fullName, salt, verifier, argon2Memory, argon2Iterations)
         // Newly registered users are implicitly verified for their first session
         // so they can generate their recovery key immediately.
         const sessionToken = await generateSessionToken(user.id, 24 * 60, true)
@@ -145,10 +145,10 @@ export function createAuthRouter(): Router {
     try {
       let { email } = req.params
       if (email) email = email.trim().toLowerCase()
-      const salt = await getUserSalt(email)
+      const saltData = await getUserSalt(email)
       const challenge = await generateLoginChallenge(email)
 
-      if (!salt) {
+      if (!saltData) {
         return res.status(404).json({
           error: "User not found",
           code: "USER_NOT_FOUND",
@@ -156,7 +156,12 @@ export function createAuthRouter(): Router {
         } as ErrorResponse)
       }
 
-      return res.status(200).json({ salt, challenge })
+      return res.status(200).json({ 
+        salt: saltData.salt, 
+        challenge,
+        argon2Memory: saltData.argon2Memory, 
+        argon2Iterations: saltData.argon2Iterations 
+      })
     } catch (error) {
       console.error("[VaultSync] Salt fetch error:", error)
       return res.status(500).json({

@@ -100,14 +100,23 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("")
 
-      // Derive keys using Argon2id
-      const { authKey } = await deriveKey(masterPassword, saltBuffer)
+      // Use lightweight Argon2 params for cross-platform compatibility.
+      // Mobile (React Native JS) cannot handle the 8192 default without freezing.
+      // Both platforms store the same params in the DB so login is fast universally.
+      const argon2Memory = 128
+      const argon2Iterations = 1
+
+      // Derive keys using Argon2id with shared parameters
+      const { authKey } = await deriveKey(masterPassword, saltBuffer, {
+        memorySize: argon2Memory,
+        iterations: argon2Iterations,
+      })
 
       // Create proof using shared utility
       const proofHex = await generateVerifier(authKey)
 
-      // Register with server
-      const response = await apiClient.register(email, fullName, proofHex, salt)
+      // Register with server, sending Argon2 params so they're stored per-user
+      const response = await apiClient.register(email, fullName, proofHex, salt, argon2Memory, argon2Iterations)
 
       apiClient.setToken(response.sessionToken)
       localStorage.setItem("user_salt", salt)
@@ -134,13 +143,16 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     setState((prev) => ({ ...prev, isLoading: true, error: null }))
     try {
       // 1. Get salt and fresh challenge from server (to prevent replay attacks)
-      const { salt, challenge } = await apiClient.getSalt(email)
+      const { salt, challenge, argon2Memory, argon2Iterations } = await apiClient.getSalt(email)
 
       // Convert salt hex to buffer
       const saltBuffer = parseHexToUint8Array(salt)
 
       // 2. Derive keys using Argon2id (same as during registration)
-      const { authKey } = await deriveKey(masterPassword, saltBuffer)
+      const { authKey } = await deriveKey(masterPassword, saltBuffer, {
+        memorySize: argon2Memory || undefined,
+        iterations: argon2Iterations || undefined
+      })
 
       // 3. Re-compute verifier
       const verifier = await generateVerifier(authKey)
