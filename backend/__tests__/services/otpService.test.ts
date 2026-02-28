@@ -10,9 +10,8 @@ describe('OTPService Integration Tests', () => {
     let verifyOTP: any;
 
     beforeAll(async () => {
-        // Setup mock env vars for email testing
-        process.env.SMTP_USER = 'test_user';
-        process.env.SMTP_PASS = 'test_pass';
+        // Set RESEND_API_KEY so the sendOTP function routes to the emailSender (not dev console fallback)
+        process.env.RESEND_API_KEY = 'test_resend_key';
 
         const otpService = await import('../../src/services/otpService.js');
         sendOTP = otpService.sendOTP;
