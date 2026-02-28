@@ -16,7 +16,7 @@ export async function sendEmail(options: MailOptions, contextInfo?: string): Pro
     if (process.env.RESEND_API_KEY) {
         try {
             const { data, error } = await resend.emails.send({
-                from: process.env.SMTP_FROM || 'ZeroKnowledge <onboarding@resend.dev>',
+                from: process.env.SMTP_FROM || 'ZeroKnowledge Vault <noreply@zeroknowledge.dev>',
                 to: options.to,
                 subject: options.subject,
                 html: options.html,
