@@ -72,28 +72,32 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
       text: `Your Vault Access Code: ${code}\nValid for 10 minutes.`,
     }
 
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-      try {
-        await emailSender(mailOptions, 'OTP')
-      } catch (emailError: unknown) {
-        // Fallback logging handled by sendEmail or here if needed to suppress error?
-        // Original code suppressed error and logged fallback log.
-        // `sendEmail` in utils throws.
-        // So we catch here and log fallback.
-        if (!isProduction || isDebug) {
-          console.log(`[VaultSync:OTP] Fallback for ${normalizedEmail}: ${code}`)
-        }
+    const isMockEmail = process.env.MOCK_EMAIL === "true"
+
+    if (process.env.SMTP_USER && process.env.SMTP_PASS && !isMockEmail) {
+      await emailSender(mailOptions, "OTP")
+    } else if (!isProduction || isDebug || isMockEmail) {
+      // In local/dev or mock mode we allow OTP without SMTP and log the code for manual testing.
+      console.log('--------------------------------------------------');
+      console.log(`[VaultSync:OTP] 🔐 ${isMockEmail ? 'MOCK' : 'Dev'} MODE ACCESS CODE`);
+      console.log(`[VaultSync:OTP] EMAIL: ${normalizedEmail}`);
+      console.log(`[VaultSync:OTP] CODE:  ${code}`);
+      console.log('--------------------------------------------------');
+
+      if (isMockEmail && isProduction) {
+        return { success: true, message: `OTP sent (MOCK MODE: ${code})` }
       }
     } else {
-      if (!isProduction || isDebug) {
-        console.log(`[VaultSync:OTP] Dev mode OTP for ${normalizedEmail}: ${code}`)
-      }
+      // In production, OTP must not report success when email service is not configured.
+      const errorMsg = "SMTP credentials (SMTP_USER, SMTP_PASS) missing. Please configure SMTP or set MOCK_EMAIL=true for testing."
+      console.error(`[VaultSync:OTP] ${errorMsg}`)
+      return { success: false, message: errorMsg }
     }
 
     return { success: true, message: "OTP sent successfully" }
-  } catch (error) {
+  } catch (error: any) {
     console.error("[VaultSync:OTP] Error sending OTP:", error)
-    return { success: false, message: "Failed to send OTP" }
+    return { success: false, message: error.message || "Failed to send OTP" }
   }
 }
 

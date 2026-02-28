@@ -35,11 +35,20 @@ import {
   AlertCircle,
   Loader2,
   Edit,
-  FileKey
+  FileKey,
+  Share2,
+  Inbox
 } from "lucide-react";
 import { toast } from "sonner";
 import { copyWithAutoClear } from "@/lib/clipboard";
 import { useRouter } from "next/navigation";
+import { buildApiUrl } from "@/lib/api-base-url";
+import {
+  createShareEnvelope,
+  decryptShareEnvelope,
+  ensureShareKeyPair,
+  verifyShareEnvelopeSignature,
+} from "@/lib/shareCrypto";
 // --- Helpers ---
 const calculatePasswordStrength = (password: string) => {
   if (!password) return { score: 0, label: "None", color: "bg-gray-200" };
@@ -77,6 +86,13 @@ export default function DashboardPage() {
     updateEntry,
     deleteEntry,
     snoozeEntry,
+    syncNow,
+    isSyncing,
+    lastSyncedAt,
+    syncError,
+    pendingSyncCount,
+    syncConflict,
+    resolveSyncConflict,
   } = useVault();
 
   const [mounted, setMounted] = useState(false);
@@ -118,6 +134,23 @@ export default function DashboardPage() {
   const [editingEntry, setEditingEntry] = useState<DecryptedEntry | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isResolvingConflict, setIsResolvingConflict] = useState(false);
+  const [sharingEntry, setSharingEntry] = useState<DecryptedEntry | null>(null);
+  const [shareRecipientEmail, setShareRecipientEmail] = useState("");
+  const [isSendingShare, setIsSendingShare] = useState(false);
+  const [incomingShares, setIncomingShares] = useState<Array<{
+    id: string;
+    encryptedSessionKey: string;
+    ciphertext: string;
+    iv: string;
+    signature: string;
+    senderSigningPublicKey: string;
+    recipientEmail: string;
+    sender: { email: string; fullName: string };
+    createdAt: string;
+  }>>([]);
+  const [incomingOpen, setIncomingOpen] = useState(false);
+  const [trustWarning, setTrustWarning] = useState<string | null>(null);
 
   // Auto-logout after inactivity
   const lastActivityRef = useRef<number>(Date.now());
@@ -128,14 +161,14 @@ export default function DashboardPage() {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
-      
+
       const token = typeof window !== 'undefined' && localStorage.getItem("auth_token");
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/otp/send`,
+        buildApiUrl("/otp/send"),
         {
           method: "POST",
           headers,
@@ -144,11 +177,13 @@ export default function DashboardPage() {
       );
 
       if (response.ok) {
+        const data = await response.json();
         setOtpSent(true);
         setTimeLeft(600); // Reset timer to 10 minutes
-        toast.success("OTP sent to your email");
+        toast.success(data.message || "OTP sent to your email");
       } else {
         const error = await response.json();
+        console.error("[OTP] Send failed with details:", error);
         toast.error(error.message || "Failed to send OTP");
       }
     } catch (error) {
@@ -178,7 +213,7 @@ export default function DashboardPage() {
       sessionStorage.setItem("session_master_password", passwordToUse);
 
       await contextUnlockVault();
-      
+
       // Removed setIsUnlocked(true) as we rely on context now
       toast.success("Vault unlocked successfully");
     } catch (err) {
@@ -246,6 +281,34 @@ export default function DashboardPage() {
     }
   }, [session.isAuthenticated, session.email, otpSent, isVaultUnlocked, masterPassword, sendOTPToUser, unlockVault]);
 
+  const ensureSharingKeysAndSync = useCallback(async () => {
+    const token = localStorage.getItem("auth_token");
+    if (!token || !session.isAuthenticated) return;
+    try {
+      const { publicKey, signingPublicKey } = await ensureShareKeyPair();
+      await fetch(buildApiUrl("/share/public-key"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ publicKey, signingPublicKey }),
+      });
+      const incomingRes = await fetch(buildApiUrl("/share/incoming"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (incomingRes.ok) {
+        const payload = await incomingRes.json();
+        setIncomingShares(payload.shares || []);
+      }
+    } catch (error) {
+      console.warn("[Share] setup failed", error);
+    }
+  }, [session.isAuthenticated]);
+
+  useEffect(() => {
+    if (session.isAuthenticated && isVaultUnlocked) {
+      void ensureSharingKeysAndSync();
+    }
+  }, [session.isAuthenticated, isVaultUnlocked, ensureSharingKeysAndSync]);
+
   // Countdown timer for OTP expiration
   useEffect(() => {
     if (!otpSent || otpVerified) return;
@@ -275,14 +338,14 @@ export default function DashboardPage() {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
-      
+
       const token = typeof window !== 'undefined' && localStorage.getItem("auth_token");
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/otp/verify`,
+        buildApiUrl("/otp/verify"),
         {
           method: "POST",
           headers,
@@ -296,10 +359,10 @@ export default function DashboardPage() {
       if (response.ok) {
         setOtpVerified(true);
         sessionStorage.setItem("otp_verified", "true"); // Persist verification
-        
+
         // Dispatch custom event to notify layout about OTP verification
         window.dispatchEvent(new Event("otpVerified"));
-        
+
         toast.success("OTP verified successfully!");
         // Automatically proceed to unlock vault
         await unlockVault();
@@ -452,6 +515,145 @@ export default function DashboardPage() {
 
   const copyToClipboard = (text: string) => {
     void copyWithAutoClear(text);
+  };
+
+  const handleManualSync = async () => {
+    const updated = await syncNow();
+    if (updated) {
+      toast.success("Vault synced with latest changes");
+      return;
+    }
+    if (syncError) {
+      toast.error(syncError);
+      return;
+    }
+    toast.info("Already up to date");
+  };
+
+  const formatLastSynced = (ts: number | null) => {
+    if (!ts) return "Never";
+    const date = new Date(ts);
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const handleResolveConflict = async (choice: "local" | "server") => {
+    setIsResolvingConflict(true);
+    try {
+      const ok = await resolveSyncConflict(choice);
+      if (ok) {
+        toast.success(choice === "local" ? "Kept local changes and overwrote server copy" : "Kept server version");
+      } else {
+        toast.error("Failed to resolve conflict. Please try again.");
+      }
+    } finally {
+      setIsResolvingConflict(false);
+    }
+  };
+
+  const handleSendShare = async () => {
+    if (!sharingEntry || !shareRecipientEmail.trim()) return;
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+    setIsSendingShare(true);
+    try {
+      const publicKeyRes = await fetch(buildApiUrl(`/share/public-key/${encodeURIComponent(shareRecipientEmail.trim().toLowerCase())}`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!publicKeyRes.ok) {
+        const err = await publicKeyRes.json().catch(() => ({}));
+        throw new Error(err.error || "Recipient public key not available");
+      }
+      const recipient = await publicKeyRes.json();
+      const envelope = await createShareEnvelope(
+        {
+          site: sharingEntry.site,
+          siteUrl: sharingEntry.siteUrl,
+          username: sharingEntry.username,
+          password: sharingEntry.password,
+          notes: sharingEntry.notes || "",
+        },
+        recipient.publicKey,
+        shareRecipientEmail.trim().toLowerCase(),
+      );
+      const sendRes = await fetch(buildApiUrl("/share/send"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          recipientEmail: shareRecipientEmail.trim().toLowerCase(),
+          encryptedSessionKey: envelope.encryptedSessionKey,
+          ciphertext: envelope.ciphertext,
+          iv: envelope.iv,
+          signature: envelope.signature,
+          senderSigningPublicKey: envelope.senderSigningPublicKey,
+        }),
+      });
+      if (!sendRes.ok) {
+        const err = await sendRes.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to send share");
+      }
+      toast.success("Password shared securely");
+      setSharingEntry(null);
+      setShareRecipientEmail("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Share failed");
+    } finally {
+      setIsSendingShare(false);
+    }
+  };
+
+  const handleAcceptShare = async (shareId: string) => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+    const share = incomingShares.find((s) => s.id === shareId);
+    if (!share) return;
+    try {
+      const signatureOk = await verifyShareEnvelopeSignature(
+        {
+          encryptedSessionKey: share.encryptedSessionKey,
+          ciphertext: share.ciphertext,
+          iv: share.iv,
+          signature: share.signature,
+        },
+        share.senderSigningPublicKey,
+        share.recipientEmail || session.email || "",
+      );
+      if (!signatureOk) {
+        const warning = `Signature verification failed for share from ${share.sender.email}. Message may be tampered.`;
+        setTrustWarning(warning);
+        toast.error("Security warning: shared item failed signature verification");
+        return;
+      }
+      const decrypted = await decryptShareEnvelope({
+        encryptedSessionKey: share.encryptedSessionKey,
+        ciphertext: share.ciphertext,
+        iv: share.iv,
+      });
+      await addEntry({
+        site: decrypted.site || "Shared Credential",
+        username: decrypted.username || "",
+        password: decrypted.password || "",
+        url: decrypted.siteUrl || "",
+        notes: decrypted.notes || `Shared by ${share.sender.email}`,
+      });
+      await fetch(buildApiUrl(`/share/${encodeURIComponent(shareId)}/accept`), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setIncomingShares((prev) => prev.filter((s) => s.id !== shareId));
+      toast.success("Share accepted and added to vault");
+    } catch {
+      toast.error("Failed to accept share");
+    }
+  };
+
+  const handleRejectShare = async (shareId: string) => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+    await fetch(buildApiUrl(`/share/${encodeURIComponent(shareId)}/reject`), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    setIncomingShares((prev) => prev.filter((s) => s.id !== shareId));
   };
 
   // --- Render Loading State ---
@@ -748,6 +950,15 @@ export default function DashboardPage() {
               <span className="inline-flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
               Encrypted & Synced
             </CardDescription>
+            <CardDescription className="text-xs mt-1">
+              {isSyncing
+                ? "Sync in progress..."
+                : pendingSyncCount > 0
+                  ? `${pendingSyncCount} change(s) queued offline`
+                : syncError
+                  ? `Sync issue: ${syncError}`
+                  : `Last synced at ${formatLastSynced(lastSyncedAt)}`}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-4">
@@ -761,6 +972,19 @@ export default function DashboardPage() {
                 </p>
               </div>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleManualSync}
+              disabled={isSyncing}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+              {isSyncing ? "Syncing..." : "Sync Now"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setIncomingOpen(true)}>
+              <Inbox className="mr-2 h-4 w-4" />
+              Incoming ({incomingShares.length})
+            </Button>
           </CardContent>
         </Card>
 
@@ -809,8 +1033,8 @@ export default function DashboardPage() {
                         <h4 className="font-semibold truncate">{entry.site}</h4>
                         {/* Show siteUrl if it exists */}
                         <div className="text-xs text-blue-500 hover:text-blue-600 truncate mt-0.5">
-                            <span className="text-muted-foreground mr-1">URL:</span>
-                            {entry.siteUrl}
+                          <span className="text-muted-foreground mr-1">URL:</span>
+                          {entry.siteUrl}
                         </div>
                         <p className="text-sm font-mono mt-0.5 text-foreground">
                           <span className="text-muted-foreground mr-1 font-sans">Username:</span>
@@ -855,6 +1079,16 @@ export default function DashboardPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => setSharingEntry(entry)}
+                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                        title="Share"
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => router.push(`/password-manager?edit=${entry.id}`)}
                         className="h-9 w-9 text-muted-foreground hover:text-primary"
                         title="Edit in Password Manager"
@@ -871,9 +1105,9 @@ export default function DashboardPage() {
       </Card>
 
       {/* Change Password Modal - still useful if we want to trigger it from dashboard alerts */}
-      <ChangePasswordModal 
-         isOpen={isChangePasswordOpen}
-         onClose={() => setIsChangePasswordOpen(false)}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
       />
 
       {/* Edit Credential Modal */}
@@ -883,6 +1117,116 @@ export default function DashboardPage() {
         entry={editingEntry}
         onSave={handleSaveEdit}
       />
+
+      {syncConflict && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <Card className="w-full max-w-6xl border-primary/30">
+            <CardHeader>
+              <CardTitle>Sync Conflict Detected</CardTitle>
+              <CardDescription>
+                Two devices changed vault data at nearly the same time. Choose which version to keep as the new master copy.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-border p-3">
+                <h4 className="font-semibold mb-2">Your Local Version ({syncConflict.localEntries.length})</h4>
+                <div className="max-h-64 overflow-auto space-y-2 text-sm">
+                  {syncConflict.localEntries.slice(0, 8).map((entry) => (
+                    <div key={`local-${entry.id}`} className="rounded border border-border/60 p-2">
+                      <div className="font-medium">{entry.site}</div>
+                      <div className="text-muted-foreground">{entry.username}</div>
+                      <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <h4 className="font-semibold mb-2">Server Version ({syncConflict.serverEntries.length})</h4>
+                <div className="max-h-64 overflow-auto space-y-2 text-sm">
+                  {syncConflict.serverEntries.slice(0, 8).map((entry) => (
+                    <div key={`server-${entry.id}`} className="rounded border border-border/60 p-2">
+                      <div className="font-medium">{entry.site}</div>
+                      <div className="text-muted-foreground">{entry.username}</div>
+                      <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-end gap-3">
+              <Button variant="outline" disabled={isResolvingConflict} onClick={() => handleResolveConflict("server")}>
+                Keep Server Version
+              </Button>
+              <Button disabled={isResolvingConflict} onClick={() => handleResolveConflict("local")}>
+                Keep My Version
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
+
+      {sharingEntry && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>Secure Share</CardTitle>
+              <CardDescription>
+                Share "{sharingEntry.site}" with a colleague using end-to-end encryption.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                placeholder="Recipient email"
+                value={shareRecipientEmail}
+                onChange={(e) => setShareRecipientEmail(e.target.value)}
+              />
+            </CardContent>
+            <CardFooter className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setSharingEntry(null)} disabled={isSendingShare}>Cancel</Button>
+              <Button onClick={handleSendShare} disabled={isSendingShare || !shareRecipientEmail.trim()}>
+                {isSendingShare ? "Sharing..." : "Share Securely"}
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
+
+      {incomingOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <Card className="w-full max-w-2xl">
+            <CardHeader>
+              <CardTitle>Incoming Shares</CardTitle>
+              <CardDescription>Accept to decrypt and add credential to your vault.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 max-h-[420px] overflow-auto">
+              {trustWarning && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{trustWarning}</AlertDescription>
+                </Alert>
+              )}
+              {incomingShares.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No pending shares.</p>
+              ) : incomingShares.map((share) => (
+                <div key={share.id} className="border rounded-md p-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{share.sender.fullName || share.sender.email}</p>
+                    <p className="text-xs text-muted-foreground">{share.sender.email}</p>
+                    <p className="text-xs text-muted-foreground">{share.createdAt}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleRejectShare(share.id)}>Reject</Button>
+                    <Button size="sm" onClick={() => handleAcceptShare(share.id)}>Accept</Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+            <CardFooter className="flex justify-end">
+              <Button variant="outline" onClick={() => setIncomingOpen(false)}>Close</Button>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

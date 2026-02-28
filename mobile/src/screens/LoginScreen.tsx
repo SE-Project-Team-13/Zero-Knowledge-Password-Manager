@@ -180,6 +180,12 @@ export default function LoginScreen({ navigation }: any) {
                   {isRegistering ? "Already have an account? Sign In" : "New to ZeroPass? Create Account"}
                 </Text>
               </TouchableOpacity>
+
+              {!isRegistering && (
+                <TouchableOpacity style={styles.switchButton} onPress={() => navigation.navigate('RecoveryLogin')}>
+                  <Text style={styles.switchText}>Forgot Password? Use Recovery Key</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </KeyboardAvoidingView>
         </SafeAreaContext>

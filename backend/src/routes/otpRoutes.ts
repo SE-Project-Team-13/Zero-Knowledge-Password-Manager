@@ -49,7 +49,7 @@ export function createOTPRouter(): Router {
 
       return res.status(200).json({
         success: true,
-        message: "OTP sent successfully",
+        message: result.message || "OTP sent successfully",
       })
     } catch (error) {
       console.error("[OTP] Send OTP error:", error)

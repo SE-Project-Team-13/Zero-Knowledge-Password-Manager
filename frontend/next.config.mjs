@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -11,6 +10,10 @@ const nextConfig = {
     unoptimized: true,
   },
   transpilePackages: ["@password-manager/crypto-engine"],
+  experimental: {
+    workerThreads: false,
+    cpus: 1,
+  },
 }
 
 export default nextConfig

@@ -1,6 +1,7 @@
 import { VaultBlob, SyncMetadata } from "../database/models.js"
 import type { VaultBlob as VaultBlobType } from "../types/index.js"
 import mongoose from "mongoose"
+import crypto from "crypto"
 
 interface SyncMetadataPayload {
   userId: string
@@ -10,28 +11,64 @@ interface SyncMetadataPayload {
   nonce: string
 }
 
+interface IncomingVaultPayload {
+  ciphertext: string
+  salt: string
+  iv: string
+  authTag: string
+  version: number
+  timestamp: number
+  nonce: string
+}
+
+interface ConflictPayload {
+  latestServerBlob: VaultBlobType
+  incomingBlob: IncomingVaultPayload
+  latestServerTimestamp: number
+}
+
 /**
  * Pushes a new encrypted vault blob to the server.
  * Also updates the sync metadata for the device to track the latest version.
- * @param userId - ID of the user pushing the vault.
- * @param deviceId - Unique identifier for the device making the push.
- * @param vault - The encrypted vault payload and associated metadata.
- * @returns Success status and the ID of the created blob.
  */
 export async function pushVault(
   userId: string,
   deviceId: string,
-  vault: {
-    ciphertext: string
-    salt: string
-    iv: string
-    authTag: string
-    version: number
-    timestamp: number
-    nonce: string
-  },
-): Promise<{ success: boolean; vaultId?: string; error?: string }> {
+  vault: IncomingVaultPayload,
+  options?: { baseTimestamp?: number; forceOverwrite?: boolean },
+): Promise<{ success: boolean; vaultId?: string; error?: string; conflict?: ConflictPayload }> {
   try {
+    const latest = await VaultBlob.findOne({ userId }).sort({ timestamp: -1 })
+    if (!options?.forceOverwrite && options?.baseTimestamp !== undefined && latest) {
+      const latestTimestamp = latest.timestamp || 0
+      const hasDiverged = latestTimestamp > options.baseTimestamp && latest.ciphertext !== vault.ciphertext
+      if (hasDiverged) {
+        const latestServerBlob: VaultBlobType = {
+          id: latest._id.toString(),
+          userId: latest.userId.toString(),
+          deviceId: latest.deviceId,
+          ciphertext: latest.ciphertext,
+          salt: latest.salt,
+          iv: latest.iv,
+          authTag: latest.authTag,
+          version: latest.version,
+          timestamp: latest.timestamp,
+          nonce: latest.nonce,
+          createdAt: latest.createdAt,
+          updatedAt: latest.updatedAt,
+        }
+        return {
+          success: false,
+          error: "Conflict detected: server has a newer vault version",
+          conflict: {
+            latestServerBlob,
+            incomingBlob: vault,
+            latestServerTimestamp: latestTimestamp,
+          },
+        }
+      }
+    }
+
     const blob = new VaultBlob({
       userId,
       deviceId,
@@ -45,13 +82,10 @@ export async function pushVault(
     })
 
     await blob.save()
-
-    // Update sync metadata to reflect this device's latest state
     await updateSyncMetadata(userId, deviceId, vault.version, vault.nonce)
 
     return { success: true, vaultId: blob._id.toString() }
   } catch (error: unknown) {
-    // Detect potential replay attacks or duplicate submissions using the nonce
     if (error && typeof error === "object" && "code" in error && error.code === 11000) {
       return { success: false, error: "Duplicate nonce - replay attack detected" }
     }
@@ -61,25 +95,107 @@ export async function pushVault(
 }
 
 /**
+ * Conflict resolution overwrite path.
+ * Writes selected blob as a new canonical revision.
+ */
+export async function resolveVaultConflict(
+  userId: string,
+  deviceId: string,
+  chosenBlob: {
+    ciphertext: string
+    salt: string
+    iv: string
+    authTag: string
+  },
+  expectedServerTimestamp?: number,
+): Promise<{ success: boolean; vaultId?: string; resolvedVersion?: number; resolvedTimestamp?: number; error?: string; conflict?: ConflictPayload }> {
+  try {
+    const latest = await VaultBlob.findOne({ userId }).sort({ timestamp: -1 })
+    if (!latest) {
+      return { success: false, error: "No server blob exists to resolve against" }
+    }
+
+    if (expectedServerTimestamp !== undefined && latest.timestamp !== expectedServerTimestamp) {
+      const latestServerBlob: VaultBlobType = {
+        id: latest._id.toString(),
+        userId: latest.userId.toString(),
+        deviceId: latest.deviceId,
+        ciphertext: latest.ciphertext,
+        salt: latest.salt,
+        iv: latest.iv,
+        authTag: latest.authTag,
+        version: latest.version,
+        timestamp: latest.timestamp,
+        nonce: latest.nonce,
+        createdAt: latest.createdAt,
+        updatedAt: latest.updatedAt,
+      }
+      return {
+        success: false,
+        error: "Conflict changed while resolving. Please resolve again.",
+        conflict: {
+          latestServerBlob,
+          incomingBlob: {
+            ...chosenBlob,
+            version: latest.version,
+            timestamp: latest.timestamp,
+            nonce: latest.nonce,
+          },
+          latestServerTimestamp: latest.timestamp,
+        },
+      }
+    }
+
+    const nextVersion = (latest.version || 0) + 1
+    const nextTimestamp = Date.now()
+    const nextNonce = crypto.randomBytes(12).toString("hex")
+
+    const result = await pushVault(
+      userId,
+      deviceId,
+      {
+        ...chosenBlob,
+        version: nextVersion,
+        timestamp: nextTimestamp,
+        nonce: nextNonce,
+      },
+      { forceOverwrite: true },
+    )
+
+    if (!result.success) {
+      return { success: false, error: result.error, conflict: result.conflict }
+    }
+
+    return {
+      success: true,
+      vaultId: result.vaultId,
+      resolvedVersion: nextVersion,
+      resolvedTimestamp: nextTimestamp,
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return { success: false, error: message }
+  }
+}
+
+/**
  * Pulls vault blobs for a user, optionally filtering by version.
- * Used by clients to synchronize their local storage with the server.
- * @param userId - ID of the user pulling vaults.
- * @param deviceId - ID of the device requesting the pull.
- * @param lastVersion - Optional version threshold to pull only newer changes.
- * @returns List of vault blobs.
  */
 export async function pullVaults(
   userId: string,
   deviceId: string,
   lastVersion?: number,
+  lastTimestamp?: number,
 ): Promise<{ success: boolean; vaults?: VaultBlobType[]; error?: string }> {
   try {
     const filter: Record<string, any> = { userId }
     if (lastVersion !== undefined) {
       filter.version = { $gt: lastVersion }
     }
+    if (lastTimestamp !== undefined) {
+      filter.timestamp = { $gt: lastTimestamp }
+    }
 
-    // Sort by version descending to get newest first
     const rows = await VaultBlob.find(filter).sort({ version: -1 })
 
     const vaults: VaultBlobType[] = rows.map((row) => ({
@@ -105,18 +221,51 @@ export async function pullVaults(
 }
 
 /**
- * Internal helper to update or create sync metadata for a user/device pair.
- * @param userId - User identity.
- * @param deviceId - Device identity.
- * @param vaultVersion - Latest version seen by this device.
- * @param nonce - Nonce associated with the latest update.
+ * Pulls the latest blob only if it's newer than the client's last-known timestamp.
  */
+export async function pullLatestBlobIfNewer(
+  userId: string,
+  lastKnownTimestamp?: number,
+): Promise<{ success: boolean; hasUpdate?: boolean; blob?: VaultBlobType; serverTimestamp?: number; error?: string }> {
+  try {
+    const latest = await VaultBlob.findOne({ userId }).sort({ timestamp: -1 })
+    if (!latest) {
+      return { success: true, hasUpdate: false, serverTimestamp: 0 }
+    }
+
+    const latestTimestamp = latest.timestamp || 0
+    if (lastKnownTimestamp !== undefined && latestTimestamp <= lastKnownTimestamp) {
+      return { success: true, hasUpdate: false, serverTimestamp: latestTimestamp }
+    }
+
+    const blob: VaultBlobType = {
+      id: latest._id.toString(),
+      userId: latest.userId.toString(),
+      deviceId: latest.deviceId,
+      ciphertext: latest.ciphertext,
+      salt: latest.salt,
+      iv: latest.iv,
+      authTag: latest.authTag,
+      version: latest.version,
+      timestamp: latest.timestamp,
+      nonce: latest.nonce,
+      createdAt: latest.createdAt,
+      updatedAt: latest.updatedAt,
+    }
+
+    return { success: true, hasUpdate: true, blob, serverTimestamp: latestTimestamp }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return { success: false, error: message }
+  }
+}
+
 async function updateSyncMetadata(
   userId: string,
   deviceId: string,
   vaultVersion: number,
   nonce: string,
- ): Promise<void> {
+): Promise<void> {
   const now = Date.now()
 
   await SyncMetadata.findOneAndUpdate(
@@ -127,17 +276,10 @@ async function updateSyncMetadata(
       nonce,
       updatedAt: new Date(now),
     },
-    { upsert: true }, // Create record if it doesn't exist
+    { upsert: true },
   )
 }
 
-/**
- * Retrieves sync metadata for a specific user device.
- * Helps the client determine if it needs to pull new data.
- * @param userId - User identity.
- * @param deviceId - Device identity.
- * @returns Sync metadata or null if no record exists.
- */
 export async function getSyncMetadata(
   userId: string,
   deviceId: string,

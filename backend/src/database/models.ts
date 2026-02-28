@@ -13,6 +13,8 @@ export interface IUser extends Document {
   updatedAt: string
   isBreached?: boolean
   lastBreachCheck?: string
+  sharePublicKey?: string
+  shareSigningPublicKey?: string
 }
 
 const UserSchema = new Schema<IUser>({
@@ -24,6 +26,8 @@ const UserSchema = new Schema<IUser>({
   updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
   isBreached: { type: Boolean, default: false },
   lastBreachCheck: { type: String },
+  sharePublicKey: { type: String },
+  shareSigningPublicKey: { type: String },
 })
 
 /**
@@ -188,6 +192,41 @@ const LoginChallengeSchema = new Schema<ILoginChallenge>({
   expiresAt: { type: String, required: true },
 })
 
+/**
+ * SharedCredential Schema:
+ * Stores hybrid-encrypted shares between users. Server stores ciphertext only.
+ */
+export interface ISharedCredential extends Document {
+  senderUserId: mongoose.Types.ObjectId
+  recipientUserId: mongoose.Types.ObjectId
+  recipientEmail: string
+  encryptedSessionKey: string
+  ciphertext: string
+  iv: string
+  signature: string
+  senderSigningPublicKey: string
+  status: "pending" | "accepted" | "rejected"
+  createdAt: string
+  updatedAt: string
+  acceptedAt?: string
+}
+
+const SharedCredentialSchema = new Schema<ISharedCredential>({
+  senderUserId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+  recipientUserId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+  recipientEmail: { type: String, required: true },
+  encryptedSessionKey: { type: String, required: true },
+  ciphertext: { type: String, required: true },
+  iv: { type: String, required: true },
+  signature: { type: String, required: true },
+  senderSigningPublicKey: { type: String, required: true },
+  status: { type: String, enum: ["pending", "accepted", "rejected"], default: "pending", index: true },
+  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  acceptedAt: { type: String },
+})
+SharedCredentialSchema.index({ recipientUserId: 1, status: 1, createdAt: -1 })
+
 // Export Mongoose Models
 export const User = mongoose.model<IUser>("User", UserSchema)
 export const Session = mongoose.model<ISession>("Session", SessionSchema)
@@ -197,4 +236,5 @@ export const SimpleVault = mongoose.model<ISimpleVault>("SimpleVault", SimpleVau
 export const OTP = mongoose.model<IOTP>("OTP", OTPSchema)
 export const RecoveryKey = mongoose.model<IRecoveryKey>("RecoveryKey", RecoveryKeySchema)
 export const LoginChallenge = mongoose.model<ILoginChallenge>("LoginChallenge", LoginChallengeSchema)
+export const SharedCredential = mongoose.model<ISharedCredential>("SharedCredential", SharedCredentialSchema)
 

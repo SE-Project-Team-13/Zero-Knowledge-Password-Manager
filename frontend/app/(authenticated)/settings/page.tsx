@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Lock, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { buildApiUrl } from "@/lib/api-base-url";
 
 export default function SettingsPage() {
     const [session] = useVaultSync();
@@ -32,7 +33,7 @@ export default function SettingsPage() {
         setIsDeleting(true);
         try {
             const token = localStorage.getItem("auth_token");
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/auth/account`, {
+            const response = await fetch(buildApiUrl("/auth/account"), {
                 method: "DELETE",
                 headers: { 
                     "Authorization": `Bearer ${token}` 

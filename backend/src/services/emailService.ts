@@ -1,11 +1,17 @@
 
 import nodemailer from "nodemailer"
 
+const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10)
+const smtpSecure = smtpPort === 465
+
 // Configure email transporter for sending notification emails.
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: parseInt(process.env.SMTP_PORT || "587"),
-    secure: false,
+    port: smtpPort,
+    secure: smtpSecure,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
@@ -30,7 +36,7 @@ export async function sendEmail(options: MailOptions, contextInfo?: string): Pro
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
         try {
             await transporter.sendMail({
-                from: process.env.SMTP_FROM || '"Password Manager" <noreply@passwordmanager.com>',
+                from: process.env.SMTP_FROM || process.env.SMTP_USER || '"Password Manager" <noreply@passwordmanager.com>',
                 ...options
             })
             if (!isProduction || isDebug) {

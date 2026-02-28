@@ -78,6 +78,7 @@ export interface SyncPushRequest {
   userId: string
   deviceId: string
   sessionToken: string
+  baseTimestamp?: number // Client's last-known server timestamp for conflict detection
   vault: {
     ciphertext: string
     salt: string
@@ -94,6 +95,7 @@ export interface SyncPullRequest {
   deviceId: string
   sessionToken: string
   lastVersion?: number // Only pull changes after this version
+  lastTimestamp?: number // Pull only if server blob timestamp is newer
 }
 
 export interface SyncPullResponse {

@@ -15,6 +15,7 @@ import { createAuthRouter } from "./routes/authRoutes.js"
 import { createSyncRouter } from "./routes/syncRoutes.js"
 import { createOTPRouter } from "./routes/otpRoutes.js"
 import { createRecoveryRouter } from "./routes/recoveryRoutes.js"
+import { createShareRouter } from "./routes/shareRoutes.js"
 import { initScheduledJobs } from "./services/cronService.js"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -61,19 +62,51 @@ async function start() {
     app.use(helmet())
 
     // CORS Middleware
+    const configuredOrigins = (process.env.FRONTEND_URL || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .flatMap((value) => {
+        if (value.startsWith("http://") || value.startsWith("https://")) {
+          return [value]
+        }
+        return [`https://${value}`, `http://${value}`]
+      })
+
     const ALLOWED_ORIGINS = [
       "http://localhost:3000",
       "http://localhost:3001",
-      process.env.FRONTEND_URL || ""
-    ].filter(Boolean)
+      "http://localhost:8081",   // Expo web dev server
+      "http://localhost:8082",   // Expo web dev server (common alternate)
+      "http://localhost:19006",  // Expo web legacy port
+      ...configuredOrigins,
+    ]
+
+    function isAllowedDevOrigin(origin: string): boolean {
+      // Allow local dev clients (Expo web often uses varying localhost ports).
+      try {
+        const url = new URL(origin)
+        const host = url.hostname
+        if (url.protocol !== "http:" && url.protocol !== "https:") return false
+        return host === "localhost" || host === "127.0.0.1"
+      } catch {
+        return false
+      }
+    }
+
+    const isRenderOrigin = (origin: string): boolean => /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin)
+
 
     app.use((req, res, next) => {
       const origin = req.headers.origin
-      if (origin && ALLOWED_ORIGINS.includes(origin)) {
+      if (origin && (ALLOWED_ORIGINS.includes(origin) || isAllowedDevOrigin(origin) || isRenderOrigin(origin))) {
         res.header("Access-Control-Allow-Origin", origin)
+        res.header("Vary", "Origin")
       } else if (!origin && !isProduction) {
         /* Allow requests without origin (like direct browser hits) in development */
         res.header("Access-Control-Allow-Origin", "*")
+      } else if (origin) {
+        logger.warn(`CORS blocked for origin: ${origin}`)
       }
 
       res.header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS")
@@ -119,6 +152,7 @@ async function start() {
     app.use("/sync", createSyncRouter())
     app.use("/otp", createOTPRouter())
     app.use("/recovery", createRecoveryRouter())
+    app.use("/share", createShareRouter())
 
     // Phase 3 compatibility routes
     app.get("/api/vault/:userId", async (req, res) => {
