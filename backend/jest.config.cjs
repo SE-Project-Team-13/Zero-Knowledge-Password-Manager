@@ -1,4 +1,9 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
+// Force mongodb-memory-server to use a project-local cache and a pinned version.
+// This avoids a ~700MB re-download every time the system AppData cache is cleared.
+process.env.MONGOMS_VERSION = process.env.MONGOMS_VERSION || '7.0.14';
+process.env.MONGOMS_DOWNLOAD_DIR = process.env.MONGOMS_DOWNLOAD_DIR || './.mongo-cache';
+
 module.exports = {
     preset: 'ts-jest/presets/default-esm',
     testEnvironment: 'node',

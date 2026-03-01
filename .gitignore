@@ -47,3 +47,7 @@ coverage/
 *.lcov
 .jest-cache/
 **/.jest-cache/
+
+# mongodb-memory-server binary cache (project-local, avoid re-downloading)
+.mongo-cache/
+**/. mongo-cache/
