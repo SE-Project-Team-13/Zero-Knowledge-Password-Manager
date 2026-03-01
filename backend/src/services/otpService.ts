@@ -1,6 +1,6 @@
 import crypto from "crypto"
 import { OTP } from "../database/models.js"
-import { sendEmail } from "./emailService.js"
+import { sendGmail } from "./gmailService.js"
 
 const isProduction = process.env.NODE_ENV === "production"
 const isDebug = process.env.DEBUG === "true"
@@ -17,23 +17,29 @@ function generateOTPCode(): string {
   return crypto.randomInt(100000, 999999).toString()
 }
 
-// Define email sender type matches the imported function signature
-type EmailSender = typeof sendEmail;
+// Define email options type
+interface MailOptions {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}
 
 /**
  * Generates and sends an OTP to the user's registered email address.
  * @param email User's email
+ * @param otpModel Optional OTP model for dependency injection (testing)
  * @param emailSender Optional email sender function for dependency injection (testing)
  */
-export async function sendOTP(email: string, emailSender: EmailSender = sendEmail): Promise<{ success: boolean; message: string }> {
+export async function sendOTP(email: string, otpModel = OTP, emailSender = sendGmail): Promise<{ success: boolean; message: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase()
-    await OTP.deleteMany({ email: normalizedEmail })
+    await otpModel.deleteMany({ email: normalizedEmail })
 
     const code = generateOTPCode()
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
 
-    await OTP.create({
+    await otpModel.create({
       email: normalizedEmail,
       code,
       expiresAt,
@@ -44,107 +50,67 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
 
     const mailOptions = {
       to: normalizedEmail,
-      subject: "🔐 Your ZeroPass Vault Access Code",
+      subject: `Verification Code: ${code}`,
       html: `
         <!DOCTYPE html>
         <html lang="en">
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>ZeroPass Vault Access Code</title>
+          <title>Verification Code</title>
         </head>
-        <body style="margin:0;padding:0;background-color:#0c0d14;font-family:'Helvetica Neue',Arial,sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0c0d14;min-height:100vh;padding:40px 16px;">
+        <body style="margin:0;padding:0;background-color:#f8fafc;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;padding:48px 20px;">
             <tr>
               <td align="center">
-                <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
-
-                  <!-- Header with logo -->
+                <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -2px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+                  <!-- Header -->
                   <tr>
-                    <td align="center" style="padding-bottom:32px;">
-                      <div style="display:inline-flex;align-items:center;gap:10px;">
-                        <span style="font-size:28px;">🔐</span>
-                        <span style="font-size:22px;font-weight:700;color:#e0f2fe;letter-spacing:-0.5px;">ZeroPass</span>
+                    <td style="padding:40px 40px 0;text-align:center;">
+                      <div style="margin-bottom:24px;">
+                        <span style="font-size:32px;display:inline-block;margin-bottom:8px;">🔐</span>
+                        <h1 style="margin:0;font-size:24px;color:#1e293b;font-weight:700;letter-spacing:-0.025em;">ZeroPass</h1>
                       </div>
                     </td>
                   </tr>
-
-                  <!-- Main card -->
+                  
+                  <!-- Body -->
                   <tr>
-                    <td style="background-color:#111827;border:1px solid #1e3a5f;border-radius:16px;padding:40px 40px 32px;box-shadow:0 0 40px rgba(34,211,238,0.07);">
-
-                      <!-- Title -->
-                      <table width="100%" cellpadding="0" cellspacing="0">
-                        <tr>
-                          <td style="padding-bottom:8px;">
-                            <p style="margin:0;font-size:13px;font-weight:600;color:#22d3ee;text-transform:uppercase;letter-spacing:2px;">Authentication Required</p>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style="padding-bottom:24px;">
-                            <h1 style="margin:0;font-size:26px;font-weight:700;color:#f0f9ff;line-height:1.3;">Your Verification Code</h1>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style="padding-bottom:28px;">
-                            <p style="margin:0;font-size:15px;color:#94a3b8;line-height:1.7;">
-                              You attempted to access your encrypted vault. Use the code below to complete verification. Never share this code with anyone.
-                            </p>
-                          </td>
-                        </tr>
-
-                        <!-- OTP Code box -->
-                        <tr>
-                          <td style="padding-bottom:28px;">
-                            <div style="background:linear-gradient(135deg,#0f1e3a,#0c1929);border:1px solid #22d3ee;border-radius:12px;padding:28px 20px;text-align:center;box-shadow:0 0 20px rgba(34,211,238,0.1);">
-                              <p style="margin:0 0 8px;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:2px;">One-Time Code</p>
-                              <span style="font-size:44px;font-weight:800;color:#22d3ee;letter-spacing:12px;font-family:'Courier New',monospace;">${code}</span>
-                            </div>
-                          </td>
-                        </tr>
-
-                        <!-- Expiry warning -->
-                        <tr>
-                          <td style="padding-bottom:32px;">
-                            <table cellpadding="0" cellspacing="0" style="background-color:#1a1200;border:1px solid #ca8a04;border-radius:8px;padding:12px 16px;width:100%;">
-                              <tr>
-                                <td>
-                                  <p style="margin:0;font-size:13px;color:#fde68a;">
-                                    ⏱ &nbsp;This code expires in <strong>10 minutes</strong>. Do not share it with anyone.
-                                  </p>
-                                </td>
-                              </tr>
-                            </table>
-                          </td>
-                        </tr>
-
-                        <!-- Divider -->
-                        <tr><td style="border-top:1px solid #1e293b;padding-bottom:24px;"></td></tr>
-
-                        <!-- Security note -->
-                        <tr>
-                          <td>
-                            <p style="margin:0;font-size:13px;color:#475569;line-height:1.7;">
-                              If you didn't request this code, someone may be attempting to access your vault. Your data remains encrypted and safe. No action is required.
-                            </p>
-                          </td>
-                        </tr>
-                      </table>
+                    <td style="padding:0 40px 40px;">
+                      <h2 style="margin:0 0 12px;font-size:18px;color:#334155;font-weight:600;text-align:center;">Verification Required</h2>
+                      <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#64748b;text-align:center;">
+                        To secure your encrypted vault, please use the following one-time code to complete your sign-in:
+                      </p>
+                      
+                      <!-- OTP Code Box -->
+                      <div style="background-color:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:32px;text-align:center;margin-bottom:32px;">
+                        <span style="font-size:42px;font-weight:800;color:#0284c7;letter-spacing:8px;font-family:monospace;display:block;">${code}</span>
+                      </div>
+                      
+                      <div style="text-align:center;margin-bottom:32px;">
+                        <p style="margin:0;font-size:14px;color:#94a3b8;display:flex;align-items:center;justify-content:center;">
+                          ⏱ Expires in 10 minutes
+                        </p>
+                      </div>
+                      
+                      <hr style="border:0;border-top:1px solid #f1f5f9;margin:32px 0;">
+                      
+                      <div style="background-color:#fff7ed;border-radius:8px;padding:16px;border:1px solid #ffedd5;">
+                        <p style="margin:0;font-size:13px;line-height:1.5;color:#9a3412;">
+                          <strong>Security Note:</strong> If you did not request this code, your vault remains encrypted and secure. You can safely ignore this email.
+                        </p>
+                      </div>
                     </td>
                   </tr>
-
+                  
                   <!-- Footer -->
                   <tr>
-                    <td align="center" style="padding-top:28px;">
-                      <p style="margin:0;font-size:12px;color:#334155;">
-                        &copy; ${new Date().getFullYear()} ZeroPass &mdash; Zero-Knowledge Password Manager
-                      </p>
-                      <p style="margin:6px 0 0;font-size:11px;color:#1e293b;">
-                        Your vault is end-to-end encrypted. We never see your passwords.
+                    <td style="padding:0 40px 40px;text-align:center;">
+                      <p style="margin:0;font-size:12px;color:#cbd5e1;">
+                        &copy; ${new Date().getFullYear()} ZeroPass. End-to-end encrypted password management.
                       </p>
                     </td>
                   </tr>
-
                 </table>
               </td>
             </tr>
@@ -152,30 +118,25 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
         </body>
         </html>
       `,
-      text: `ZeroPass Vault Access Code\n\nYour one-time verification code is: ${code}\n\nValid for 10 minutes. Do not share this code.\n\nIf you didn't request this, ignore this email — your vault remains secure.`,
+      text: `ZeroPass Verification Code: ${code}\n\nTo access your encrypted vault, please use this one-time code: ${code}\n\nThis code will expire in 10 minutes.\n\nIf you did not request this, you can safely ignore this email — your vault remains secure.`,
     }
 
     const isMockEmail = process.env.MOCK_EMAIL === "true"
 
-    if (process.env.RESEND_API_KEY && !isMockEmail) {
-      // Production: send via Resend HTTP API (works on Render, bypasses SMTP blocks)
+    if (!isMockEmail) {
+      // Send via Gmail API (Primary and only production method)
       await emailSender(mailOptions, "OTP")
-    } else if (!isProduction || isDebug || isMockEmail) {
-      // In local/dev or mock mode, log the OTP code to the console for manual testing.
+    } else {
+      // In mock mode, log the OTP code to the console
       console.log('--------------------------------------------------');
-      console.log(`[VaultSync:OTP] 🔐 ${isMockEmail ? 'MOCK' : 'Dev'} MODE ACCESS CODE`);
+      console.log(`[VaultSync:OTP] 🔐 MOCK MODE ACCESS CODE`);
       console.log(`[VaultSync:OTP] EMAIL: ${normalizedEmail}`);
       console.log(`[VaultSync:OTP] CODE:  ${code}`);
       console.log('--------------------------------------------------');
 
-      if (isMockEmail && isProduction) {
+      if (isProduction) {
         return { success: true, message: `OTP sent (MOCK MODE: ${code})` }
       }
-    } else {
-      // In production without Resend configured, fail clearly.
-      const errorMsg = "RESEND_API_KEY is missing. Please configure it in your environment variables or Render dashboard."
-      console.error(`[VaultSync:OTP] ${errorMsg}`)
-      return { success: false, message: errorMsg }
     }
 
     return { success: true, message: "OTP sent successfully" }
@@ -187,8 +148,11 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
 
 /**
  * Verify OTP code with rate limiting.
+ * @param email User's email
+ * @param code OTP code
+ * @param otpModel Optional OTP model for dependency injection (testing)
  */
-export async function verifyOTP(email: string, code: string): Promise<{ success: boolean; message: string; code?: string }> {
+export async function verifyOTP(email: string, code: string, otpModel = OTP): Promise<{ success: boolean; message: string; code?: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase()
 
@@ -203,7 +167,7 @@ export async function verifyOTP(email: string, code: string): Promise<{ success:
     }
 
     const now = new Date().toISOString().replace("T", " ").substring(0, 19)
-    const otp = await OTP.findOne({
+    const otp = await otpModel.findOne({
       email: normalizedEmail,
       code,
       verified: false,
@@ -236,11 +200,12 @@ export async function verifyOTP(email: string, code: string): Promise<{ success:
 
 /**
  * Clean up expired OTPs.
+ * @param otpModel Optional OTP model for dependency injection (testing)
  */
-export async function cleanupExpiredOTPs(): Promise<void> {
+export async function cleanupExpiredOTPs(otpModel = OTP): Promise<void> {
   try {
     const now = new Date().toISOString().replace("T", " ").substring(0, 19)
-    const result = await OTP.deleteMany({ expiresAt: { $lt: now } })
+    const result = await otpModel.deleteMany({ expiresAt: { $lt: now } })
     if (result.deletedCount > 0) {
       console.log(`[VaultSync:OTP] Cleaned up ${result.deletedCount} expired OTPs`)
     }
