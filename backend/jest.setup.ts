@@ -16,7 +16,7 @@ beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
     const uri = mongoServer.getUri();
     await mongoose.connect(uri);
-}, 30000); // 30s timeout for the binary download (first run only)
+}, 1200000); // 20 min timeout for the binary download (first run only)
 
 // Drop all collections after each test for clean state.
 afterEach(async () => {
