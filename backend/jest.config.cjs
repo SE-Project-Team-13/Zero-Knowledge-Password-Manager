@@ -13,9 +13,21 @@ module.exports = {
             'ts-jest',
             {
                 useESM: true,
+                tsconfig: {
+                    module: 'ESNext',
+                    moduleResolution: 'Bundler',
+                },
             },
         ],
     },
+    // Global setup: spin up MongoMemoryServer, connect Mongoose, clean up after each test
+    setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+    // Force Jest to exit after all tests finish (prevents hanging on open DB handles)
+    forceExit: true,
+    // Allow time for in-memory MongoDB ops and async service calls
+    testTimeout: 15000,
+    // Run test suites serially to avoid MongoMemoryServer port conflicts
+    maxWorkers: 1,
     collectCoverageFrom: [
         'src/**/*.ts',
         '!src/**/*.d.ts',
