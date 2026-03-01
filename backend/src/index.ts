@@ -51,10 +51,14 @@ async function start() {
     logger.info("Starting blind synchronization backend with MongoDB...")
 
     // Initialize database connection
-    await connectToDatabase(MONGODB_URI)
+    if (process.env.NODE_ENV !== "test") {
+      await connectToDatabase(MONGODB_URI)
+    }
 
     // Initialize scheduled jobs (Cron)
-    initScheduledJobs()
+    if (process.env.NODE_ENV !== "test") {
+      initScheduledJobs()
+    }
 
     const app = express()
 

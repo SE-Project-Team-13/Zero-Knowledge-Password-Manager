@@ -1,6 +1,6 @@
 import crypto from "crypto"
 import { OTP } from "../database/models.js"
-import { sendEmail } from "./emailService.js"
+import { sendGmail } from "./gmailService.js"
 
 const isProduction = process.env.NODE_ENV === "production"
 const isDebug = process.env.DEBUG === "true"
@@ -17,23 +17,29 @@ function generateOTPCode(): string {
   return crypto.randomInt(100000, 999999).toString()
 }
 
-// Define email sender type matches the imported function signature
-type EmailSender = typeof sendEmail;
+// Define email options type
+interface MailOptions {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}
 
 /**
  * Generates and sends an OTP to the user's registered email address.
  * @param email User's email
+ * @param otpModel Optional OTP model for dependency injection (testing)
  * @param emailSender Optional email sender function for dependency injection (testing)
  */
-export async function sendOTP(email: string, emailSender: EmailSender = sendEmail): Promise<{ success: boolean; message: string }> {
+export async function sendOTP(email: string, otpModel = OTP, emailSender = sendGmail): Promise<{ success: boolean; message: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase()
-    await OTP.deleteMany({ email: normalizedEmail })
+    await otpModel.deleteMany({ email: normalizedEmail })
 
     const code = generateOTPCode()
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
 
-    await OTP.create({
+    await otpModel.create({
       email: normalizedEmail,
       code,
       expiresAt,
@@ -44,42 +50,93 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
 
     const mailOptions = {
       to: normalizedEmail,
-      subject: `${code} is your verification code`,
+      subject: `Verification Code: ${code}`,
       html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-          <p>Hello,</p>
-          <p>Use the following code to verify your account login:</p>
-          <p style="font-size: 32px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">${code}</p>
-          <p>This code will expire in 10 minutes.</p>
-          <p style="color: #888; font-size: 12px; margin-top: 40px; border-top: 1px solid #eee; padding-top: 10px;">
-            If you didn't request this, you can safely ignore this email.
-          </p>
-        </div>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Verification Code</title>
+        </head>
+        <body style="margin:0;padding:0;background-color:#f8fafc;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;padding:48px 20px;">
+            <tr>
+              <td align="center">
+                <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -2px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+                  <!-- Header -->
+                  <tr>
+                    <td style="padding:40px 40px 0;text-align:center;">
+                      <div style="margin-bottom:24px;">
+                        <span style="font-size:32px;display:inline-block;margin-bottom:8px;">🔐</span>
+                        <h1 style="margin:0;font-size:24px;color:#1e293b;font-weight:700;letter-spacing:-0.025em;">ZeroPass</h1>
+                      </div>
+                    </td>
+                  </tr>
+                  
+                  <!-- Body -->
+                  <tr>
+                    <td style="padding:0 40px 40px;">
+                      <h2 style="margin:0 0 12px;font-size:18px;color:#334155;font-weight:600;text-align:center;">Verification Required</h2>
+                      <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#64748b;text-align:center;">
+                        To secure your encrypted vault, please use the following one-time code to complete your sign-in:
+                      </p>
+                      
+                      <!-- OTP Code Box -->
+                      <div style="background-color:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:32px;text-align:center;margin-bottom:32px;">
+                        <span style="font-size:42px;font-weight:800;color:#0284c7;letter-spacing:8px;font-family:monospace;display:block;">${code}</span>
+                      </div>
+                      
+                      <div style="text-align:center;margin-bottom:32px;">
+                        <p style="margin:0;font-size:14px;color:#94a3b8;display:flex;align-items:center;justify-content:center;">
+                          ⏱ Expires in 10 minutes
+                        </p>
+                      </div>
+                      
+                      <hr style="border:0;border-top:1px solid #f1f5f9;margin:32px 0;">
+                      
+                      <div style="background-color:#fff7ed;border-radius:8px;padding:16px;border:1px solid #ffedd5;">
+                        <p style="margin:0;font-size:13px;line-height:1.5;color:#9a3412;">
+                          <strong>Security Note:</strong> If you did not request this code, your vault remains encrypted and secure. You can safely ignore this email.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                  
+                  <!-- Footer -->
+                  <tr>
+                    <td style="padding:0 40px 40px;text-align:center;">
+                      <p style="margin:0;font-size:12px;color:#cbd5e1;">
+                        &copy; ${new Date().getFullYear()} ZeroPass. End-to-end encrypted password management.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
       `,
-      text: `Your verification code is: ${code}\n\nValid for 10 minutes.\n\nIf you didn't request this, ignore this email.`,
+      text: `ZeroPass Verification Code: ${code}\n\nTo access your encrypted vault, please use this one-time code: ${code}\n\nThis code will expire in 10 minutes.\n\nIf you did not request this, you can safely ignore this email — your vault remains secure.`,
     }
 
     const isMockEmail = process.env.MOCK_EMAIL === "true"
 
-    if (process.env.SENDGRID_API_KEY && !isMockEmail) {
-      // Production: send via SendGrid HTTP API (works on Render, bypasses SMTP blocks)
+    if (!isMockEmail) {
+      // Send via Gmail API (Primary and only production method)
       await emailSender(mailOptions, "OTP")
-    } else if (!isProduction || isDebug || isMockEmail) {
-      // In local/dev or mock mode, log the OTP code to the console for manual testing.
+    } else {
+      // In mock mode, log the OTP code to the console
       console.log('--------------------------------------------------');
-      console.log(`[VaultSync:OTP] 🔐 ${isMockEmail ? 'MOCK' : 'Dev'} MODE ACCESS CODE`);
+      console.log(`[VaultSync:OTP] 🔐 MOCK MODE ACCESS CODE`);
       console.log(`[VaultSync:OTP] EMAIL: ${normalizedEmail}`);
       console.log(`[VaultSync:OTP] CODE:  ${code}`);
       console.log('--------------------------------------------------');
 
-      if (isMockEmail && isProduction) {
+      if (isProduction) {
         return { success: true, message: `OTP sent (MOCK MODE: ${code})` }
       }
-    } else {
-      // In production without SendGrid configured, fail clearly.
-      const errorMsg = "SENDGRID_API_KEY is missing. Please configure it in your environment variables or Render dashboard."
-      console.error(`[VaultSync:OTP] ${errorMsg}`)
-      return { success: false, message: errorMsg }
     }
 
     return { success: true, message: "OTP sent successfully" }
@@ -91,8 +148,11 @@ export async function sendOTP(email: string, emailSender: EmailSender = sendEmai
 
 /**
  * Verify OTP code with rate limiting.
+ * @param email User's email
+ * @param code OTP code
+ * @param otpModel Optional OTP model for dependency injection (testing)
  */
-export async function verifyOTP(email: string, code: string): Promise<{ success: boolean; message: string; code?: string }> {
+export async function verifyOTP(email: string, code: string, otpModel = OTP): Promise<{ success: boolean; message: string; code?: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase()
 
@@ -107,7 +167,7 @@ export async function verifyOTP(email: string, code: string): Promise<{ success:
     }
 
     const now = new Date().toISOString().replace("T", " ").substring(0, 19)
-    const otp = await OTP.findOne({
+    const otp = await otpModel.findOne({
       email: normalizedEmail,
       code,
       verified: false,
@@ -140,11 +200,12 @@ export async function verifyOTP(email: string, code: string): Promise<{ success:
 
 /**
  * Clean up expired OTPs.
+ * @param otpModel Optional OTP model for dependency injection (testing)
  */
-export async function cleanupExpiredOTPs(): Promise<void> {
+export async function cleanupExpiredOTPs(otpModel = OTP): Promise<void> {
   try {
     const now = new Date().toISOString().replace("T", " ").substring(0, 19)
-    const result = await OTP.deleteMany({ expiresAt: { $lt: now } })
+    const result = await otpModel.deleteMany({ expiresAt: { $lt: now } })
     if (result.deletedCount > 0) {
       console.log(`[VaultSync:OTP] Cleaned up ${result.deletedCount} expired OTPs`)
     }
