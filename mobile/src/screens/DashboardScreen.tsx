@@ -30,25 +30,20 @@ export default function DashboardScreen() {
         if (masterKey && userId) loadVault(masterKey, userId);
     }, [masterKey, userId]);
 
-    const greeting = () => {
-        const h = new Date().getHours();
-        if (h < 12) return 'Good morning';
-        if (h < 18) return 'Good afternoon';
-        return 'Good evening';
-    };
+    useEffect(() => {
+        if (masterKey && userId) loadVault(masterKey, userId);
+    }, [masterKey, userId]);
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 80 }}>
             {/* Header */}
             <View style={styles.header}>
-                <View style={styles.glow} />
                 <View style={styles.logoContainer}>
                     <Image 
                         source={require('../../assets/logo.png')} 
                         style={styles.logoImage}
                     />
                 </View>
-                <Text style={styles.greeting}>{greeting()}</Text>
                 <Text style={styles.appName}>ZeroKnowledge <Text style={{ color: Colors.primary }}>Vault</Text></Text>
                 <Text style={styles.subtext}>Your passwords, encrypted end-to-end</Text>
             </View>
@@ -125,16 +120,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.md, overflow: 'hidden', position: 'relative',
         borderBottomWidth: 1, borderBottomColor: Colors.border,
     },
-    glow: {
-        position: 'absolute', top: -40, width: 200, height: 200, borderRadius: 100,
-        backgroundColor: Colors.primary, opacity: 0.06,
-    },
     logoContainer: {
-        width: 72, height: 72,
+        width: 100, height: 100,
         justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.sm,
     },
     logoImage: {
-        width: 60, height: 60, borderRadius: Radius.md,
+        width: 84, height: 84, borderRadius: Radius.lg,
     },
     greeting: { ...Typography.muted, fontSize: 13, marginBottom: 4 },
     appName: { ...Typography.heading, fontSize: 26, marginBottom: 4 },
