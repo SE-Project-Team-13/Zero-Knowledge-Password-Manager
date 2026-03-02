@@ -1,4 +1,4 @@
-﻿# Zero-Knowledge Password Manager
+﻿# Zenith Vault
 
 > **A state-of-the-art, high-security password management system built with a true zero-knowledge architecture.**
 
@@ -6,7 +6,7 @@
 [![Backend](https://img.shields.io/badge/Backend-Node.js%20%7C%20MongoDB-green?style=for-the-badge&logo=node.js)](https://nodejs.org)
 [![Frontend](https://img.shields.io/badge/Frontend-Next.js%20%7C%20Tailwind-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
 
-This repository contains the source code for the **Zero-Knowledge Password Manager**, a secure vault that ensures your data remains private even if the server is compromised.
+This repository contains the source code for **Zenith Vault**, a secure password management system that ensures your data remains private even if the server is compromised.
 
 ---
 
@@ -49,7 +49,7 @@ This repository contains the source code for the **Zero-Knowledge Password Manag
 
 ## Introduction
 
-**Zero-Knowledge Password Manager** handles your secrets without ever knowing them. Your master password derives an encryption key locally on your device using **Argon2id**. This key is used to encrypt your vault data with **AES-256-GCM** before it ever leaves your browser. The server only sees encrypted blobs.
+**Zenith Vault** handles your secrets without ever knowing them. Your master password derives an encryption key locally on your device using **Argon2id**. This key is used to encrypt your vault data with **AES-256-GCM** before it ever leaves your browser. The server only sees encrypted blobs.
 
 ## Features
 
@@ -108,7 +108,7 @@ This project relies on the following core libraries and technologies:
 ## Project Structure
 
 ```
-Zero-Knowledge-Password-Manager/
+zenith-vault/
 ├── frontend/              # Next.js web application
 │   ├── crypto-engine/    # Core cryptographic library
 │   └── extension/        # Browser extension
@@ -123,10 +123,10 @@ To install the project locally, run the following commands:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/SE-Project-Team-13/Zero-Knowledge-Password-Manager.git
+git clone https://github.com/SE-Project-Team-13/zenith-vault.git
 
 # 2. Navigate to the directory
-cd Zero-Knowledge-Password-Manager
+cd zenith-vault
 
 # 3. Install dependencies (Workspaces)
 npm install
@@ -232,6 +232,7 @@ npm list --depth=0
 ```
 
 Expected output should show:
+
 - `@password-manager/backend`
 - `@password-manager/crypto-engine`
 - `password-manager` (frontend)
@@ -252,6 +253,7 @@ npm run dev:backend
 ```
 
 **Expected output:**
+
 ```
 [VaultSync] Blind sync backend listening on port 3001
 [VaultSync] MongoDB connected successfully
@@ -267,6 +269,7 @@ npm run dev
 ```
 
 **Expected output:**
+
 ```
 ▲ Next.js 16.0.10
 - Local:        http://localhost:3000
@@ -289,6 +292,7 @@ npm test
 ```
 
 **Test Coverage Includes:**
+
 - Authentication service tests
 - Crypto proof validation
 - Session management
@@ -297,6 +301,7 @@ npm test
 - Recovery key generation
 
 **Expected output:**
+
 ```
 PASS  __tests__/services/auth/registration.test.ts
 PASS  __tests__/services/auth/sessions.test.ts
@@ -316,12 +321,14 @@ npm test
 ```
 
 **Test Coverage Includes:**
+
 - AES-256-GCM encryption/decryption
 - Argon2id key derivation
 - Vault encryption/decryption
 - Data integrity validation
 
 **Expected output:**
+
 ```
 ✓ AES encryption produces different ciphertext for same plaintext
 ✓ Argon2id key derivation is deterministic
@@ -337,6 +344,7 @@ npm test
 ```
 
 **Test Coverage Includes:**
+
 - PDF service (Emergency Kit generation)
 - Clipboard utilities
 - Recovery key validation
@@ -463,6 +471,6 @@ The server acts as a "dumb store". It handles versioning and conflict resolution
 
 For additional help:
 
-- **Issues**: Report bugs or request features on [GitHub Issues](https://github.com/SE-Project-Team-13/Zero-Knowledge-Password-Manager/issues)
+- **Issues**: Report bugs or request features on [GitHub Issues](https://github.com/SE-Project-Team-13/zenith-vault/issues)
 - **Architecture Diagrams**: See the `UML diagrams/` folder for visual documentation
 - **API Documentation**: Backend API endpoints are documented in `backend/README.md`

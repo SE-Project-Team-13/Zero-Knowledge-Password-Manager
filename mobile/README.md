@@ -1,6 +1,6 @@
-# ZeroPass Mobile Client
+# Zenith Vault Mobile Client
 
-This is the React Native mobile client for the Zero-Knowledge Password Manager. It implements a secure, zero-knowledge authentication flow that ensures your Master Password never leaves your device.
+This is the React Native mobile client for **Zenith Vault**, a secure, zero-knowledge password manager. It implements a secure authentication flow that ensures your Master Password never leaves your device.
 
 ## Features (Current Phase)
 

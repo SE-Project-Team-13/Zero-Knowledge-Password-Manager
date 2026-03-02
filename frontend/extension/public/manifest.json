@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Zero-Knowledge Password Manager",
+  "name": "Zenith Vault",
   "version": "1.0.0",
-  "description": "Secure password manager with client-side encryption and zero-knowledge architecture",
+  "description": "Secure Zero-Knowledge Password Manager with client-side encryption",
   "permissions": [
     "storage",
     "activeTab"

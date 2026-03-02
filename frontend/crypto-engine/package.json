@@ -1,7 +1,7 @@
 {
   "name": "@password-manager/crypto-engine",
   "version": "1.0.0",
-  "description": "Zero-knowledge cryptographic core for password managers",
+  "description": "Zero-knowledge cryptographic core for Zenith Vault",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

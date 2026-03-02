@@ -146,7 +146,7 @@ export default function LoginScreen({ navigation }: any) {
                     resizeMode="cover"
                   />
                 </View>
-                <Text style={styles.title}>ZeroPass</Text>
+                <Text style={styles.title}>Zenith Vault</Text>
                 <Text style={styles.subtitle}>
                   {isRegistering ? "Create your secure vault" : "Unlock your secure vault"}
                 </Text>
@@ -305,7 +305,7 @@ export default function LoginScreen({ navigation }: any) {
                 onPress={toggleMode}
               >
                 <Text style={styles.switchText}>
-                  {isRegistering ? "Already have an account? Sign In" : "New to ZeroPass? Create Account"}
+                  {isRegistering ? "Already have an account? Sign In" : "New to Zenith Vault? Create Account"}
                 </Text>
               </TouchableOpacity>
 

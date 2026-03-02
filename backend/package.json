@@ -1,7 +1,7 @@
 {
   "name": "@password-manager/backend",
   "version": "1.0.0",
-  "description": "Blind synchronization backend for zero-knowledge password manager",
+  "description": "Blind synchronization backend for Zenith Vault (Zero-Knowledge Passwords)",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {

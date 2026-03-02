@@ -39,7 +39,7 @@ export function generateEmergencyKitPDF(data: EmergencyKitData): void {
 
     doc.setFontSize(9)
     doc.setFont("helvetica", "normal")
-    doc.text("ZeroKnowledge Vault - Secure Offline Recovery Access", pageWidth / 2, 24, { align: "center" })
+    doc.text("Zenith Vault - Secure Offline Recovery Access", pageWidth / 2, 24, { align: "center" })
 
     y = 40
 
@@ -137,7 +137,7 @@ export function generateEmergencyKitPDF(data: EmergencyKitData): void {
     doc.setFontSize(9)
     doc.setFont("helvetica", "normal")
     const steps = [
-        "1. Go to the ZeroKnowledge Vault login page.",
+        "1. Go to the Zenith Vault login page.",
         "2. Click 'Forgot Password?' or 'Use Recovery Key'.",
         "3. Enter your email and the recovery key above (dashes are optional).",
         "4. Follow the prompts to verify and set a NEW master password.",
@@ -174,12 +174,12 @@ export function generateEmergencyKitPDF(data: EmergencyKitData): void {
     doc.setFontSize(7)
     doc.setTextColor(...mutedColor)
     doc.text(
-        "ZeroKnowledge Vault - Zero-Knowledge Encryption. Your password is never sent to our servers.",
+        "Zenith Vault - Zero-Knowledge Encryption. Your password is never sent to our servers.",
         pageWidth / 2, footerY, { align: "center" }
     )
 
     // Save
-    const fileName = `ZeroKnowledge_Recovery_${data.email.replace(/[^a-z0-9]/gi, '_')}.pdf`
+    const fileName = `Zenith_Recovery_${data.email.replace(/[^a-z0-9]/gi, '_')}.pdf`
     doc.save(fileName)
 }
 

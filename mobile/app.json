@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "ZeroPass",
-    "slug": "zeropass-mobile",
+    "name": "Zenith Vault",
+    "slug": "zenith-vault-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -19,7 +19,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.zeropass.mobile"
+      "package": "com.zenithvault.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"

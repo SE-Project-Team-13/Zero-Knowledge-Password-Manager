@@ -1,7 +1,7 @@
 {
   "name": "@password-manager/extension",
   "version": "1.0.0",
-  "description": "Zero-knowledge password manager browser extension (Manifest V3)",
+  "description": "Zenith Vault browser extension (Secure Zero-Knowledge Password Manager)",
   "type": "module",
   "scripts": {
     "build": "node build.js",

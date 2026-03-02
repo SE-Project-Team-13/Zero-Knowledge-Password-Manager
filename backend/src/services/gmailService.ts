@@ -33,7 +33,7 @@ export async function sendGmail(
     const subject = options.subject;
     const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString("base64")}?=`;
     const messageParts = [
-      `From: "ZeroPass" <${userEmail}>`,
+      `From: "Zenith Vault" <${userEmail}>`,
       `To: ${options.to}`,
       `Content-Type: text/html; charset=utf-8`,
       `MIME-Version: 1.0`,

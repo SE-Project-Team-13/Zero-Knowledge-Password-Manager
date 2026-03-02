@@ -44,7 +44,7 @@ export default function DashboardScreen() {
                         style={styles.logoImage}
                     />
                 </View>
-                <Text style={styles.appName}>ZeroKnowledge <Text style={{ color: Colors.primary }}>Vault</Text></Text>
+                <Text style={styles.appName}>Zenith <Text style={{ color: Colors.primary }}>Vault</Text></Text>
                 <Text style={styles.subtext}>Your passwords, encrypted end-to-end</Text>
             </View>
 

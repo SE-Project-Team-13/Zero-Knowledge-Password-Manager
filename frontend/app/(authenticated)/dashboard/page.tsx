@@ -690,7 +690,7 @@ export default function DashboardPage() {
             <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit">
               <Shield className="h-10 w-10 text-primary" />
             </div>
-            <CardTitle className="text-2xl font-bold">Secure Vault</CardTitle>
+            <CardTitle className="text-2xl font-bold">Zenith Vault</CardTitle>
             <CardDescription>
               Authentication required to access your passwords
             </CardDescription>
@@ -941,7 +941,7 @@ export default function DashboardPage() {
           </div>
           <CardHeader>
             <CardTitle className="text-3xl font-bold text-foreground font-heading">
-              Secure Vault
+              Zenith Vault
             </CardTitle>
             <CardDescription className="text-muted-foreground flex items-center gap-2">
               <span className="inline-flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>

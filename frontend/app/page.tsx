@@ -230,12 +230,12 @@ export default function AuthPage() {
           <div className="mx-auto mb-4">
             <img 
               src="/logo.png" 
-              alt="ZeroPass Logo" 
+              alt="Zenith Vault Logo" 
               className="h-24 w-24 mx-auto object-contain"
             />
           </div>
           <h1 className="text-3xl font-bold text-foreground mb-2 font-heading tracking-tight">
-            ZeroKnowledge <span className="text-primary">Vault</span>
+            Zenith <span className="text-primary">Vault</span>
           </h1>
           <p className="text-muted-foreground text-sm max-w-xs mx-auto">
             Your passwords, encrypted end-to-end
@@ -545,7 +545,7 @@ export default function AuthPage() {
               Zero-Knowledge
             </span>
           </div>
-          <p>© 2026 ZeroKnowledge Password Manager</p>
+          <p>© 2026 Zenith Vault - Secure Password Manager</p>
         </div>
       </div>
     </div>

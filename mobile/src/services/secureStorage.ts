@@ -1,8 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const ENCRYPTED_KEY_STORAGE_KEY = 'zeropass_encrypted_account_key';
-const SESSION_ID_KEY = 'zeropass_session_id';
+const ENCRYPTED_KEY_STORAGE_KEY = 'zenithvault_encrypted_account_key';
+const SESSION_ID_KEY = 'zenithvault_session_id';
 
 /**
  * Cross-platform storage: uses expo-secure-store on native, localStorage on web.

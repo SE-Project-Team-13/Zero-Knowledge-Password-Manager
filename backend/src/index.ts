@@ -1,5 +1,5 @@
 /**
- * Blind synchronization backend for zero-knowledge password manager.
+ * Blind synchronization backend for Zenith Vault (Zero-Knowledge Passwords).
  */
 
 import "dotenv/config"
@@ -292,3 +292,4 @@ async function start() {
 }
 
 start()
+ 

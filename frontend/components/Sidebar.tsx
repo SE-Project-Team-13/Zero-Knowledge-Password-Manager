@@ -113,12 +113,9 @@ export function Sidebar({
             />
           </div>
           {!isCollapsed && (
-            <div className="flex flex-col overflow-hidden">
-              <h1 className="text-xl font-bold text-foreground tracking-tight font-heading truncate leading-none">
-                ZeroKnowledge
-              </h1>
-              <span className="text-primary font-bold text-lg leading-none">Vault</span>
-            </div>
+            <h1 className="text-xl font-bold text-foreground tracking-tight font-heading truncate leading-none">
+              Zenith <span className="text-primary font-bold">Vault</span>
+            </h1>
           )}
         </div>
 

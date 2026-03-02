@@ -86,7 +86,7 @@ export async function sendOTP(email: string, otpModel = OTP, emailSender = sendG
                     <td style="padding:40px 40px 0;text-align:center;">
                       <div style="margin-bottom:24px;">
                         <span style="font-size:32px;display:inline-block;margin-bottom:8px;">🔐</span>
-                        <h1 style="margin:0;font-size:24px;color:#1e293b;font-weight:700;letter-spacing:-0.025em;">ZeroPass</h1>
+                        <h1 style="margin:0;font-size:24px;color:#1e293b;font-weight:700;letter-spacing:-0.025em;">Zenith Vault</h1>
                       </div>
                     </td>
                   </tr>
@@ -124,7 +124,7 @@ export async function sendOTP(email: string, otpModel = OTP, emailSender = sendG
                   <tr>
                     <td style="padding:0 40px 40px;text-align:center;">
                       <p style="margin:0;font-size:12px;color:#cbd5e1;">
-                        &copy; ${new Date().getFullYear()} ZeroPass. End-to-end encrypted password management.
+                        &copy; ${new Date().getFullYear()} Zenith Vault. End-to-end encrypted password management.
                       </p>
                     </td>
                   </tr>
@@ -135,7 +135,7 @@ export async function sendOTP(email: string, otpModel = OTP, emailSender = sendG
         </body>
         </html>
       `,
-      text: `ZeroPass Verification Code: ${code}\n\nTo access your encrypted vault, please use this one-time code: ${code}\n\nThis code will expire in 10 minutes.\n\nIf you did not request this, you can safely ignore this email — your vault remains secure.`,
+      text: `Zenith Vault Verification Code: ${code}\n\nTo access your encrypted vault, please use this one-time code: ${code}\n\nThis code will expire in 10 minutes.\n\nIf you did not request this, you can safely ignore this email — your vault remains secure.`,
     }
 
     const isMockEmail = process.env.MOCK_EMAIL === "true"

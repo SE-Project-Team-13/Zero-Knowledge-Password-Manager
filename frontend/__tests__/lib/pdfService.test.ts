@@ -37,10 +37,10 @@ describe('PDF Service - Logic', () => {
         console.log(`Input Email: "${email}"`);
         
         const safeEmail = email.replace(/[^a-z0-9]/gi, '_');
-        const fileName = `ZeroKnowledge_Recovery_${safeEmail}.pdf`;
+        const fileName = `Zenith_Recovery_${safeEmail}.pdf`;
         console.log(`Output Filename: "${fileName}"`);
         
-        expect(fileName).toBe('ZeroKnowledge_Recovery_test_user_example_com.pdf');
+        expect(fileName).toBe('Zenith_Recovery_test_user_example_com.pdf');
         console.log('Result: Success');
     });
 });

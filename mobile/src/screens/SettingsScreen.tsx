@@ -184,7 +184,7 @@ export default function SettingsScreen() {
                         <Text style={styles.badgeText}>Zero-Knowledge</Text>
                     </View>
                 </View>
-                <Text style={styles.footerText}>© 2026 ZeroKnowledge Password Manager</Text>
+                <Text style={styles.footerText}>© 2026 Zenith Vault - Secure Password Manager</Text>
             </View>
         </ScrollView>
     );

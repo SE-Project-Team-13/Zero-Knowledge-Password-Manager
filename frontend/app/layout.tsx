@@ -6,8 +6,8 @@ const outfit = Outfit({ subsets: ["latin"], variable: '--font-outfit' });
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: '--font-jakarta' });
 
 export const metadata: Metadata = {
-  title: 'Secure Vault',
-  description: 'Zero-Knowledge Password Manager',
+  title: 'Zenith Vault',
+  description: 'Secure Zero-Knowledge Password Manager',
   icons: {
     icon: 'data:,',
   },
