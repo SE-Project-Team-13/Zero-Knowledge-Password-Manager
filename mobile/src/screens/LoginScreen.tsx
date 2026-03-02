@@ -15,6 +15,41 @@ export default function LoginScreen({ navigation }: any) {
   const { login, register, isLoading, error } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
 
+  const [strength, setStrength] = useState(0);
+  const [criteria, setCriteria] = useState({
+    length: false,
+    uppercase: false,
+    lowercase: false,
+    number: false,
+    special: false
+  });
+
+  const checkStrength = (pass: string) => {
+    if (!pass || !isRegistering) {
+      setStrength(0);
+      setCriteria({
+        length: false,
+        uppercase: false,
+        lowercase: false,
+        number: false,
+        special: false
+      });
+      return;
+    }
+
+    const newCriteria = {
+      length: pass.length >= 8,
+      uppercase: /[A-Z]/.test(pass),
+      lowercase: /[a-z]/.test(pass),
+      number: /[0-9]/.test(pass),
+      special: /[^A-Za-z0-9]/.test(pass)
+    };
+
+    setCriteria(newCriteria);
+    const satisfied = Object.values(newCriteria).filter(Boolean).length;
+    setStrength(satisfied / 5);
+  };
+
   const handleAction = async () => {
     if (!email || !password) {
       Alert.alert("Input Required", "Please enter your email and master password.");
@@ -30,8 +65,13 @@ export default function LoginScreen({ navigation }: any) {
             Alert.alert("Password Mismatch", "Passwords do not match.");
             return;
         }
-        if (password.length < 8) {
-            Alert.alert("Weak Password", "Password must be at least 8 characters.");
+
+        const satisfiedCount = Object.values(criteria).filter(Boolean).length;
+        if (satisfiedCount < 5) {
+            Alert.alert(
+              "Weak Password", 
+              "Please meet all security requirements: 8+ chars, uppercase, lowercase, number, and special character."
+            );
             return;
         }
 
@@ -58,6 +98,30 @@ export default function LoginScreen({ navigation }: any) {
       setPassword('');
       setConfirmPassword('');
       setShowPassword(false);
+      setStrength(0);
+      setCriteria({
+        length: false,
+        uppercase: false,
+        lowercase: false,
+        number: false,
+        special: false
+      });
+  };
+
+  const getStrengthColor = (s: number) => {
+    if (s <= 0.2) return Colors.destructive;
+    if (s <= 0.4) return '#F97316'; // orange-500
+    if (s <= 0.6) return '#FACC15'; // yellow-400
+    if (s <= 0.8) return '#3B82F6'; // blue-500
+    return Colors.success;
+  };
+
+  const getStrengthLabel = (s: number) => {
+    if (s <= 0.2) return 'Very Weak';
+    if (s <= 0.4) return 'Weak';
+    if (s <= 0.6) return 'Medium';
+    if (s <= 0.8) return 'Strong';
+    return 'Very Strong';
   };
 
   return (
@@ -127,13 +191,74 @@ export default function LoginScreen({ navigation }: any) {
                     placeholder="Master Password"
                     placeholderTextColor={Colors.textDim}
                     value={password}
-                    onChangeText={setPassword}
+                    onChangeText={(val) => {
+                      setPassword(val);
+                      checkStrength(val);
+                    }}
                     secureTextEntry={!showPassword}
                   />
                   <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                     <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={Colors.textMuted} />
                   </TouchableOpacity>
                 </View>
+
+                {/* Password Strength Indicator (Register Only) */}
+                {isRegistering && (
+                  <View style={styles.strengthContainer}>
+                    <View style={styles.strengthHeader}>
+                      <Text style={styles.strengthLabel}>Password Strength</Text>
+                      <Text style={[styles.strengthLevel, { color: getStrengthColor(strength) }]}>
+                        {getStrengthLabel(strength)}
+                      </Text>
+                    </View>
+                    <View style={styles.progressBarBackground}>
+                      <View style={[styles.progressBarForeground, { width: `${strength * 100}%`, backgroundColor: getStrengthColor(strength) }]} />
+                    </View>
+                    
+                    <View style={styles.criteriaGrid}>
+                        <View style={styles.criteriaItem}>
+                            <Ionicons 
+                              name={criteria.length ? "checkmark-circle" : "ellipse-outline"} 
+                              size={14} 
+                              color={criteria.length ? Colors.success : Colors.textMuted} 
+                            />
+                            <Text style={[styles.criteriaText, criteria.length && styles.criteriaActive]}>8+ Chars</Text>
+                        </View>
+                        <View style={styles.criteriaItem}>
+                            <Ionicons 
+                              name={criteria.uppercase ? "checkmark-circle" : "ellipse-outline"} 
+                              size={14} 
+                              color={criteria.uppercase ? Colors.success : Colors.textMuted} 
+                            />
+                            <Text style={[styles.criteriaText, criteria.uppercase && styles.criteriaActive]}>Uppercase</Text>
+                        </View>
+                        <View style={styles.criteriaItem}>
+                            <Ionicons 
+                              name={criteria.lowercase ? "checkmark-circle" : "ellipse-outline"} 
+                              size={14} 
+                              color={criteria.lowercase ? Colors.success : Colors.textMuted} 
+                            />
+                            <Text style={[styles.criteriaText, criteria.lowercase && styles.criteriaActive]}>Lowercase</Text>
+                        </View>
+                        <View style={styles.criteriaItem}>
+                            <Ionicons 
+                              name={criteria.number ? "checkmark-circle" : "ellipse-outline"} 
+                              size={14} 
+                              color={criteria.number ? Colors.success : Colors.textMuted} 
+                            />
+                            <Text style={[styles.criteriaText, criteria.number && styles.criteriaActive]}>Number</Text>
+                        </View>
+                        <View style={styles.criteriaItem}>
+                            <Ionicons 
+                              name={criteria.special ? "checkmark-circle" : "ellipse-outline"} 
+                              size={14} 
+                              color={criteria.special ? Colors.success : Colors.textMuted} 
+                            />
+                            <Text style={[styles.criteriaText, criteria.special && styles.criteriaActive]}>Special Char</Text>
+                        </View>
+                    </View>
+                  </View>
+                )}
 
                 {/* Confirm Password Input (Register Only) */}
                 {isRegistering && (
@@ -161,9 +286,9 @@ export default function LoginScreen({ navigation }: any) {
 
               {/* Action Button */}
               <TouchableOpacity
-                style={styles.button}
+                style={[styles.button, (isRegistering && Object.values(criteria).filter(Boolean).length < 5) && styles.buttonDisabled]}
                 onPress={handleAction}
-                disabled={isLoading}
+                disabled={isLoading || (isRegistering && Object.values(criteria).filter(Boolean).length < 5)}
               >
                 {isLoading ? (
                   <ActivityIndicator color={Colors.background} />
@@ -282,6 +407,11 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
   },
+  buttonDisabled: {
+    backgroundColor: '#3f3f3f',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   buttonText: {
     color: Colors.background,
     fontSize: 16,
@@ -313,6 +443,60 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flex: 1,
     fontSize: 13,
+    fontWeight: '500',
+  },
+  strengthContainer: {
+    marginBottom: 20,
+    backgroundColor: Colors.surfaceElevated,
+    padding: 12,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  strengthHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  strengthLabel: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  strengthLevel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  progressBarBackground: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: Radius.full,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  progressBarForeground: {
+    height: '100%',
+    borderRadius: Radius.full,
+  },
+  criteriaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  criteriaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 4,
+    marginBottom: 2,
+  },
+  criteriaText: {
+    fontSize: 12,
+    color: Colors.textDim,
+    marginLeft: 4,
+  },
+  criteriaActive: {
+    color: Colors.text,
     fontWeight: '500',
   },
 });

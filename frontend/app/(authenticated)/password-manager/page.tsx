@@ -100,7 +100,7 @@ function PasswordManagerContent() {
     }, []);
 
     return (
-        <div className="flex-1 p-4 lg:p-8 space-y-8 max-w-5xl mx-auto w-full">
+        <div className="flex-1 p-4 lg:p-8 pt-20 lg:pt-20 space-y-8 max-w-5xl mx-auto w-full">
             {/* Header with Search and Add Button */}
             <div className="flex items-center gap-3 mb-6">
                 <div className="bg-primary/10 p-3 rounded-xl border border-primary/20">

@@ -888,7 +888,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 w-full">
+    <div className="p-8 pt-20 max-w-7xl mx-auto space-y-8 w-full">
       {/* Breach Alert Banner */}
       {session.isBreached && (
         <div className="bg-destructive/10 border-l-4 border-destructive p-4 m-6 mb-0 rounded-r flex items-start gap-4">

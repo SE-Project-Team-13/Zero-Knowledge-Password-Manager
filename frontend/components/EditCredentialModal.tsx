@@ -147,7 +147,7 @@ export function EditCredentialModal({
               {(() => {
                 const strength = calculatePasswordStrength(formData.password);
                 return (
-                  <span className={`text-[10px] uppercase tracking-wider font-bold ${strength.color.replace("bg-", "text-")}`}>
+                  <span className={`text-xs uppercase tracking-wider font-bold ${strength.color.replace("bg-", "text-")}`}>
                     {strength.label}
                   </span>
                 );
@@ -177,7 +177,7 @@ export function EditCredentialModal({
               {(() => {
                 const strength = calculatePasswordStrength(formData.password);
                 return (
-                  <Progress value={strength.score} className={`h-1.5 bg-secondary ${strength.color}`} />
+                  <Progress value={strength.score} className="h-1.5" indicatorClassName={strength.color} />
                 );
               })()}
             </div>

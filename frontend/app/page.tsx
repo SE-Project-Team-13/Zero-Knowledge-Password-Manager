@@ -25,12 +25,14 @@ import {
   Loader2,
   Sun,
   Moon,
-  User
+  User,
+  Check,
+  XCircle
 } from "lucide-react"
 import { toast } from "sonner"
 import { generateAndDownloadRecoveryKey } from "@/lib/recovery"
 import { apiClient } from "@/lib/api-client"
-import { Check, XCircle } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
 
 /**
  * AuthPage: The main entry point for user authentication (Login/Register).
@@ -58,6 +60,42 @@ export default function AuthPage() {
   const [fullName, setFullName] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Password Strength Logic
+  const [strength, setStrength] = useState(0)
+  const [criteria, setCriteria] = useState({
+    length: false,
+    uppercase: false,
+    lowercase: false,
+    number: false,
+    special: false
+  })
+
+  useEffect(() => {
+    if (!password || isLogin) {
+      setStrength(0)
+      setCriteria({
+        length: false,
+        uppercase: false,
+        lowercase: false,
+        number: false,
+        special: false
+      })
+      return
+    }
+
+    const newCriteria = {
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /[0-9]/.test(password),
+      special: /[^A-Za-z0-9]/.test(password)
+    }
+
+    setCriteria(newCriteria)
+    const satisfied = Object.values(newCriteria).filter(Boolean).length
+    setStrength((satisfied / 5) * 100)
+  }, [password, isLogin])
 
   // Debounced email check
   useEffect(() => {
@@ -106,9 +144,17 @@ export default function AuthPage() {
       return
     }
 
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters")
-      return
+    if (!isLogin) {
+      if (password.length < 8) {
+        toast.error("Password must be at least 8 characters")
+        return
+      }
+      
+      const satisfiedCount = Object.values(criteria).filter(Boolean).length
+      if (satisfiedCount < 5) {
+        toast.error("Please satisfy all password requirements for better security")
+        return
+      }
     }
 
     if (!isLogin && emailStatus === 'exists') {
@@ -290,10 +336,103 @@ export default function AuthPage() {
                   </button>
                 </div>
                 {!isLogin && (
-                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    <ShieldCheck className="h-3 w-3" />
-                    This password encrypts your vault locally. We never see it.
-                  </p>
+                  <div className="space-y-3 pt-1">
+                    <div className="flex items-center justify-between text-sm font-medium">
+                      <span className="text-muted-foreground">Password Strength</span>
+                      <span className={
+                        strength <= 20 ? "text-destructive" :
+                        strength <= 40 ? "text-amber-500" :
+                        strength <= 60 ? "text-yellow-500" :
+                        strength <= 80 ? "text-blue-500" :
+                        "text-emerald-500"
+                      }>
+                        {strength <= 20 ? "Very Weak" :
+                         strength <= 40 ? "Weak" :
+                         strength <= 60 ? "Medium" :
+                         strength <= 80 ? "Strong" :
+                         "Very Strong"}
+                      </span>
+                    </div>
+                    <Progress 
+                      value={strength} 
+                      className="h-1.5 transition-all" 
+                      indicatorClassName={
+                        strength <= 20 ? "bg-destructive" :
+                        strength <= 40 ? "bg-amber-500" :
+                        strength <= 60 ? "bg-yellow-500" :
+                        strength <= 80 ? "bg-blue-500" :
+                        "bg-emerald-500"
+                      }
+                    />
+                    
+                    <div className="grid grid-cols-2 gap-2 p-3 bg-secondary/30 rounded-lg border border-primary/5">
+                      <div className="flex items-center gap-2">
+                         {criteria.length ? (
+                           <div className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-500">
+                             <Check className="h-2.5 w-2.5" />
+                           </div>
+                         ) : (
+                           <div className="flex h-4 w-4 items-center justify-center rounded-full bg-secondary text-muted-foreground/50">
+                             <div className="h-1 w-1 rounded-full bg-current" />
+                           </div>
+                         )}
+                         <span className={`text-xs ${criteria.length ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>8+ Characters</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         {criteria.uppercase ? (
+                           <div className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-500">
+                             <Check className="h-2.5 w-2.5" />
+                           </div>
+                         ) : (
+                           <div className="flex h-4 w-4 items-center justify-center rounded-full bg-secondary text-muted-foreground/50">
+                             <div className="h-1 w-1 rounded-full bg-current" />
+                           </div>
+                         )}
+                         <span className={`text-xs ${criteria.uppercase ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>Uppercase</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         {criteria.lowercase ? (
+                           <div className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-500">
+                             <Check className="h-2.5 w-2.5" />
+                           </div>
+                         ) : (
+                           <div className="flex h-4 w-4 items-center justify-center rounded-full bg-secondary text-muted-foreground/50">
+                             <div className="h-1 w-1 rounded-full bg-current" />
+                           </div>
+                         )}
+                         <span className={`text-xs ${criteria.lowercase ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>Lowercase</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         {criteria.number ? (
+                           <div className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-500">
+                             <Check className="h-2.5 w-2.5" />
+                           </div>
+                         ) : (
+                           <div className="flex h-4 w-4 items-center justify-center rounded-full bg-secondary text-muted-foreground/50">
+                             <div className="h-1 w-1 rounded-full bg-current" />
+                           </div>
+                         )}
+                         <span className={`text-xs ${criteria.number ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>Number</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         {criteria.special ? (
+                           <div className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-500">
+                             <Check className="h-2.5 w-2.5" />
+                           </div>
+                         ) : (
+                           <div className="flex h-4 w-4 items-center justify-center rounded-full bg-secondary text-muted-foreground/50">
+                             <div className="h-1 w-1 rounded-full bg-current" />
+                           </div>
+                         )}
+                         <span className={`text-xs ${criteria.special ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>Special Char</span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <ShieldCheck className="h-3 w-3" />
+                      This password encrypts your vault locally. We never see it.
+                    </p>
+                  </div>
                 )}
               </div>
 
@@ -335,8 +474,8 @@ export default function AuthPage() {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full h-11 mt-4 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all font-heading tracking-wide"
-                disabled={isSubmitting}
+                className="w-full h-11 mt-4 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all font-heading tracking-wide disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSubmitting || (!isLogin && Object.values(criteria).filter(Boolean).length < 5)}
               >
                 {isSubmitting ? (
                   <>

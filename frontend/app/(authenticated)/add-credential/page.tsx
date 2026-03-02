@@ -121,7 +121,7 @@ export default function AddCredentialPage() {
     };
 
     return (
-        <div className="flex-1 p-4 lg:p-8 space-y-8 max-w-5xl mx-auto w-full">
+        <div className="flex-1 p-4 lg:p-8 pt-20 lg:pt-20 space-y-8 max-w-5xl mx-auto w-full">
             <div className="flex items-center gap-3 mb-6">
                 <div className="bg-primary/10 p-3 rounded-xl border border-primary/20">
                     <Plus className="h-6 w-6 text-primary" />
@@ -202,7 +202,7 @@ export default function AddCredentialPage() {
                                     Password
                                 </Label>
                                 <span
-                                    className={`text-[10px] uppercase tracking-wider font-bold ${strength.color.replace("bg-", "text-")}`}
+                                    className={`text-xs uppercase tracking-wider font-bold ${strength.color.replace("bg-", "text-")}`}
                                 >
                                     {strength.label}
                                 </span>
@@ -253,9 +253,10 @@ export default function AddCredentialPage() {
                             <div className="space-y-1">
                                 <Progress
                                     value={strength.score}
-                                    className={`h-1.5 bg-secondary ${strength.color}`}
+                                    className="h-1.5"
+                                    indicatorClassName={strength.color}
                                 />
-                                <p className="text-[10px] text-muted-foreground italic">
+                                <p className="text-xs text-muted-foreground italic">
                                     Strength is calculated locally based on entropy rules.
                                 </p>
                             </div>
