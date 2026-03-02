@@ -988,7 +988,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Main Content Area: Search & List */}
-      <Card className="border-border bg-card/50 backdrop-blur-sm min-h-[500px]">
+        <Card className="border border-primary/50 bg-card/50 backdrop-blur-xl shadow-2xl shadow-primary/5">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -1020,7 +1020,7 @@ export default function DashboardPage() {
                 {filteredEntries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl border border-border bg-card hover:border-primary/50 transition-all hover:shadow-sm gap-4"
+                    className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl border border-border/80 bg-card hover:border-primary transition-all hover:shadow-md gap-4"
                   >
                     <div className="flex items-center gap-4 min-w-0 flex-1">
                       <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 font-bold text-primary">

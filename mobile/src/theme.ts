@@ -1,12 +1,12 @@
 // Shared design tokens — Obsidian & Gold theme
 export const Colors = {
-    background: '#000000',
-    surface: '#0A0A0A',
-    surfaceElevated: '#121212',
-    border: '#1A1A1A',
+    background: '#0A0A0A',
+    surface: '#121212',
+    surfaceElevated: '#1A1A1A',
+    border: '#555555',
     primary: '#FACC15', // Vibrant Yellow-400
     primaryDim: 'rgba(250, 204, 21, 0.12)',
-    primaryBorder: 'rgba(250, 204, 21, 0.25)',
+    primaryBorder: 'rgba(250, 204, 21, 0.4)',
     text: '#FFFFFF',
     textMuted: '#A1A1AA',
     textDim: '#52525B', // Zinc-600

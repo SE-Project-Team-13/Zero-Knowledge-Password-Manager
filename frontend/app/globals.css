@@ -5,7 +5,7 @@
 
 :root {
   /* Obsidian & Gold Theme - High Contrast, Premium, Dark */
-  --background: oklch(0.05 0 0); /* Pure Black with subtle depth */
+  --background: oklch(0.08 0 0); /* Slightly lighter background for better depth */
   --foreground: oklch(0.98 0.01 90); /* Near White with slight warmth */
 
   --card: oklch(0.08 0.01 0);
@@ -29,8 +29,8 @@
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.98 0.01 25);
 
-  --border: oklch(0.15 0.02 0);
-  --input: oklch(0.12 0.02 0);
+  --border: oklch(0.38 0.01 0); /* Adjusted for a softer look */
+  --input: oklch(0.32 0.01 0);
   --ring: oklch(0.86 0.19 89);
 
   --chart-1: oklch(0.86 0.19 89); /* Yellow */
@@ -47,54 +47,9 @@
   --sidebar-primary-foreground: oklch(0.05 0 0);
   --sidebar-accent: oklch(0.12 0.02 90);
   --sidebar-accent-foreground: oklch(0.86 0.19 89);
-  --sidebar-border: oklch(0.12 0.02 0);
-  --sidebar-ring: oklch(0.86 0.19 89);
-}
-
-.light {
-  /* Abyssal Light Theme - Moved to class */
-  --background: oklch(0.98 0.01 240);
-  --foreground: oklch(0.15 0.05 260);
-
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.05 260);
-
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.05 260);
-
-  --primary: oklch(0.45 0.18 260); /* Deep Ocean Blue */
-  --primary-foreground: oklch(0.98 0.01 240);
-
-  --secondary: oklch(0.95 0.02 240);
-  --secondary-foreground: oklch(0.35 0.1 260);
-
-  --muted: oklch(0.95 0.02 240);
-  --muted-foreground: oklch(0.5 0.05 260);
-
-  --accent: oklch(0.92 0.03 260);
-  --accent-foreground: oklch(0.3 0.1 260);
-
-  --destructive: oklch(0.6 0.2 20);
-  --destructive-foreground: oklch(0.98 0 0);
-
-  --border: oklch(0.9 0.02 240);
-  --input: oklch(0.9 0.02 240);
-  --ring: oklch(0.45 0.18 260);
-
-  --chart-1: oklch(0.45 0.18 260);
-  --chart-2: oklch(0.55 0.2 200);
-  --chart-3: oklch(0.65 0.25 310);
-  --chart-4: oklch(0.7 0.15 150);
-  --chart-5: oklch(0.75 0.15 80);
-
-  --sidebar: oklch(0.98 0.01 240);
-  --sidebar-foreground: oklch(0.15 0.05 260);
-  --sidebar-primary: oklch(0.45 0.18 260);
-  --sidebar-primary-foreground: oklch(0.98 0.01 240);
-  --sidebar-accent: oklch(0.95 0.02 240);
-  --sidebar-accent-foreground: oklch(0.35 0.1 260);
-  --sidebar-border: oklch(0.9 0.02 240);
-  --sidebar-ring: oklch(0.45 0.18 260);
+  --sidebar-border: oklch(0.4 0.01 0);
+  /* Custom variables for theme persistence */
+  --radius: 0.75rem;
 }
 
 @theme inline {
@@ -161,6 +116,71 @@
     }
   }
 }
+
+
+.light {
+  /* Aligned with Obsidian & Gold Theme */
+  --background: oklch(0.98 0.01 90);
+  --foreground: oklch(0.1 0.02 0);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.1 0.02 0);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.1 0.02 0);
+
+  --primary: oklch(0.55 0.15 89); /* Darker Gold for visibility on light */
+  --primary-foreground: oklch(1 0 0);
+
+  --secondary: oklch(0.95 0.02 90);
+  --secondary-foreground: oklch(0.3 0.05 90);
+
+  --muted: oklch(0.95 0.02 90);
+  --muted-foreground: oklch(0.4 0.02 90);
+
+  --accent: oklch(0.92 0.03 90);
+  --accent-foreground: oklch(0.55 0.15 89);
+
+  --destructive: oklch(0.6 0.2 20);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border: oklch(0.8 0.02 0); /* Stronger borders for light mode */
+  --input: oklch(0.85 0.02 0);
+  --ring: oklch(0.55 0.15 89);
+
+  --chart-1: oklch(0.55 0.15 89);
+  --chart-2: oklch(0.55 0.2 200);
+  --chart-3: oklch(0.65 0.25 310);
+  --chart-4: oklch(0.7 0.15 150);
+  --chart-5: oklch(0.75 0.15 80);
+
+  --sidebar: oklch(0.98 0.01 90);
+  --sidebar-foreground: oklch(0.1 0.02 0);
+  --sidebar-primary: oklch(0.55 0.15 89);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.95 0.02 90);
+  --sidebar-accent-foreground: oklch(0.3 0.05 90);
+  --sidebar-border: oklch(0.8 0.02 0);
+  --sidebar-ring: oklch(0.55 0.15 89);
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
 
 @layer base {
   * {

@@ -181,24 +181,23 @@ export default function AuthPage() {
       <div className="w-full max-w-md relative z-10">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="mx-auto mb-4 relative">
-            <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full"></div>
+          <div className="mx-auto mb-4">
             <img 
               src="/logo.png" 
               alt="ZeroPass Logo" 
-              className="h-24 w-24 mx-auto relative z-10 rounded-2xl border border-primary/20 shadow-2xl shadow-primary/20"
+              className="h-24 w-24 mx-auto object-contain"
             />
           </div>
           <h1 className="text-3xl font-bold text-foreground mb-2 font-heading tracking-tight">
             ZeroKnowledge <span className="text-primary">Vault</span>
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm max-w-xs mx-auto">
             Your passwords, encrypted end-to-end
           </p>
         </div>
 
         {/* Auth Card */}
-        <Card className="border border-border shadow-2xl bg-card/60 backdrop-blur-md">
+        <Card className="border border-primary/25 bg-card/60 backdrop-blur-xl shadow-2xl shadow-primary/5">
           <CardHeader className="text-center space-y-1 pb-4">
             <CardTitle className="text-2xl font-bold text-foreground font-heading">
               {isLogin ? "Welcome Back" : "Create Account"}
