@@ -10,6 +10,23 @@ const otpAttempts = new Map<string, { count: number; lastAttempt: number }>()
 const MAX_ATTEMPTS = 5
 const LOCKOUT_TIME = 15 * 60 * 1000 // 15 minutes
 
+// Log active email mode at startup
+const isMockEmailMode = process.env.MOCK_EMAIL === "true"
+if (isMockEmailMode) {
+  console.warn("[VaultSync:OTP] ⚠️  MOCK EMAIL MODE IS ACTIVE — OTPs will be logged to console, NOT emailed.")
+} else {
+  const hasGmailCredentials =
+    !!process.env.GMAIL_CLIENT_ID &&
+    !!process.env.GMAIL_CLIENT_SECRET &&
+    !!process.env.GMAIL_REFRESH_TOKEN &&
+    !!process.env.GMAIL_USER_EMAIL
+  if (hasGmailCredentials) {
+    console.log(`[VaultSync:OTP] ✅ Real Gmail API mode active — emails will be sent from ${process.env.GMAIL_USER_EMAIL}`)
+  } else {
+    console.error("[VaultSync:OTP] ❌ MISSING Gmail credentials! Set GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, GMAIL_USER_EMAIL in .env")
+  }
+}
+
 /**
  * Generate a cryptographically secure 6-digit OTP code.
  */
@@ -124,19 +141,22 @@ export async function sendOTP(email: string, otpModel = OTP, emailSender = sendG
     const isMockEmail = process.env.MOCK_EMAIL === "true"
 
     if (!isMockEmail) {
-      // Send via Gmail API (Primary and only production method)
-      await emailSender(mailOptions, "OTP")
+      // Send via Gmail API (real email delivery)
+      try {
+        await emailSender(mailOptions, "OTP")
+      } catch (gmailError: any) {
+        console.error("[VaultSync:OTP] ❌ Gmail API failed to send OTP:", gmailError.message)
+        // Clean up the stored OTP since email failed
+        await otpModel.deleteMany({ email: normalizedEmail })
+        return { success: false, message: `Failed to send OTP email: ${gmailError.message}` }
+      }
     } else {
       // In mock mode, log the OTP code to the console
       console.log('--------------------------------------------------');
-      console.log(`[VaultSync:OTP] 🔐 MOCK MODE ACCESS CODE`);
+      console.log(`[VaultSync:OTP] 🔐 MOCK MODE ACCESS CODE (MOCK_EMAIL=true)`);
       console.log(`[VaultSync:OTP] EMAIL: ${normalizedEmail}`);
       console.log(`[VaultSync:OTP] CODE:  ${code}`);
       console.log('--------------------------------------------------');
-
-      if (isProduction) {
-        return { success: true, message: `OTP sent (MOCK MODE: ${code})` }
-      }
     }
 
     return { success: true, message: "OTP sent successfully" }
