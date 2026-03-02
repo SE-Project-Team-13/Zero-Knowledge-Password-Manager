@@ -60,19 +60,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // 1. Fetch Salt and Challenge
       console.log(`[Auth] API_URL=${API_URL}`);
       console.log(`Fetching salt for ${email}`);
-      const saltResponse = await axios.get(`${API_URL}/auth/salt/${encodeURIComponent(email)}`);
+      const saltResponse = await axios.get(`${API_URL}/auth/salt/${encodeURIComponent(email)}`, {
+        timeout: 10000,
+      });
       console.log(`[Auth] Salt fetched successfully`);
       const { salt, challenge, argon2Memory, argon2Iterations } = saltResponse.data;
 
       if (!salt || !challenge) throw new Error("User not found or invalid response");
 
       // 2. Derive Key
+      // IMPORTANT: We MUST use the exact same Argon2 parameters that were used
+      // at registration, because the verifier (stored on the server) was derived
+      // from these same parameters. Using different params would produce a
+      // different authKey → different clientProof → login failure.
+      // All new accounts (web, mobile) use memorySize=128 for fast login.
+      // Only very old legacy accounts may have the default 8192 stored.
       const saltBuffer = hexToBytes(salt);
-      console.log(`[Auth] Starting key derivation (Argon2)...`);
-      const derivedKey = await deriveKey(password, saltBuffer, { 
-        // Fallback to undefined for legacy accounts to use the default 8192 memory (slow on mobile, but preserves access)
-        memorySize: argon2Memory || undefined, 
-        iterations: argon2Iterations || undefined 
+      const memorySize = argon2Memory || 128;
+      const iterations = argon2Iterations || 1;
+      console.log(`[Auth] Starting key derivation (Argon2, memory=${memorySize} KB, iterations=${iterations})...`);
+      const derivedKey = await deriveKey(password, saltBuffer, {
+        memorySize,
+        iterations,
       });
       console.log(`[Auth] Key derived successfully`);
 
@@ -84,17 +93,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log(`[Auth] Proof generated successfully`);
 
       // 4. Login
-      const response = await axios.post(`${API_URL}/auth/login`, {
-        email,
-        challenge,
-        clientProof
-      });
-      
+      const response = await axios.post(
+        `${API_URL}/auth/login`,
+        { email, challenge, clientProof },
+        { timeout: 10000 },
+      );
+
       const { sessionToken, userId } = response.data;
-      
+
       await SecureStorageService.saveSessionId(sessionToken);
       if (userId) {
-          await SecureStorageService.saveItem('user_id', userId);
+        await SecureStorageService.saveItem('user_id', userId);
       }
 
       // Login only establishes a session; user must complete OTP before full auth.
@@ -111,7 +120,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.error(e);
       let msg = (e as Error).message;
       if (axios.isAxiosError(e) && e.response) {
-          msg = e.response.data.message || msg;
+        msg = e.response.data.message || msg;
       }
       set({ error: msg, isLoading: false });
     }

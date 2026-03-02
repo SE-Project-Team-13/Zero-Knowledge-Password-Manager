@@ -123,6 +123,10 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       localStorage.setItem("user_id", response.userId)
       localStorage.setItem("user_email", email)
       localStorage.setItem("user_fullname", fullName)
+      // Save argon2 params used at registration so VaultContext can derive
+      // the correct vault key on subsequent unlocks.
+      localStorage.setItem("argon2_memory", String(argon2Memory))
+      localStorage.setItem("argon2_iterations", String(argon2Iterations))
       setState((prev) => ({
         ...prev,
         userId: response.userId,
@@ -168,6 +172,11 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       localStorage.setItem("user_id", response.userId)
       localStorage.setItem("user_email", email)
       localStorage.setItem("user_fullname", response.fullName || "")
+      // Save argon2 params so VaultContext derives the vault key with the correct
+      // settings. Without this, VaultContext defaults to 8192 KB which won't match
+      // the 128 KB used at registration → permanent GHASH decryption failure.
+      localStorage.setItem("argon2_memory", String(argon2Memory || 128))
+      localStorage.setItem("argon2_iterations", String(argon2Iterations || 1))
       if (response.isBreached) {
         localStorage.setItem("user_is_breached", "true")
       } else {
