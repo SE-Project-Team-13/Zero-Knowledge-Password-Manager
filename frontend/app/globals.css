@@ -4,89 +4,89 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Abyssal Dark Theme - Deep, Neon, Cyber - Now Default */
-  --background: oklch(0.1 0.03 260); /* Deep Navy/Black */
-  --foreground: oklch(0.95 0.02 220); /* Pale Cyan/White */
-  
-  --card: oklch(0.14 0.04 260);
-  --card-foreground: oklch(0.95 0.02 220);
-  
-  --popover: oklch(0.12 0.04 260);
-  --popover-foreground: oklch(0.95 0.02 220);
-  
-  --primary: oklch(0.65 0.18 200); /* Electric Cyan */
-  --primary-foreground: oklch(0.1 0.05 260);
-  
-  --secondary: oklch(0.2 0.05 260);
-  --secondary-foreground: oklch(0.85 0.05 220);
-  
-  --muted: oklch(0.2 0.05 260);
-  --muted-foreground: oklch(0.6 0.05 240);
-  
-  --accent: oklch(0.2 0.05 260);
-  --accent-foreground: oklch(0.65 0.18 200);
-  
-  --destructive: oklch(0.5 0.2 20);
-  --destructive-foreground: oklch(0.95 0 0);
-  
-  --border: oklch(0.2 0.05 260);
-  --input: oklch(0.2 0.05 260);
-  --ring: oklch(0.65 0.18 200);
-  
-  --chart-1: oklch(0.65 0.18 200); /* Cyan */
-  --chart-2: oklch(0.7 0.2 310); /* Neon Purple */
-  --chart-3: oklch(0.75 0.15 150); /* Green */
-  --chart-4: oklch(0.8 0.15 80); /* Yellow */
-  --chart-5: oklch(0.6 0.2 20); /* Red */
-  
+  /* Obsidian & Gold Theme - High Contrast, Premium, Dark */
+  --background: oklch(0.05 0 0); /* Pure Black with subtle depth */
+  --foreground: oklch(0.98 0.01 90); /* Near White with slight warmth */
+
+  --card: oklch(0.08 0.01 0);
+  --card-foreground: oklch(0.98 0.01 90);
+
+  --popover: oklch(0.07 0.01 0);
+  --popover-foreground: oklch(0.98 0.01 90);
+
+  --primary: oklch(0.86 0.19 89); /* Vibrant Gold/Yellow */
+  --primary-foreground: oklch(0.05 0 0); /* Black on Yellow */
+
+  --secondary: oklch(0.12 0.02 90);
+  --secondary-foreground: oklch(0.9 0.05 90);
+
+  --muted: oklch(0.12 0.02 90);
+  --muted-foreground: oklch(0.6 0.02 90);
+
+  --accent: oklch(0.15 0.03 90);
+  --accent-foreground: oklch(0.86 0.19 89);
+
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0.01 25);
+
+  --border: oklch(0.15 0.02 0);
+  --input: oklch(0.12 0.02 0);
+  --ring: oklch(0.86 0.19 89);
+
+  --chart-1: oklch(0.86 0.19 89); /* Yellow */
+  --chart-2: oklch(0.7 0.05 0); /* Gray */
+  --chart-3: oklch(0.9 0.1 80); /* Pale Yellow */
+  --chart-4: oklch(0.6 0.15 95); /* Amber */
+  --chart-5: oklch(0.8 0.02 0); /* Light Gray */
+
   --radius: 0.75rem;
-  
-  --sidebar: oklch(0.1 0.03 260);
-  --sidebar-foreground: oklch(0.95 0.02 220);
-  --sidebar-primary: oklch(0.65 0.18 200);
-  --sidebar-primary-foreground: oklch(0.1 0.05 260);
-  --sidebar-accent: oklch(0.2 0.05 260);
-  --sidebar-accent-foreground: oklch(0.65 0.18 200);
-  --sidebar-border: oklch(0.2 0.05 260);
-  --sidebar-ring: oklch(0.65 0.18 200);
+
+  --sidebar: oklch(0.04 0 0);
+  --sidebar-foreground: oklch(0.9 0.02 90);
+  --sidebar-primary: oklch(0.86 0.19 89);
+  --sidebar-primary-foreground: oklch(0.05 0 0);
+  --sidebar-accent: oklch(0.12 0.02 90);
+  --sidebar-accent-foreground: oklch(0.86 0.19 89);
+  --sidebar-border: oklch(0.12 0.02 0);
+  --sidebar-ring: oklch(0.86 0.19 89);
 }
 
 .light {
   /* Abyssal Light Theme - Moved to class */
   --background: oklch(0.98 0.01 240);
   --foreground: oklch(0.15 0.05 260);
-  
+
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.15 0.05 260);
-  
+
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0.05 260);
-  
+
   --primary: oklch(0.45 0.18 260); /* Deep Ocean Blue */
   --primary-foreground: oklch(0.98 0.01 240);
-  
+
   --secondary: oklch(0.95 0.02 240);
   --secondary-foreground: oklch(0.35 0.1 260);
-  
+
   --muted: oklch(0.95 0.02 240);
   --muted-foreground: oklch(0.5 0.05 260);
-  
+
   --accent: oklch(0.92 0.03 260);
   --accent-foreground: oklch(0.3 0.1 260);
-  
+
   --destructive: oklch(0.6 0.2 20);
   --destructive-foreground: oklch(0.98 0 0);
-  
+
   --border: oklch(0.9 0.02 240);
   --input: oklch(0.9 0.02 240);
   --ring: oklch(0.45 0.18 260);
-  
+
   --chart-1: oklch(0.45 0.18 260);
   --chart-2: oklch(0.55 0.2 200);
   --chart-3: oklch(0.65 0.25 310);
   --chart-4: oklch(0.7 0.15 150);
   --chart-5: oklch(0.75 0.15 80);
-  
+
   --sidebar: oklch(0.98 0.01 240);
   --sidebar-foreground: oklch(0.15 0.05 260);
   --sidebar-primary: oklch(0.45 0.18 260);
@@ -101,7 +101,7 @@
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -126,12 +126,12 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -140,17 +140,25 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  
+
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
 
   @keyframes accordion-down {
-    from { height: 0 }
-    to { height: var(--radix-accordion-content-height) }
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
   }
   @keyframes accordion-up {
-    from { height: var(--radix-accordion-content-height) }
-    to { height: 0 }
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
   }
 }
 
@@ -160,11 +168,20 @@
   }
   body {
     @apply bg-background text-foreground;
-    background-image: radial-gradient(circle at 50% 0%, oklch(0.18 0.05 260 / 0.3), transparent 70%);
+    background-image: radial-gradient(
+      circle at 50% 0%,
+      oklch(0.15 0.02 90 / 0.2),
+      transparent 70%
+    );
     background-attachment: fixed;
   }
-  
-  h1, h2, h3, h4, h5, h6 {
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-heading);
     @apply tracking-tight;
   }

@@ -1,23 +1,23 @@
-// Shared design tokens — dark cyber theme matching the web app
+// Shared design tokens — Obsidian & Gold theme
 export const Colors = {
-    background: '#0A0B1A',
-    surface: '#141526',
-    surfaceElevated: '#1A1B2E',
-    border: '#1E2035',
-    primary: '#00B4D8',
-    primaryDim: 'rgba(0,180,216,0.15)',
-    primaryBorder: 'rgba(0,180,216,0.25)',
-    text: '#E8F0FF',
-    textMuted: '#6B7A99',
-    textDim: '#3A4260',
+    background: '#000000',
+    surface: '#0A0A0A',
+    surfaceElevated: '#121212',
+    border: '#1A1A1A',
+    primary: '#FACC15', // Vibrant Yellow-400
+    primaryDim: 'rgba(250, 204, 21, 0.12)',
+    primaryBorder: 'rgba(250, 204, 21, 0.25)',
+    text: '#FFFFFF',
+    textMuted: '#A1A1AA',
+    textDim: '#52525B', // Zinc-600
     destructive: '#EF4444',
-    destructiveDim: 'rgba(239,68,68,0.15)',
-    success: '#10B981',
-    warning: '#F59E0B',
-    purple: '#7C3AED',
-    purpleDim: 'rgba(124,58,237,0.15)',
-    cardGradientStart: 'rgba(0,180,216,0.08)',
-    cardGradientEnd: 'rgba(10,11,26,0)',
+    destructiveDim: 'rgba(239, 68, 68, 0.15)',
+    success: '#22C55E',
+    warning: '#FACC15',
+    purple: '#FACC15', // Simplified most accents to yellow for consistency
+    purpleDim: 'rgba(250, 204, 21, 0.12)',
+    cardGradientStart: 'rgba(250, 204, 21, 0.1)',
+    cardGradientEnd: 'rgba(0, 0, 0, 0)',
 };
 
 export const Spacing = {

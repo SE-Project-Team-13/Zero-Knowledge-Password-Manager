@@ -286,7 +286,7 @@ export default function AuthPage() {
                   </button>
                 </div>
                 {!isLogin && (
-                  <p className="text-[10px] text-slate-500 flex items-center gap-1">
+                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
                     <ShieldCheck className="h-3 w-3" />
                     This password encrypts your vault locally. We never see it.
                   </p>
@@ -394,11 +394,11 @@ export default function AuthPage() {
               AES-256-GCM
             </span>
             <span className="flex items-center gap-1">
-              <Lock className="h-3 w-3 text-indigo-500" />
+              <Lock className="h-3 w-3 text-primary" />
               Argon2id KDF
             </span>
             <span className="flex items-center gap-1">
-              <Key className="h-3 w-3 text-purple-500" />
+              <Key className="h-3 w-3 text-primary" />
               Zero-Knowledge
             </span>
           </div>

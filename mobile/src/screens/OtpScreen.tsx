@@ -151,7 +151,7 @@ export default function OtpScreen({ email, onVerified }: Props) {
                     disabled={isLoading}
                 >
                     {isLoading
-                        ? <ActivityIndicator color="#fff" />
+                        ? <ActivityIndicator color={Colors.background} />
                         : <Text style={styles.btnText}>Verify Code</Text>}
                 </TouchableOpacity>
 
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
         alignItems: 'center', marginBottom: Spacing.sm,
     },
     btnDisabled: { opacity: 0.6 },
-    btnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    btnText: { color: Colors.background, fontWeight: '700', fontSize: 16 },
     resendBtn: { padding: Spacing.sm, marginBottom: Spacing.lg },
     resendText: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
     resendDisabled: { color: Colors.textMuted },

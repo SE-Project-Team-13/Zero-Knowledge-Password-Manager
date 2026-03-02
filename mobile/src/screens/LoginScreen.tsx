@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, SafeAreaView, StatusBar, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, StatusBar, KeyboardAvoidingView, Platform } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView as SafeAreaContext } from 'react-native-safe-area-context';
+import { Colors, Radius, Spacing, Typography } from '../theme';
 
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
@@ -34,7 +35,6 @@ export default function LoginScreen({ navigation }: any) {
             return;
         }
 
-      // Registration Logic
       Alert.alert(
         "Create New Vault?",
         "This will generate a new master key. Ensure you remember this password!",
@@ -49,7 +49,6 @@ export default function LoginScreen({ navigation }: any) {
         ]
       );
     } else {
-      // Login Logic
       await login(email, password);
     }
   };
@@ -65,7 +64,7 @@ export default function LoginScreen({ navigation }: any) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       <LinearGradient
-        colors={['#0F172A', '#1E293B', '#334155']}
+        colors={[Colors.background, '#080808', '#121212']}
         style={styles.gradient}
       >
         <SafeAreaContext style={styles.safeArea}>
@@ -77,7 +76,7 @@ export default function LoginScreen({ navigation }: any) {
               {/* Header / Logo Area */}
               <View style={styles.header}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="shield-checkmark" size={60} color="#38BDF8" />
+                  <Ionicons name="shield-checkmark" size={60} color={Colors.primary} />
                 </View>
                 <Text style={styles.title}>ZeroPass</Text>
                 <Text style={styles.subtitle}>
@@ -91,11 +90,11 @@ export default function LoginScreen({ navigation }: any) {
                 {/* Full Name Input (Register Only) */}
                 {isRegistering && (
                   <View style={styles.inputContainer}>
-                    <Ionicons name="person-outline" size={24} color="#94A3B8" style={styles.inputIcon} />
+                    <Ionicons name="person-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
                       placeholder="Full Name"
-                      placeholderTextColor="#64748B"
+                      placeholderTextColor={Colors.textDim}
                       value={fullName}
                       onChangeText={setFullName}
                     />
@@ -104,11 +103,11 @@ export default function LoginScreen({ navigation }: any) {
 
                 {/* Email Input */}
                 <View style={styles.inputContainer}>
-                  <Ionicons name="mail-outline" size={24} color="#94A3B8" style={styles.inputIcon} />
+                  <Ionicons name="mail-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Email Address"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={Colors.textDim}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -118,28 +117,28 @@ export default function LoginScreen({ navigation }: any) {
 
                 {/* Password Input */}
                 <View style={styles.inputContainer}>
-                  <Ionicons name="key-outline" size={24} color="#94A3B8" style={styles.inputIcon} />
+                  <Ionicons name="key-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Master Password"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={Colors.textDim}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
                   />
                   <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={24} color="#94A3B8" />
+                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={Colors.textMuted} />
                   </TouchableOpacity>
                 </View>
 
                 {/* Confirm Password Input (Register Only) */}
                 {isRegistering && (
                   <View style={styles.inputContainer}>
-                    <Ionicons name="checkmark-circle-outline" size={24} color="#94A3B8" style={styles.inputIcon} />
+                    <Ionicons name="checkmark-circle-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
                       placeholder="Confirm Password"
-                      placeholderTextColor="#64748B"
+                      placeholderTextColor={Colors.textDim}
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
                       secureTextEntry={!showPassword}
@@ -151,7 +150,7 @@ export default function LoginScreen({ navigation }: any) {
               {/* Error Message */}
               {error && (
                 <View style={styles.errorContainer}>
-                  <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                  <Ionicons name="alert-circle" size={18} color={Colors.destructive} />
                   <Text style={styles.errorText}>{error}</Text>
                 </View>
               )}
@@ -163,7 +162,7 @@ export default function LoginScreen({ navigation }: any) {
                 disabled={isLoading}
               >
                 {isLoading ? (
-                  <ActivityIndicator color="#0F172A" />
+                  <ActivityIndicator color={Colors.background} />
                 ) : (
                   <Text style={styles.buttonText}>
                     {isRegistering ? "Create Account" : "Access Vault"}
@@ -183,7 +182,7 @@ export default function LoginScreen({ navigation }: any) {
 
               {!isRegistering && (
                 <TouchableOpacity style={styles.switchButton} onPress={() => navigation.navigate('RecoveryLogin')}>
-                  <Text style={styles.switchText}>Forgot Password? Use Recovery Key</Text>
+                  <Text style={[styles.switchText, { color: Colors.textMuted, fontSize: 13 }]}>Forgot Password? Use Recovery Key</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -209,7 +208,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   content: {
-    padding: 24,
+    padding: Spacing.xl,
     width: '100%',
     maxWidth: 400,
     alignSelf: 'center',
@@ -219,26 +218,25 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   iconContainer: {
-    width: 100,
-    height: 100,
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-    borderRadius: 50,
+    width: 90,
+    height: 90,
+    backgroundColor: Colors.primaryDim,
+    borderRadius: Radius.xl,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.2)',
+    borderColor: Colors.primaryBorder,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#F8FAFC',
-    marginBottom: 8,
+    ...Typography.heading,
+    fontSize: 36,
     letterSpacing: 0.5,
+    marginBottom: 4,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#94A3B8',
+    ...Typography.muted,
+    fontSize: 15,
     textAlign: 'center',
   },
   form: {
@@ -247,11 +245,11 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-    borderRadius: 12,
-    marginBottom: 16,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.border,
     paddingHorizontal: 16,
     height: 56,
   },
@@ -259,34 +257,36 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   input: {
+    ...Typography.body,
     flex: 1,
-    color: '#F8FAFC',
     fontSize: 16,
+    color: Colors.text,
   },
   button: {
-    backgroundColor: '#38BDF8',
-    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
     height: 56,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
-    shadowColor: '#38BDF8',
+    shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
     elevation: 4,
   },
   buttonText: {
-    color: '#0F172A',
+    color: Colors.background,
     fontSize: 16,
     fontWeight: '700',
+    letterSpacing: 0.5,
   },
   switchButton: {
     alignItems: 'center',
     padding: 8,
   },
   switchText: {
-    color: '#38BDF8',
+    color: Colors.primary,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -294,17 +294,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: Colors.destructive + '15',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: Radius.sm,
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
+    borderColor: Colors.destructive + '40',
     marginBottom: 24,
   },
   errorText: {
-    color: '#EF4444',
+    color: Colors.destructive,
     marginLeft: 8,
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '500',
   },
 });

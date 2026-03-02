@@ -133,14 +133,14 @@ async function start() {
 
     const authLimiter = rateLimit({
       windowMs: 60 * 60 * 1000, // 1 hour
-      max: 20, // 20 auth attempts per hour per IP
+      max: isProduction ? 20 : 1000, // Relaxed for dev to allow keystroke debounced checks
       standardHeaders: true,
       legacyHeaders: false,
       message: { error: "Too many authentication attempts, please try again in an hour." }
     })
 
-    app.use("/api/", generalLimiter)
-    app.use("/auth/", authLimiter)
+    app.use("/api", generalLimiter)
+    app.use("/auth", authLimiter)
     app.use("/otp/send", authLimiter)
 
     app.use(express.json())

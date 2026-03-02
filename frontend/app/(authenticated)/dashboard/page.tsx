@@ -681,14 +681,14 @@ export default function DashboardPage() {
   // --- Render Login Screen (Authenticated but Locked) ---
   if (!session.isAuthenticated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4 relative">
+      <div className="flex min-h-screen items-center justify-center bg-background p-4 relative">
         <div className="absolute top-4 right-4 z-50">
           <ThemeToggle />
         </div>
         <Card className="w-full max-w-md border-2 border-slate-200 shadow-xl">
           <CardHeader className="text-center space-y-2">
-            <div className="mx-auto bg-slate-100 p-3 rounded-full w-fit">
-              <Shield className="h-10 w-10 text-slate-800" />
+            <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit">
+              <Shield className="h-10 w-10 text-primary" />
             </div>
             <CardTitle className="text-2xl font-bold">Secure Vault</CardTitle>
             <CardDescription>
@@ -696,8 +696,8 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-center p-6 bg-slate-50 rounded-lg border border-dashed border-slate-300">
-              <p className="text-sm text-slate-600 mb-4">
+            <div className="text-center p-6 bg-secondary/50 rounded-lg border border-dashed border-border">
+              <p className="text-sm text-muted-foreground mb-4">
                 You are not signed in. Please log in to your account.
               </p>
               <Button
