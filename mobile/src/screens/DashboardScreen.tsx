@@ -7,6 +7,7 @@ import { useVaultStore } from '../store/vaultStore';
 import { Colors, Spacing, Radius, Typography } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { formatTimestampIST } from '../utils/formatIST';
 
 function StatCard({ icon, label, value, color }: { icon: string; label: string; value: string | number; color?: string }) {
     return (
@@ -22,7 +23,7 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
 
 export default function DashboardScreen() {
     const { masterKey, userId, fullName, logout } = useAuthStore() as any;
-    const { entries, isLoading, loadVault } = useVaultStore();
+    const { entries, isLoading, isSyncing, lastSyncTime, loadVault } = useVaultStore();
     const navigation = useNavigation<any>();
 
     useEffect(() => {
@@ -49,11 +50,24 @@ export default function DashboardScreen() {
                 <Text style={styles.subtext}>Your passwords, encrypted end-to-end</Text>
             </View>
 
+            {/* Syncing indicator strip — non-blocking */}
+            {isSyncing && (
+                <View style={styles.syncBanner}>
+                    <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 6 }} />
+                    <Text style={styles.syncBannerText}>Syncing vault…</Text>
+                </View>
+            )}
+
             {/* Stats */}
             <View style={styles.statsRow}>
-                <StatCard icon="key" label="Credentials" value={entries.length} />
+                <StatCard icon="key" label="Credentials" value={isLoading ? '…' : entries.length} />
                 <StatCard icon="shield-checkmark" label="Encryption" value="AES-256" color={Colors.success} />
-                <StatCard icon="sync" label="Synced" value={entries.length > 0 ? 'Yes' : 'Empty'} color={Colors.purple} />
+                <StatCard
+                    icon="sync"
+                    label="Last Sync"
+                    value={isSyncing ? 'Syncing…' : formatTimestampIST(lastSyncTime)}
+                    color={Colors.purple}
+                />
             </View>
 
             {/* Quick Actions */}
@@ -83,27 +97,26 @@ export default function DashboardScreen() {
                     <Text style={styles.actionSub}>Security & account</Text>
                 </TouchableOpacity>
             </View>
-
-            {/* Security Info */}
-            <View style={styles.securityCard}>
-                <Text style={styles.securityTitle}>🔐 Zero-Knowledge Architecture</Text>
-                <Text style={styles.securityText}>
-                    Your master password never leaves this device. All encryption and decryption is done locally using Argon2id key derivation and AES-256-GCM.
-                </Text>
-                <View style={styles.securityBadges}>
-                    {['Argon2id', 'AES-256-GCM', 'SRP Auth'].map((b) => (
-                        <View key={b} style={styles.securityBadge}>
-                            <Text style={styles.securityBadgeText}>{b}</Text>
-                        </View>
-                    ))}
-                </View>
-            </View>
         </ScrollView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: Colors.background },
+    syncBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 6,
+        backgroundColor: Colors.primaryDim,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.primaryBorder,
+    },
+    syncBannerText: {
+        color: Colors.primary,
+        fontSize: 12,
+        fontWeight: '600',
+    },
     header: {
         alignItems: 'center', paddingTop: 60, paddingBottom: Spacing.xl,
         paddingHorizontal: Spacing.md, overflow: 'hidden', position: 'relative',

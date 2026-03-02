@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react";
 import { useVaultSync } from "@/hooks/useVaultSync";
-import { deriveKey, DerivedKey, EncryptedVault } from "@password-manager/crypto-engine"; // Using crypto-engine directly
+import { deriveKey, decrypt, DerivedKey, EncryptedVault } from "@password-manager/crypto-engine"; // Using crypto-engine directly
 import { toast } from "sonner";
 import { buildApiUrl } from "@/lib/api-base-url";
 
@@ -293,10 +293,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
             const saltBuffer = parseHexToBytes(salt, "salt");
 
-            // Start parallel execution: Key Derivation (CPU) + Vault Fetch (Network)
-            console.log('[VaultContext] Starting parallel unlock operations with stored password...')
+            // Read the Argon2 params saved during login/registration.
+            // These MUST match the params used when the vault was first encrypted.
+            // Using different params (e.g. default 8192 instead of 128) produces
+            // a completely different AES key → GHASH (auth tag) failure on decrypt.
+            const argon2Memory = Number(localStorage.getItem("argon2_memory") || "128");
+            const argon2Iterations = Number(localStorage.getItem("argon2_iterations") || "1");
 
-            const keyDerivationPromise = deriveKey(sessionPassword, saltBuffer);
+            // Start parallel execution: Key Derivation (CPU) + Vault Fetch (Network)
+            console.log(`[VaultContext] Starting parallel unlock (m=${argon2Memory} KB, t=${argon2Iterations})...`);
+
+            const keyDerivationPromise = deriveKey(sessionPassword, saltBuffer, {
+                memorySize: argon2Memory,
+                iterations: argon2Iterations,
+            });
 
             // Fetch vault
             const vaultFetchPromise = (async () => {
@@ -429,37 +439,43 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                  }
                 
                  if (data && data.ciphertext) {
-                    const cryptoEngine = await import("@password-manager/crypto-engine");
-
-                    // Decrypt with secure logic
-                    let decryptedEntry: unknown;
-                    
                     // Standardize data tags (sync uses authTag, extension uses tag)
-                    const vaultData = {
+                    const vaultData: EncryptedVault = {
                         ciphertext: data.ciphertext,
                         iv: data.iv,
-                        salt: data.salt,  // Important: vault has its own salt!
+                        salt: data.salt,
                         tag: data.authTag || data.tag,
                         algorithm: "AES-256-GCM" as const,
-                        derivationAlgorithm: "Argon2id" as const
+                        derivationAlgorithm: "Argon2id" as const,
                     };
 
-                    // SECURITY: Only decrypt using the master password with vault's salt
+                    // Use the already-derived `keys` (from the parallel key derivation above).
+                    // IMPORTANT: Do NOT call decryptVault(password, ...) here — that function
+                    // re-derives the Argon2 key using default params (8192 KB memory), which
+                    // won't match the key used at registration (128 KB). This mismatch was the
+                    // root cause of persistent decryption failure even with the correct password.
+                    let decryptedEntry: unknown;
                     try {
-                        console.log("[VaultContext] Attempting decryption with master password...");
-                        const decryptResult = await cryptoEngine.decryptVault(sessionPassword, vaultData);
-                        if (decryptResult.success && decryptResult.data) {
-                            decryptedEntry = decryptResult.data;
-                            console.log("[VaultContext] Decryption succeeded");
-                        } else {
-                            throw new Error("Decryption failed");
-                        }
+                        console.log("[VaultContext] Attempting decryption with derived keys...");
+                        decryptedEntry = await decrypt(vaultData, keys);
+                        console.log("[VaultContext] Decryption succeeded");
                     } catch (decryptErr) {
                         console.error("[VaultContext] Decryption failed:", decryptErr);
-                        toast.error("Failed to decrypt vault. Please ensure your password is correct.");
+                        // Clear stale local cache so next load starts fresh.
+                        const resolvedUserId = (session.userId || localStorage.getItem("user_id") || "").trim();
+                        if (resolvedUserId) {
+                            localStorage.removeItem(getLocalBlobKey(resolvedUserId));
+                            console.log("[VaultContext] Cleared stale local vault cache for user", resolvedUserId);
+                        }
+                        localStorage.removeItem(LAST_SYNC_TS_KEY);
+                        console.log("[VaultContext] Treating as empty vault (cache cleared)");
+                        setDerivedKeys(keys);
+                        setDecryptedEntries([]);
+                        setIsUnlocked(true);
                         setIsLoadingVault(false);
                         return;
                     }
+
 
                     setDerivedKeys(keys);
 

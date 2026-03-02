@@ -43,6 +43,7 @@ import { toast } from "sonner";
 import { copyWithAutoClear } from "@/lib/clipboard";
 import { useRouter } from "next/navigation";
 import { buildApiUrl } from "@/lib/api-base-url";
+import { formatTimestampIST, formatDateTimeIST } from "@/lib/formatIST";
 import {
   createShareEnvelope,
   decryptShareEnvelope,
@@ -530,11 +531,7 @@ export default function DashboardPage() {
     toast.info("Already up to date");
   };
 
-  const formatLastSynced = (ts: number | null) => {
-    if (!ts) return "Never";
-    const date = new Date(ts);
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
+  const formatLastSynced = (ts: number | null) => formatTimestampIST(ts);
 
   const handleResolveConflict = async (choice: "local" | "server") => {
     setIsResolvingConflict(true);
@@ -1212,7 +1209,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="font-medium">{share.sender.fullName || share.sender.email}</p>
                     <p className="text-xs text-muted-foreground">{share.sender.email}</p>
-                    <p className="text-xs text-muted-foreground">{share.createdAt}</p>
+                    <p className="text-xs text-muted-foreground">{formatDateTimeIST(share.createdAt)}</p>
                   </div>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => handleRejectShare(share.id)}>Reject</Button>
