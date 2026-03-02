@@ -379,16 +379,24 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     syncConflict: null,
 
     loadVault: async (derivedKey, userId) => {
-        set({ isLoading: true, error: null });
+        set({ error: null });
+
+        // --- Step 1: Show cached entries instantly (no spinner) ---
         const cached = await loadSnapshot(userId);
         if (cached) {
             set({
                 entries: cached.entries,
                 version: Math.max(get().version, cached.version || 0),
                 lastSyncTime: cached.lastSyncTime || get().lastSyncTime,
-                isLoading: true,
+                isLoading: false,   // Already have data — no blocking spinner
+                isSyncing: true,    // Show a non-blocking sync indicator instead
             });
+        } else {
+            // No cache yet (first launch) — show full-screen loader
+            set({ isLoading: true, isSyncing: false });
         }
+
+        // --- Step 2: Pull from server in background ---
         try {
             const { vaults, currentVersion } = await pullVaults(userId, get().version, get().lastSyncTime);
             let latest: ServerVaultRecord | null = null;
@@ -402,7 +410,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
 
             if (!latest) {
                 console.log('[Sync] No vault data available from sync or compatibility store');
-                set({ isLoading: false });
+                set({ isLoading: false, isSyncing: false });
                 return;
             }
 
@@ -421,19 +429,17 @@ export const useVaultStore = create<VaultState>((set, get) => ({
                 updatedAt: now,
             });
             const pending = await drainQueue(userId);
-            set({ entries, version: resolvedVersion, lastSyncTime: now, pendingSyncCount: pending, syncConflict: null, isLoading: false });
+            set({ entries, version: resolvedVersion, lastSyncTime: now, pendingSyncCount: pending, syncConflict: null, isLoading: false, isSyncing: false });
         } catch (e: any) {
             console.error('[Sync] Load failed', e?.response?.data || e?.message || e);
-            if (cached) {
-                const pending = (await readQueue(userId)).length;
-                set({
-                    isLoading: false,
-                    pendingSyncCount: pending,
-                    error: isOfflineLikeError(e) ? null : (e.message || 'Failed to load vault'),
-                });
-            } else {
-                set({ error: e.message || 'Failed to load vault', isLoading: false });
-            }
+            const pending = (await readQueue(userId)).length;
+            set({
+                isLoading: false,
+                isSyncing: false,
+                pendingSyncCount: pending,
+                // Don't show an error if we had cached data and it's just a network glitch
+                error: (cached && isOfflineLikeError(e)) ? null : (e.message || 'Failed to load vault'),
+            });
         }
     },
 
