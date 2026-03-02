@@ -181,8 +181,13 @@ export default function AuthPage() {
       <div className="w-full max-w-md relative z-10">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="mx-auto bg-primary/10 p-4 rounded-2xl w-fit mb-4 shadow-lg shadow-primary/20 border border-primary/20">
-            <Shield className="h-12 w-12 text-primary animate-pulse" />
+          <div className="mx-auto mb-4 relative">
+            <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full"></div>
+            <img 
+              src="/logo.png" 
+              alt="ZeroPass Logo" 
+              className="h-24 w-24 mx-auto relative z-10 rounded-2xl border border-primary/20 shadow-2xl shadow-primary/20"
+            />
           </div>
           <h1 className="text-3xl font-bold text-foreground mb-2 font-heading tracking-tight">
             ZeroKnowledge <span className="text-primary">Vault</span>

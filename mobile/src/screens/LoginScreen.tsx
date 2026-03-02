@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, StatusBar, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, StatusBar, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,7 +37,7 @@ export default function LoginScreen({ navigation }: any) {
 
       Alert.alert(
         "Create New Vault?",
-        "This will generate a new master key. Ensure you remember this password!",
+        " This will generate a new master key. Ensure you remember this password!",
         [
           { text: "Cancel", style: "cancel" },
           { 
@@ -76,7 +76,11 @@ export default function LoginScreen({ navigation }: any) {
               {/* Header / Logo Area */}
               <View style={styles.header}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="shield-checkmark" size={60} color={Colors.primary} />
+                  <Image 
+                    source={require('../../assets/logo.png')} 
+                    style={styles.logoImage}
+                    resizeMode="cover"
+                  />
                 </View>
                 <Text style={styles.title}>ZeroPass</Text>
                 <Text style={styles.subtitle}>
@@ -220,11 +224,14 @@ const styles = StyleSheet.create({
   iconContainer: {
     width: 90,
     height: 90,
-    backgroundColor: Colors.primaryDim,
-    borderRadius: Radius.xl,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  logoImage: {
+    width: 90,
+    height: 90,
+    borderRadius: Radius.xl,
     borderWidth: 1,
     borderColor: Colors.primaryBorder,
   },

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+    View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image
 } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
@@ -42,8 +42,11 @@ export default function DashboardScreen() {
             {/* Header */}
             <View style={styles.header}>
                 <View style={styles.glow} />
-                <View style={styles.shieldIcon}>
-                    <Ionicons name="shield-checkmark" size={40} color={Colors.primary} />
+                <View style={styles.logoContainer}>
+                    <Image 
+                        source={require('../../assets/logo.png')} 
+                        style={styles.logoImage}
+                    />
                 </View>
                 <Text style={styles.greeting}>{greeting()}</Text>
                 <Text style={styles.appName}>ZeroKnowledge <Text style={{ color: Colors.primary }}>Vault</Text></Text>
@@ -126,10 +129,12 @@ const styles = StyleSheet.create({
         position: 'absolute', top: -40, width: 200, height: 200, borderRadius: 100,
         backgroundColor: Colors.primary, opacity: 0.06,
     },
-    shieldIcon: {
-        width: 72, height: 72, borderRadius: 20,
-        backgroundColor: Colors.primaryDim, borderWidth: 1, borderColor: Colors.primaryBorder,
+    logoContainer: {
+        width: 72, height: 72,
         justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.sm,
+    },
+    logoImage: {
+        width: 60, height: 60, borderRadius: Radius.md,
     },
     greeting: { ...Typography.muted, fontSize: 13, marginBottom: 4 },
     appName: { ...Typography.heading, fontSize: 26, marginBottom: 4 },

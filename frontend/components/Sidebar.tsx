@@ -105,11 +105,15 @@ export function Sidebar({
       >
         {/* Header */}
         <div className={cn("p-6 flex items-center transition-all", isCollapsed ? "justify-center" : "gap-3")}>
-          <div className="bg-primary/10 p-2 rounded-xl border border-primary/20 shrink-0">
-            <ShieldCheck className="h-6 w-6 text-primary" />
+          <div className="shrink-0">
+            <img 
+              src="/logo.png" 
+              alt="Logo" 
+              className={cn("rounded-lg border border-primary/20 shadow-md transition-all object-cover", isCollapsed ? "h-10 w-10" : "h-12 w-12")}
+            />
           </div>
           {!isCollapsed && (
-            <div className="flex flex-col overflow-hidden text-center">
+            <div className="flex flex-col overflow-hidden">
               <h1 className="text-xl font-bold text-foreground tracking-tight font-heading truncate leading-none">
                 ZeroKnowledge
               </h1>
