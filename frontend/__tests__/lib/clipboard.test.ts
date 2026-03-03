@@ -36,7 +36,7 @@ describe('Clipboard Lib - Logic', () => {
         console.log(`Output success status: ${success}`);
         expect(success).toBe(true);
         expect(mockWriteText).toHaveBeenCalledWith(text);
-        expect(toast.info).toHaveBeenCalledWith("Copied to clipboard");
+        expect(toast.info).toHaveBeenCalledWith("Text copied to clipboard");
         console.log('Result: Success - copyWithAutoClear called correctly and toast shown');
     });
 
@@ -58,7 +58,7 @@ describe('Clipboard Lib - Logic', () => {
         
         console.log(`Output Last Clipboard Call: "${mockWriteText.mock.calls[mockWriteText.mock.calls.length - 1][0]}"`);
         expect(mockWriteText).toHaveBeenLastCalledWith('');
-        expect(toast.info).toHaveBeenCalledWith("Clipboard cleared");
+        expect(toast.info).toHaveBeenCalledWith("Clipboard cleared for security");
         console.log('Result: Success - clipboard cleared automatically after timeout');
     });
 });
