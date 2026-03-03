@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '../config';
 import { Colors, Radius, Spacing, Typography } from '../theme';
 import { SecureStorageService } from '../services/secureStorage';
+import PasswordStrength from '../components/PasswordStrength';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
 
@@ -30,6 +31,7 @@ export default function ResetPasswordScreen({ navigation }: any) {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPasswords, setShowPasswords] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isPasswordValid, setIsPasswordValid] = useState(false);
 
     const {
         userId,
@@ -52,8 +54,8 @@ export default function ResetPasswordScreen({ navigation }: any) {
             return;
         }
 
-        if (newPassword.length < 8) {
-            Alert.alert('Weak Password', 'Password must be at least 8 characters.');
+        if (!isPasswordValid) {
+            Alert.alert('Weak Password', 'Please satisfy all security requirements for your new master password.');
             return;
         }
 
@@ -181,12 +183,21 @@ export default function ResetPasswordScreen({ navigation }: any) {
                     />
                 </View>
 
+                <PasswordStrength 
+                    password={newPassword} 
+                    onStrengthChange={setIsPasswordValid} 
+                />
+
                 <TouchableOpacity style={styles.toggleVisibility} onPress={() => setShowPasswords((v) => !v)}>
                     <Ionicons name={showPasswords ? 'eye-off-outline' : 'eye-outline'} size={16} color={Colors.textMuted} />
                     <Text style={styles.toggleText}>{showPasswords ? 'Hide passwords' : 'Show passwords'}</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.submitBtn, isSubmitting && { opacity: 0.7 }]} onPress={handleReset} disabled={isSubmitting}>
+                <TouchableOpacity 
+                    style={[styles.submitBtn, (isSubmitting || !isPasswordValid) && { opacity: 0.7 }]} 
+                    onPress={handleReset} 
+                    disabled={isSubmitting || !isPasswordValid}
+                >
                     {isSubmitting ? <ActivityIndicator color={Colors.background} /> : <Text style={styles.submitText}>Reset Password</Text>}
                 </TouchableOpacity>
             </View>

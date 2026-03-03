@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView as SafeAreaContext } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../theme';
+import PasswordStrength from '../components/PasswordStrength';
 
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
@@ -15,40 +16,8 @@ export default function LoginScreen({ navigation }: any) {
   const { login, register, isLoading, error } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
 
-  const [strength, setStrength] = useState(0);
-  const [criteria, setCriteria] = useState({
-    length: false,
-    uppercase: false,
-    lowercase: false,
-    number: false,
-    special: false
-  });
+  const [isPasswordValid, setIsPasswordValid] = useState(false);
 
-  const checkStrength = (pass: string) => {
-    if (!pass || !isRegistering) {
-      setStrength(0);
-      setCriteria({
-        length: false,
-        uppercase: false,
-        lowercase: false,
-        number: false,
-        special: false
-      });
-      return;
-    }
-
-    const newCriteria = {
-      length: pass.length >= 8,
-      uppercase: /[A-Z]/.test(pass),
-      lowercase: /[a-z]/.test(pass),
-      number: /[0-9]/.test(pass),
-      special: /[^A-Za-z0-9]/.test(pass)
-    };
-
-    setCriteria(newCriteria);
-    const satisfied = Object.values(newCriteria).filter(Boolean).length;
-    setStrength(satisfied / 5);
-  };
 
   const handleAction = async () => {
     if (!email || !password) {
@@ -66,8 +35,7 @@ export default function LoginScreen({ navigation }: any) {
         return;
       }
 
-      const satisfiedCount = Object.values(criteria).filter(Boolean).length;
-      if (satisfiedCount < 5) {
+      if (!isPasswordValid) {
         Alert.alert(
           "Weak Password",
           "Please meet all security requirements: 8+ chars, uppercase, lowercase, number, and special character."
@@ -105,31 +73,9 @@ export default function LoginScreen({ navigation }: any) {
     setPassword('');
     setConfirmPassword('');
     setShowPassword(false);
-    setStrength(0);
-    setCriteria({
-      length: false,
-      uppercase: false,
-      lowercase: false,
-      number: false,
-      special: false
-    });
+    setIsPasswordValid(false);
   };
 
-  const getStrengthColor = (s: number) => {
-    if (s <= 0.2) return Colors.destructive;
-    if (s <= 0.4) return '#F97316'; // orange-500
-    if (s <= 0.6) return '#FACC15'; // yellow-400
-    if (s <= 0.8) return '#3B82F6'; // blue-500
-    return Colors.success;
-  };
-
-  const getStrengthLabel = (s: number) => {
-    if (s <= 0.2) return 'Very Weak';
-    if (s <= 0.4) return 'Weak';
-    if (s <= 0.6) return 'Medium';
-    if (s <= 0.8) return 'Strong';
-    return 'Very Strong';
-  };
 
   return (
     <View style={styles.container}>
@@ -198,10 +144,7 @@ export default function LoginScreen({ navigation }: any) {
                     placeholder="Master Password"
                     placeholderTextColor={Colors.textDim}
                     value={password}
-                    onChangeText={(val) => {
-                      setPassword(val);
-                      checkStrength(val);
-                    }}
+                    onChangeText={setPassword}
                     secureTextEntry={!showPassword}
                   />
                   <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
@@ -211,60 +154,10 @@ export default function LoginScreen({ navigation }: any) {
 
                 {/* Password Strength Indicator (Register Only) */}
                 {isRegistering && (
-                  <View style={styles.strengthContainer}>
-                    <View style={styles.strengthHeader}>
-                      <Text style={styles.strengthLabel}>Password Strength</Text>
-                      <Text style={[styles.strengthLevel, { color: getStrengthColor(strength) }]}>
-                        {getStrengthLabel(strength)}
-                      </Text>
-                    </View>
-                    <View style={styles.progressBarBackground}>
-                      <View style={[styles.progressBarForeground, { width: `${strength * 100}%`, backgroundColor: getStrengthColor(strength) }]} />
-                    </View>
-
-                    <View style={styles.criteriaGrid}>
-                      <View style={styles.criteriaItem}>
-                        <Ionicons
-                          name={criteria.length ? "checkmark-circle" : "ellipse-outline"}
-                          size={14}
-                          color={criteria.length ? Colors.success : Colors.textMuted}
-                        />
-                        <Text style={[styles.criteriaText, criteria.length && styles.criteriaActive]}>8+ Chars</Text>
-                      </View>
-                      <View style={styles.criteriaItem}>
-                        <Ionicons
-                          name={criteria.uppercase ? "checkmark-circle" : "ellipse-outline"}
-                          size={14}
-                          color={criteria.uppercase ? Colors.success : Colors.textMuted}
-                        />
-                        <Text style={[styles.criteriaText, criteria.uppercase && styles.criteriaActive]}>Uppercase</Text>
-                      </View>
-                      <View style={styles.criteriaItem}>
-                        <Ionicons
-                          name={criteria.lowercase ? "checkmark-circle" : "ellipse-outline"}
-                          size={14}
-                          color={criteria.lowercase ? Colors.success : Colors.textMuted}
-                        />
-                        <Text style={[styles.criteriaText, criteria.lowercase && styles.criteriaActive]}>Lowercase</Text>
-                      </View>
-                      <View style={styles.criteriaItem}>
-                        <Ionicons
-                          name={criteria.number ? "checkmark-circle" : "ellipse-outline"}
-                          size={14}
-                          color={criteria.number ? Colors.success : Colors.textMuted}
-                        />
-                        <Text style={[styles.criteriaText, criteria.number && styles.criteriaActive]}>Number</Text>
-                      </View>
-                      <View style={styles.criteriaItem}>
-                        <Ionicons
-                          name={criteria.special ? "checkmark-circle" : "ellipse-outline"}
-                          size={14}
-                          color={criteria.special ? Colors.success : Colors.textMuted}
-                        />
-                        <Text style={[styles.criteriaText, criteria.special && styles.criteriaActive]}>Special Char</Text>
-                      </View>
-                    </View>
-                  </View>
+                   <PasswordStrength 
+                     password={password} 
+                     onStrengthChange={setIsPasswordValid} 
+                   />
                 )}
 
                 {/* Confirm Password Input (Register Only) */}
@@ -293,9 +186,9 @@ export default function LoginScreen({ navigation }: any) {
 
               {/* Action Button */}
               <TouchableOpacity
-                style={[styles.button, (isRegistering && Object.values(criteria).filter(Boolean).length < 5) && styles.buttonDisabled]}
+                style={[styles.button, (isRegistering && !isPasswordValid) && styles.buttonDisabled]}
                 onPress={handleAction}
-                disabled={isLoading || (isRegistering && Object.values(criteria).filter(Boolean).length < 5)}
+                disabled={isLoading || (isRegistering && !isPasswordValid)}
               >
                 {isLoading ? (
                   <ActivityIndicator color={Colors.background} />

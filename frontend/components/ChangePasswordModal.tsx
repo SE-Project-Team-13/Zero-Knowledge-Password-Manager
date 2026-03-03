@@ -17,6 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Shield, Key, Loader2, AlertCircle, Eye, EyeOff, Lock, Check } from "lucide-react"
 import { toast } from "sonner"
 import { deriveKey, generateVerifier } from "@password-manager/crypto-engine"
+import { PasswordStrength } from "./PasswordStrength"
 
 interface ChangePasswordModalProps {
     isOpen: boolean
@@ -32,6 +33,7 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState("")
     const [success, setSuccess] = useState(false)
+    const [isPasswordValid, setIsPasswordValid] = useState(false)
 
     const handleClose = () => {
         if (!isLoading) {
@@ -40,6 +42,7 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
             setConfirmPassword("")
             setError("")
             setSuccess(false)
+            setIsPasswordValid(false)
             onClose()
         }
     }
@@ -60,8 +63,8 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
             return
         }
 
-        if (newPassword.length < 8) {
-            setError("Password must be at least 8 characters long")
+        if (!isPasswordValid) {
+            setError("Please satisfy all password requirements for better security")
             return
         }
 
@@ -275,7 +278,7 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
                             />
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-4">
                             <Label htmlFor="confirm-new-password">Confirm New Password</Label>
                             <Input
                                 id="confirm-new-password"
@@ -285,6 +288,11 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
                                 placeholder="Repeat new password"
                                 required
                                 disabled={isLoading}
+                            />
+                            
+                            <PasswordStrength 
+                                password={newPassword} 
+                                onStrengthChange={setIsPasswordValid} 
                             />
                         </div>
 
@@ -300,7 +308,7 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
                             </Button>
                             <Button
                                 type="submit"
-                                disabled={isLoading}
+                                disabled={isLoading || !isPasswordValid}
                                 className="flex-1"
                             >
                                 {isLoading ? (

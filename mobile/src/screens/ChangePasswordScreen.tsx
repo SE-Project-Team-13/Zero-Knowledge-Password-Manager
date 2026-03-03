@@ -18,6 +18,7 @@ import { useVaultStore } from '../store/vaultStore';
 import { SecureStorageService } from '../services/secureStorage';
 import { API_URL } from '../config';
 import { Colors, Radius, Spacing, Typography } from '../theme';
+import PasswordStrength from '../components/PasswordStrength';
 
 function toHex(bytes: Uint8Array): string {
     return Array.from(bytes)
@@ -34,15 +35,16 @@ export default function ChangePasswordScreen({ navigation }: any) {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPasswords, setShowPasswords] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isPasswordValid, setIsPasswordValid] = useState(false);
 
     const canSubmit = useMemo(() => {
         return (
             currentPassword.trim().length > 0 &&
-            newPassword.trim().length >= 8 &&
+            isPasswordValid &&
             confirmPassword.trim().length >= 8 &&
             !isSubmitting
         );
-    }, [currentPassword, newPassword, confirmPassword, isSubmitting]);
+    }, [currentPassword, isPasswordValid, confirmPassword, isSubmitting]);
 
     const handleSubmit = async () => {
         if (!userId || !masterKey) {
@@ -172,6 +174,11 @@ export default function ChangePasswordScreen({ navigation }: any) {
                         placeholderTextColor={Colors.textMuted}
                     />
                 </View>
+
+                <PasswordStrength 
+                    password={newPassword} 
+                    onStrengthChange={setIsPasswordValid} 
+                />
 
                 <TouchableOpacity style={styles.toggleVisibility} onPress={() => setShowPasswords((v) => !v)}>
                     <Ionicons name={showPasswords ? 'eye-off-outline' : 'eye-outline'} size={16} color={Colors.textMuted} />

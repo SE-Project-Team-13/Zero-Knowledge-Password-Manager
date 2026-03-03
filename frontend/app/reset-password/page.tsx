@@ -13,6 +13,7 @@ import { toast } from "sonner"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { deriveKey, generateVerifier } from "@password-manager/crypto-engine"
 import { buildApiUrl } from "@/lib/api-base-url"
+import { PasswordStrength } from "@/components/PasswordStrength"
 
 export default function ResetPasswordPage() {
     const router = useRouter()
@@ -24,6 +25,7 @@ export default function ResetPasswordPage() {
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState("")
     const [success, setSuccess] = useState(false)
+    const [isPasswordValid, setIsPasswordValid] = useState(false)
 
     // Verify authentication on mount
     useEffect(() => {
@@ -42,8 +44,8 @@ export default function ResetPasswordPage() {
             return
         }
 
-        if (password.length < 8) {
-            setError("Password must be at least 8 characters long")
+        if (!isPasswordValid) {
+            setError("Please satisfy all password requirements for better security")
             return
         }
 
@@ -308,7 +310,7 @@ export default function ResetPasswordPage() {
                             </div>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-4">
                             <Label htmlFor="confirm-password">Confirm Password</Label>
                             <div className="relative">
                                 <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -323,6 +325,11 @@ export default function ResetPasswordPage() {
                                     disabled={isLoading}
                                 />
                             </div>
+
+                            <PasswordStrength 
+                                password={password} 
+                                onStrengthChange={setIsPasswordValid} 
+                            />
                         </div>
                     </CardContent>
 
@@ -330,7 +337,7 @@ export default function ResetPasswordPage() {
                         <Button
                             type="submit"
                             className="w-full h-12 font-semibold shadow-lg shadow-primary/20"
-                            disabled={isLoading}
+                            disabled={isLoading || !isPasswordValid}
                         >
                             {isLoading ? (
                                 <>
