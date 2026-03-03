@@ -63,7 +63,7 @@ let sessionState: SessionState = {
 // ============================================================================
 
 const AUTO_LOCK_TIMEOUT = 15 * 60 * 1000 // 15 minutes
-const BACKEND_URL = 'http://localhost:3001'
+const BACKEND_URL = 'https://zero-knowledge-password-manager.onrender.com'
 // ============================================================================
 // Auto-Lock Timer
 // ============================================================================

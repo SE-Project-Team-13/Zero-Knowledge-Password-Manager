@@ -9,7 +9,7 @@ export async function generateAndDownloadRecoveryKey(
     email: string, 
     masterPassword: string, 
     token: string, 
-    apiBaseUrl: string = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+    apiBaseUrl: string = process.env.NEXT_PUBLIC_API_URL || "https://zero-knowledge-password-manager.onrender.com"
 ): Promise<string> {
     // 1. Get a random key from the server
     const response = await fetch(`${apiBaseUrl}/recovery/generate`, {

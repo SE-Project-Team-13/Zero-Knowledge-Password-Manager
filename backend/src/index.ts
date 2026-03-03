@@ -83,6 +83,7 @@ async function start() {
       "http://localhost:8081",   // Expo web dev server
       "http://localhost:8082",   // Expo web dev server (common alternate)
       "http://localhost:19006",  // Expo web legacy port
+      "https://zero-knowledge-password-manager-frontend.onrender.com",
       ...configuredOrigins,
     ]
 

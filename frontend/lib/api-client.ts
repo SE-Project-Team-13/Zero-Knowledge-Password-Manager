@@ -39,7 +39,7 @@ class ApiClient {
   private baseUrl: string
   private token: string | null = null
 
-  constructor(baseUrl: string = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001") {
+  constructor(baseUrl: string = process.env.NEXT_PUBLIC_API_URL || "https://zero-knowledge-password-manager.onrender.com") {
     // Ensure protocol is present (Render env var might provide only host)
     this.baseUrl = baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`
     // Restore token from localStorage if available
