@@ -185,11 +185,11 @@ export default function DashboardPage() {
       } else {
         const error = await response.json();
         console.error("[OTP] Send failed with details:", error);
-        toast.error(error.message || "Failed to send OTP");
+        toast.error(error.message || "Unable to send OTP. Please check your connection.");
       }
     } catch (error) {
       console.error("Send OTP error:", error);
-      toast.error("Failed to send OTP. Please try again.");
+      toast.error("Failed to send verification code. Please try again.");
     }
   }, [session.email]);
 
@@ -219,7 +219,7 @@ export default function DashboardPage() {
       toast.success("Vault unlocked successfully");
     } catch (err) {
       console.error("Unlock error:", err);
-      toast.error("Failed to unlock vault");
+      toast.error("Unlock failed. Please ensure your master password is correct.");
     } finally {
       setIsVerifyingOtp(false);
     }
@@ -318,7 +318,7 @@ export default function DashboardPage() {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          toast.error("OTP expired. Please request a new code.");
+          toast.error("Verification code expired. Please request a new one.");
           return 0;
         }
         return prev - 1;
@@ -369,11 +369,11 @@ export default function DashboardPage() {
         await unlockVault();
       } else {
         const error = await response.json();
-        toast.error(error.message || "Invalid OTP code");
+        toast.error(error.message || "Invalid verification code");
       }
     } catch (error) {
       console.error("Verify OTP error:", error);
-      toast.error("Failed to verify OTP. Please try again.");
+      toast.error("Verification failed. Please try again.");
     } finally {
       setIsVerifyingOtp(false);
     }
@@ -396,7 +396,7 @@ export default function DashboardPage() {
 
     const checkInactivity = setInterval(() => {
       if (Date.now() - lastActivityRef.current > INACTIVITY_TIMEOUT) {
-        toast.info("Logged out due to inactivity");
+        toast.info("Session expired due to inactivity");
         actions.logout();
         window.location.href = "/";
       }
@@ -436,7 +436,7 @@ export default function DashboardPage() {
       !newEntry.url
     ) {
       toast.error(
-        "Please fill in all required fields (Site, URL, Username, Password)",
+        "Please complete all required fields (Site, URL, Username, and Password)",
       );
       return;
     }
@@ -540,7 +540,7 @@ export default function DashboardPage() {
       if (ok) {
         toast.success(choice === "local" ? "Kept local changes and overwrote server copy" : "Kept server version");
       } else {
-        toast.error("Failed to resolve conflict. Please try again.");
+        toast.error("Unable to resolve conflict. Please refresh and try again.");
       }
     } finally {
       setIsResolvingConflict(false);

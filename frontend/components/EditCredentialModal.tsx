@@ -62,7 +62,7 @@ export function EditCredentialModal({
     if (!formData) return;
     
     if (!formData.site || !formData.username || !formData.password || !formData.siteUrl) {
-      toast.error("Please fill in all required fields");
+      toast.error("Please complete all required fields (Site, URL, Username, and Password)");
       return;
     }
 

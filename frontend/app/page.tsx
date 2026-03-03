@@ -196,7 +196,7 @@ export default function AuthPage() {
         router.push("/dashboard")
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Authentication failed"
+      const message = err instanceof Error ? err.message : "Wrong password"
       toast.error(message)
     } finally {
       setIsSubmitting(false)

@@ -95,7 +95,7 @@ export default function AddCredentialPage() {
             !newEntry.url
         ) {
             toast.error(
-                "Please fill in all required fields (Site, URL, Username, Password)",
+                "Please complete all required fields (Site, URL, Username, and Password)",
             );
             return;
         }

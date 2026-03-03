@@ -100,7 +100,7 @@ describe('AuthService Integration Tests', () => {
         console.log('[Output] Authentication Result:', result);
 
         expect(result.success).toBe(false);
-        expect(result.error).toBe('Authentication failed');
+        expect(result.error).toBe('Wrong password');
         console.log('Result: Success - Authentication correctly rejected invalid proof.');
     });
 });

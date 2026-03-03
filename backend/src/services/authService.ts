@@ -113,7 +113,7 @@ export async function authenticateUser(
   try {
     const isValid = verifyClientProof(user.verifier, clientChallenge, clientProof)
     if (!isValid) {
-      return { success: false, error: "Authentication failed" }
+      return { success: false, error: "Wrong password" }
     }
   } catch (error: unknown) {
     if (!isProduction || isDebug) {

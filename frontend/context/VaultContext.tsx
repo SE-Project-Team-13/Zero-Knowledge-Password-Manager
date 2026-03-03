@@ -516,7 +516,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
         } catch (err) {
             console.error("[VaultContext] Unlock error:", err);
-            toast.error("Failed to unlock vault: " + (err instanceof Error ? err.message : "Unknown error"));
+            toast.error(`Vault unlock failed: ${err instanceof Error ? err.message : "Possible network issue or server error"}`);
         } finally {
             setIsLoadingVault(false);
         }
@@ -572,7 +572,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             if (err instanceof Error && err.message === "SYNC_CONFLICT_DETECTED") {
                 toast.error("Conflict detected. Choose which version to keep.");
             } else {
-                toast.error("Failed to save credential");
+                toast.error("Unable to save credential at this time");
             }
         }
     };
@@ -668,7 +668,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             if (err instanceof Error && err.message === "SYNC_CONFLICT_DETECTED") {
                 toast.error("Conflict detected. Choose which version to keep.");
             } else {
-                toast.error("Failed to update credential");
+                toast.error("Unable to update credential");
             }
         }
     };
@@ -691,7 +691,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             if (err instanceof Error && err.message === "SYNC_CONFLICT_DETECTED") {
                 toast.error("Conflict detected. Choose which version to keep.");
             } else {
-                toast.error("Failed to delete credential");
+                toast.error("Unable to delete credential");
             }
         }
     };
@@ -714,7 +714,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             toast.info("Reminder snoozed for 7 days");
         } catch (err) {
             console.error("Snooze entry error:", err);
-            toast.error("Failed to snooze reminder");
+            toast.error("Unable to snooze reminder");
         }
     };
 
@@ -737,7 +737,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             toast.info("Last updated date changed");
         } catch (err) {
             console.error("Set lastUpdated error:", err);
-            toast.error("Failed to set last updated date");
+            toast.error("Unable to update timestamp");
         }
     };
 

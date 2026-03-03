@@ -103,7 +103,7 @@ export function createAuthRouter(): Router {
 
       if (!authResult.success) {
         return res.status(401).json({
-          error: "Authentication failed",
+          error: "Wrong password",
           code: "AUTH_FAILED",
           message: authResult.error || "Invalid email or password",
         } as ErrorResponse)

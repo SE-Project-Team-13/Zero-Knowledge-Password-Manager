@@ -42,9 +42,9 @@ export async function copyWithAutoClear(text: string, timeoutMs = DEFAULT_CLEAR_
   try {
     await navigator.clipboard.writeText(text)
     lastCopied = text
-    toast.info("Copied to clipboard")
+    toast.info("Text copied to clipboard")
   } catch {
-    toast.error("Failed to copy")
+    toast.error("Unable to copy to clipboard")
     return false
   }
 
@@ -56,7 +56,7 @@ export async function copyWithAutoClear(text: string, timeoutMs = DEFAULT_CLEAR_
     try {
       await navigator.clipboard.writeText("")
       lastCopied = ""
-      toast.info("Clipboard cleared")
+      toast.info("Clipboard cleared for security")
     } catch {
       pendingClear = true
       toast.warning("Clipboard clear blocked. Will clear on next interaction.", {
