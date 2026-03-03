@@ -55,57 +55,64 @@ export default function LoginScreen({ navigation }: any) {
       Alert.alert("Input Required", "Please enter your email and master password.");
       return;
     }
-    
+
     if (isRegistering) {
-        if (!fullName) {
-            Alert.alert("Input Required", "Please enter your full name.");
-            return;
-        }
-        if (password !== confirmPassword) {
-            Alert.alert("Password Mismatch", "Passwords do not match.");
-            return;
-        }
+      if (!fullName) {
+        Alert.alert("Input Required", "Please enter your full name.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        Alert.alert("Password Mismatch", "Passwords do not match.");
+        return;
+      }
 
-        const satisfiedCount = Object.values(criteria).filter(Boolean).length;
-        if (satisfiedCount < 5) {
-            Alert.alert(
-              "Weak Password", 
-              "Please meet all security requirements: 8+ chars, uppercase, lowercase, number, and special character."
-            );
-            return;
-        }
+      const satisfiedCount = Object.values(criteria).filter(Boolean).length;
+      if (satisfiedCount < 5) {
+        Alert.alert(
+          "Weak Password",
+          "Please meet all security requirements: 8+ chars, uppercase, lowercase, number, and special character."
+        );
+        return;
+      }
 
-      Alert.alert(
-        "Create New Vault?",
-        " This will generate a new master key. Ensure you remember this password!",
-        [
-          { text: "Cancel", style: "cancel" },
-          { 
-            text: "Create", 
-            onPress: async () => {
-              await register(email, fullName, password);
+      if (Platform.OS === 'web') {
+        const confirmResult = window.confirm("Create New Vault?\nThis will generate a new master key. Ensure you remember this password!");
+        if (confirmResult) {
+          await register(email, fullName, password);
+        }
+      } else {
+        Alert.alert(
+          "Create New Vault?",
+          " This will generate a new master key. Ensure you remember this password!",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Create",
+              onPress: async () => {
+                await register(email, fullName, password);
+              }
             }
-          }
-        ]
-      );
+          ]
+        );
+      }
     } else {
       await login(email, password);
     }
   };
 
   const toggleMode = () => {
-      setIsRegistering(!isRegistering);
-      setPassword('');
-      setConfirmPassword('');
-      setShowPassword(false);
-      setStrength(0);
-      setCriteria({
-        length: false,
-        uppercase: false,
-        lowercase: false,
-        number: false,
-        special: false
-      });
+    setIsRegistering(!isRegistering);
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setStrength(0);
+    setCriteria({
+      length: false,
+      uppercase: false,
+      lowercase: false,
+      number: false,
+      special: false
+    });
   };
 
   const getStrengthColor = (s: number) => {
@@ -132,7 +139,7 @@ export default function LoginScreen({ navigation }: any) {
         style={styles.gradient}
       >
         <SafeAreaContext style={styles.safeArea}>
-          <KeyboardAvoidingView 
+          <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.keyboardView}
           >
@@ -140,8 +147,8 @@ export default function LoginScreen({ navigation }: any) {
               {/* Header / Logo Area */}
               <View style={styles.header}>
                 <View style={styles.iconContainer}>
-                  <Image 
-                    source={require('../../assets/logo.png')} 
+                  <Image
+                    source={require('../../assets/logo.png')}
                     style={styles.logoImage}
                     resizeMode="cover"
                   />
@@ -154,7 +161,7 @@ export default function LoginScreen({ navigation }: any) {
 
               {/* Input Area */}
               <View style={styles.form}>
-                
+
                 {/* Full Name Input (Register Only) */}
                 {isRegistering && (
                   <View style={styles.inputContainer}>
@@ -214,48 +221,48 @@ export default function LoginScreen({ navigation }: any) {
                     <View style={styles.progressBarBackground}>
                       <View style={[styles.progressBarForeground, { width: `${strength * 100}%`, backgroundColor: getStrengthColor(strength) }]} />
                     </View>
-                    
+
                     <View style={styles.criteriaGrid}>
-                        <View style={styles.criteriaItem}>
-                            <Ionicons 
-                              name={criteria.length ? "checkmark-circle" : "ellipse-outline"} 
-                              size={14} 
-                              color={criteria.length ? Colors.success : Colors.textMuted} 
-                            />
-                            <Text style={[styles.criteriaText, criteria.length && styles.criteriaActive]}>8+ Chars</Text>
-                        </View>
-                        <View style={styles.criteriaItem}>
-                            <Ionicons 
-                              name={criteria.uppercase ? "checkmark-circle" : "ellipse-outline"} 
-                              size={14} 
-                              color={criteria.uppercase ? Colors.success : Colors.textMuted} 
-                            />
-                            <Text style={[styles.criteriaText, criteria.uppercase && styles.criteriaActive]}>Uppercase</Text>
-                        </View>
-                        <View style={styles.criteriaItem}>
-                            <Ionicons 
-                              name={criteria.lowercase ? "checkmark-circle" : "ellipse-outline"} 
-                              size={14} 
-                              color={criteria.lowercase ? Colors.success : Colors.textMuted} 
-                            />
-                            <Text style={[styles.criteriaText, criteria.lowercase && styles.criteriaActive]}>Lowercase</Text>
-                        </View>
-                        <View style={styles.criteriaItem}>
-                            <Ionicons 
-                              name={criteria.number ? "checkmark-circle" : "ellipse-outline"} 
-                              size={14} 
-                              color={criteria.number ? Colors.success : Colors.textMuted} 
-                            />
-                            <Text style={[styles.criteriaText, criteria.number && styles.criteriaActive]}>Number</Text>
-                        </View>
-                        <View style={styles.criteriaItem}>
-                            <Ionicons 
-                              name={criteria.special ? "checkmark-circle" : "ellipse-outline"} 
-                              size={14} 
-                              color={criteria.special ? Colors.success : Colors.textMuted} 
-                            />
-                            <Text style={[styles.criteriaText, criteria.special && styles.criteriaActive]}>Special Char</Text>
-                        </View>
+                      <View style={styles.criteriaItem}>
+                        <Ionicons
+                          name={criteria.length ? "checkmark-circle" : "ellipse-outline"}
+                          size={14}
+                          color={criteria.length ? Colors.success : Colors.textMuted}
+                        />
+                        <Text style={[styles.criteriaText, criteria.length && styles.criteriaActive]}>8+ Chars</Text>
+                      </View>
+                      <View style={styles.criteriaItem}>
+                        <Ionicons
+                          name={criteria.uppercase ? "checkmark-circle" : "ellipse-outline"}
+                          size={14}
+                          color={criteria.uppercase ? Colors.success : Colors.textMuted}
+                        />
+                        <Text style={[styles.criteriaText, criteria.uppercase && styles.criteriaActive]}>Uppercase</Text>
+                      </View>
+                      <View style={styles.criteriaItem}>
+                        <Ionicons
+                          name={criteria.lowercase ? "checkmark-circle" : "ellipse-outline"}
+                          size={14}
+                          color={criteria.lowercase ? Colors.success : Colors.textMuted}
+                        />
+                        <Text style={[styles.criteriaText, criteria.lowercase && styles.criteriaActive]}>Lowercase</Text>
+                      </View>
+                      <View style={styles.criteriaItem}>
+                        <Ionicons
+                          name={criteria.number ? "checkmark-circle" : "ellipse-outline"}
+                          size={14}
+                          color={criteria.number ? Colors.success : Colors.textMuted}
+                        />
+                        <Text style={[styles.criteriaText, criteria.number && styles.criteriaActive]}>Number</Text>
+                      </View>
+                      <View style={styles.criteriaItem}>
+                        <Ionicons
+                          name={criteria.special ? "checkmark-circle" : "ellipse-outline"}
+                          size={14}
+                          color={criteria.special ? Colors.success : Colors.textMuted}
+                        />
+                        <Text style={[styles.criteriaText, criteria.special && styles.criteriaActive]}>Special Char</Text>
+                      </View>
                     </View>
                   </View>
                 )}
@@ -300,8 +307,8 @@ export default function LoginScreen({ navigation }: any) {
               </TouchableOpacity>
 
               {/* Toggle Mode */}
-              <TouchableOpacity 
-                style={styles.switchButton} 
+              <TouchableOpacity
+                style={styles.switchButton}
                 onPress={toggleMode}
               >
                 <Text style={styles.switchText}>

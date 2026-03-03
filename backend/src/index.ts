@@ -62,6 +62,10 @@ async function start() {
 
     const app = express()
 
+    // Trust the first proxy (Render's reverse proxy) so express-rate-limit
+    // can correctly identify clients via X-Forwarded-For.
+    app.set("trust proxy", 1)
+
     // Global Security Headers
     app.use(helmet())
 

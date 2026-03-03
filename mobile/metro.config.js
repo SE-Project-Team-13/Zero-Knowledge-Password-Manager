@@ -7,8 +7,13 @@ const workspaceRoot = path.resolve(projectRoot, "../");
 
 const config = getDefaultConfig(projectRoot);
 
-// 1. Watch all files within the monorepo
-config.watchFolders = [workspaceRoot];
+// 1. Watch specific folders instead of the whole workspaceRoot
+// This prevents Metro from crashing when Next.js alters files in frontend/.next
+config.watchFolders = [
+  projectRoot,
+  path.resolve(workspaceRoot, "node_modules"),
+  path.resolve(workspaceRoot, "frontend/crypto-engine"),
+];
 
 // 2. Let Metro know where to resolve packages and in what order
 config.resolver.nodeModulesPaths = [
