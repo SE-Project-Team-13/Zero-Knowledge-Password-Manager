@@ -133,7 +133,7 @@ async function start() {
 
     const authLimiter = rateLimit({
       windowMs: 60 * 60 * 1000, // 1 hour
-      max: isProduction ? 20 : 1000, // Relaxed for dev to allow keystroke debounced checks
+      max: isProduction ? 200 : 1000, // Limit relaxed to 200 for easier testing
       standardHeaders: true,
       legacyHeaders: false,
       message: { error: "Too many authentication attempts, please try again in an hour." }
@@ -292,4 +292,4 @@ async function start() {
 }
 
 start()
- 
+
