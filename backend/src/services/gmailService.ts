@@ -30,10 +30,11 @@ export async function sendGmail(
     const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
 
     // Gmail API requires the email to be base64url encoded
+    // Note: RFC 2822 strictly requires CRLF (\r\n) as the line separator
     const subject = options.subject;
     const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString("base64")}?=`;
     const messageParts = [
-      `From: "Zenith Vault" <${userEmail}>`,
+      `From: ${userEmail}`,
       `To: ${options.to}`,
       `Content-Type: text/html; charset=utf-8`,
       `MIME-Version: 1.0`,
@@ -41,16 +42,16 @@ export async function sendGmail(
       "",
       options.html,
     ];
-    const message = messageParts.join("\n");
+    const message = messageParts.join("\r\n");
 
     // The body needs to be base64url encoded
-    const encodedMessage = Buffer.from(message)
+    const encodedMessage = Buffer.from(message, 'utf-8')
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_")
       .replace(/=+$/, "");
 
-    await gmail.users.messages.send({
+    const res = await gmail.users.messages.send({
       userId: "me",
       requestBody: {
         raw: encodedMessage,
@@ -62,7 +63,7 @@ export async function sendGmail(
 
     if (!isProduction || isDebug) {
       console.log(
-        `[VaultSync:${contextInfo || "Gmail"}] ✅ Sent OTP email to ${options.to} via Gmail API.`,
+        `[VaultSync:${contextInfo || "Gmail"}] ✅ Sent OTP email to ${options.to}. MsgId: ${res.data.id}`,
       );
     }
   } catch (error: any) {
