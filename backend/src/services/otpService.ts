@@ -89,62 +89,22 @@ export async function sendOTP(
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Verification Code</title>
         </head>
-        <body style="margin:0;padding:0;background-color:#0A0A0A;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#FFFFFF;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0A0A0A;padding:48px 20px;">
-            <tr>
-              <td align="center">
-                <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#121212;border-radius:16px;overflow:hidden;box-shadow:0 10px 15px -3px rgba(0,0,0,0.5);border:1px solid #333333;">
-                  <!-- Header -->
-                  <tr>
-                    <td style="padding:40px 40px 0;text-align:center;">
-                      <div style="margin-bottom:24px;">
-                        <span style="font-size:32px;display:inline-block;margin-bottom:8px;">🔐</span>
-                        <h1 style="margin:0;font-size:24px;color:#FACC15;font-weight:700;letter-spacing:-0.025em;">Zenith Vault</h1>
-                      </div>
-                    </td>
-                  </tr>
-                  
-                  <!-- Body -->
-                  <tr>
-                    <td style="padding:0 40px 40px;">
-                      <h2 style="margin:0 0 12px;font-size:18px;color:#FFFFFF;font-weight:600;text-align:center;">Verification Required</h2>
-                      <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#A1A1AA;text-align:center;">
-                        To secure your encrypted vault, please use the following one-time code to complete your sign-in:
-                      </p>
-                      
-                      <!-- OTP Code Box -->
-                      <div style="background-color:#1A1A1A;border:1px solid #FACC15;border-radius:12px;padding:32px;text-align:center;margin-bottom:32px;">
-                        <span style="font-size:42px;font-weight:800;color:#FACC15;letter-spacing:8px;font-family:monospace;display:block;">${code}</span>
-                      </div>
-                      
-                      <div style="text-align:center;margin-bottom:32px;">
-                        <p style="margin:0;font-size:14px;color:#71717A;display:flex;align-items:center;justify-content:center;">
-                          ⏱ Expires in 10 minutes
-                        </p>
-                      </div>
-                      
-                      <hr style="border:0;border-top:1px solid #333333;margin:32px 0;">
-                      
-                      <div style="background-color:rgba(250, 204, 21, 0.1);border-radius:8px;padding:16px;border:1px solid rgba(250, 204, 21, 0.2);">
-                        <p style="margin:0;font-size:13px;line-height:1.5;color:#FACC15;">
-                          <strong>Security Note:</strong> If you did not request this code, your vault remains encrypted and secure. You can safely ignore this email.
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                  
-                  <!-- Footer -->
-                  <tr>
-                    <td style="padding:0 40px 40px;text-align:center;">
-                      <p style="margin:0;font-size:12px;color:#52525B;">
-                        &copy; ${new Date().getFullYear()} Zenith Vault. End-to-end encrypted password management.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
+        <body style="margin:0;padding:20px;background-color:#FFFFFF;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#333333;line-height:1.6;">
+          <div style="max-width:600px;margin:0 auto;">
+            <p style="font-size:18px;font-weight:600;margin-bottom:16px;">Zenith Vault Verification</p>
+            <p>To secure your encrypted vault, please use the following one-time code to complete your sign-in:</p>
+            
+            <p style="font-size:32px;font-weight:bold;letter-spacing:4px;margin:24px 0;color:#1a1a1a;">${code}</p>
+            
+            <p style="font-size:14px;color:#666666;">This code expires in 10 minutes.</p>
+            
+            <p style="margin-top:32px;font-size:13px;color:#888888;border-top:1px solid #eeeeee;padding-top:16px;">
+              <strong>Security Note:</strong> If you did not request this code, your vault remains encrypted and secure. You can safely ignore this email.
+            </p>
+            <p style="font-size:12px;color:#999999;">
+              &copy; ${new Date().getFullYear()} Zenith Vault. End-to-end encrypted password management.
+            </p>
+          </div>
         </body>
         </html>
       `,
