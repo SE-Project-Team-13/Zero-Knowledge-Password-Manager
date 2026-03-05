@@ -114,11 +114,7 @@ export default function AuthenticatedLayout({
 
   // Show loading state while checking auth
   if (!mounted || (session.isLoading && !session.isAuthenticated)) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
-      </div>
-    );
+    return null;
   }
 
   return (
