@@ -23,8 +23,7 @@ jest.mock('sonner', () => ({
 
 const mockEntry: DecryptedEntry = {
   id: '1',
-  site: 'GitHub',
-  siteUrl: 'https://github.com',
+  url: 'https://github.com',
   username: 'testuser',
   password: 'password123',
   notes: 'Test notes',
@@ -47,7 +46,7 @@ describe('EditCredentialModal', () => {
     );
 
     expect(screen.getByText('Edit Credential')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('GitHub')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://github.com')).toBeInTheDocument();
     console.log('Result: Success - Modal title and entry data found');
   });
 

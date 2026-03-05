@@ -16,7 +16,7 @@ import type { VaultEntry, EncryptedVault, Argon2idOptions, DecryptResult } from 
  * Complete encryption workflow: password → key → encrypted vault entry
  *
  * @param masterPassword - User's master password
- * @param entry - Vault entry to encrypt (site, username, password, metadata)
+ * @param entry - Vault entry to encrypt (url, username, password, metadata)
  * @param options - Optional Argon2id parameters
  * @returns EncryptedVault object that can be safely stored on server
  *
@@ -76,8 +76,8 @@ export async function decryptVault(masterPassword: string, encrypted: EncryptedV
  */
 export function validateVaultEntry(entry: VaultEntry): boolean {
   return (
-    typeof entry.site === "string" &&
-    entry.site.length > 0 &&
+    typeof entry.url === "string" &&
+    entry.url.length > 0 &&
     typeof entry.username === "string" &&
     entry.username.length > 0 &&
     typeof entry.password === "string" &&
@@ -101,13 +101,13 @@ function base64ToBuffer(base64: string): Uint8Array {
  * Creates a new vault entry with metadata.
  */
 export function createVaultEntry(
-  site: string,
+  url: string,
   username: string,
   password: string,
   metadata?: Record<string, any>,
 ): VaultEntry {
   return {
-    site,
+    url,
     username,
     password,
     metadata: {

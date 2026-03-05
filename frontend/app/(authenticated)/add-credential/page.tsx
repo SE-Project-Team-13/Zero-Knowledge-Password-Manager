@@ -39,7 +39,6 @@ export default function AddCredentialPage() {
 
     // Add Entry Form
     const [newEntry, setNewEntry] = useState({
-        site: "",
         username: "",
         password: "",
         url: "",
@@ -67,13 +66,12 @@ export default function AddCredentialPage() {
     const handleAddEntry = async (e: React.FormEvent) => {
         e.preventDefault();
         if (
-            !newEntry.site ||
+            !newEntry.url ||
             !newEntry.username ||
-            !newEntry.password ||
-            !newEntry.url
+            !newEntry.password
         ) {
             toast.error(
-                "Please complete all required fields (Site, URL, Username, and Password)",
+                "Please complete all required fields (URL, Username, and Password)",
             );
             return;
         }
@@ -81,7 +79,6 @@ export default function AddCredentialPage() {
         setIsAddingEntry(true);
         try {
             await addEntry({
-                site: newEntry.site,
                 username: newEntry.username,
                 password: newEntry.password,
                 url: newEntry.url,
@@ -122,22 +119,6 @@ export default function AddCredentialPage() {
                 </CardHeader>
                 <form onSubmit={handleAddEntry}>
                     <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="site" className="text-foreground/80">
-                                Website/Service
-                            </Label>
-                            <Input
-                                id="site"
-                                placeholder="e.g., GitHub, Gmail"
-                                value={newEntry.site}
-                                onChange={(e) =>
-                                    setNewEntry({ ...newEntry, site: e.target.value })
-                                }
-                                required
-                                className="bg-secondary/50 border-input focus:border-primary"
-                            />
-                        </div>
-
                         <div className="space-y-2">
                             <Label htmlFor="url" className="text-foreground/80">
                                 URL

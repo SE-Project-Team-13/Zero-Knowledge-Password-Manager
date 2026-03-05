@@ -14,8 +14,7 @@ const WEB_LOCAL_BLOB_PREFIX = "vault_local_blob:";
 // Define the DecryptedEntry type
 export interface DecryptedEntry {
     id: string;
-    site: string;
-    siteUrl: string;
+    url: string;
     username: string;
     password: string;
     notes: string;
@@ -33,7 +32,7 @@ interface VaultContextType {
     isLoadingVault: boolean;
     isUnlocked: boolean;
     unlockVault: () => Promise<void>;
-    addEntry: (entryCtx: { site: string; username: string; password: string; url: string; notes: string }) => Promise<void>;
+    addEntry: (entryCtx: { username: string; password: string; url: string; notes: string }) => Promise<void>;
     updateEntry: (entry: DecryptedEntry) => Promise<void>;
     deleteEntry: (id: string) => Promise<void>;
     snoozeEntry: (id: string) => Promise<void>;
@@ -103,8 +102,8 @@ function parseHexToBytes(hex: string, fieldName: string): Uint8Array {
 function toStorageFormat(entry: DecryptedEntry): StorageVaultEntry {
     return {
         id: entry.id,
-        siteName: entry.site,
-        siteUrl: entry.siteUrl,
+        siteName: entry.url,
+        siteUrl: entry.url,
         username: entry.username,
         password: entry.password,
         notes: entry.notes,
@@ -236,10 +235,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             })
             .map((entry) => ({
                 id: String(entry.id || Math.random().toString(36).substring(7)),
-                site: String(entry.siteName || entry.site || "Unknown"),
+                url: String(entry.siteUrl || entry.url || entry.siteName || entry.site || "Unknown"), // fallback chain
                 username: String(entry.username || ""),
                 password: String(entry.password || ""),
-                siteUrl: String(entry.siteUrl || entry.url || ""),
                 notes: String(entry.notes || ""),
                 createdAt: String(entry.createdAt || new Date().toISOString()),
                 updatedAt: String(entry.updatedAt || entry.lastUpdated || new Date().toISOString()),
@@ -522,7 +520,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
     }, [isUnlocked, decryptedEntries.length, session.userId, parseDecryptedEntries, getLocalBlobKey]);
 
-    const addEntry = async (entryCtx: { site: string; username: string; password: string; url: string; notes: string }) => {
+    const addEntry = async (entryCtx: { username: string; password: string; url: string; notes: string }) => {
         if (!derivedKeys) {
             toast.error("Encryption key not available");
             return;
@@ -532,8 +530,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             const entryId = Math.random().toString(36).substring(7);
             const newCredential = {
                 id: entryId,
-                siteName: entryCtx.site,
-                siteUrl: entryCtx.url || "",
+                siteName: entryCtx.url,
+                siteUrl: entryCtx.url,
                 username: entryCtx.username,
                 password: entryCtx.password,
                 notes: entryCtx.notes || "",
@@ -553,8 +551,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             // Update local state
             const displayEntry: DecryptedEntry = {
                 id: entryId,
-                site: entryCtx.site,
-                siteUrl: entryCtx.url,
+                url: entryCtx.url,
                 username: entryCtx.username,
                 password: entryCtx.password,
                 notes: entryCtx.notes,
@@ -745,7 +742,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const saveVault = async (entries: StorageVaultEntry[], keys: DerivedKey) => {
         const { encrypt } = await import("@password-manager/crypto-engine");
         const vaultEntry = {
-            site: "VAULT_ROOT",
+            url: "VAULT_ROOT",
             username: "SYSTEM",
             password: JSON.stringify(entries),
         };
@@ -843,8 +840,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                                 : [];
                             const localEntries = entries.map((entry) => ({
                                 id: String(entry.id),
-                                site: String(entry.siteName || "Unknown"),
-                                siteUrl: String(entry.siteUrl || ""),
+                                url: String(entry.siteUrl || entry.siteName || "Unknown"),
                                 username: String(entry.username || ""),
                                 password: String(entry.password || ""),
                                 notes: String(entry.notes || ""),

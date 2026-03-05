@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 // Our vault on the server stores an array of entries encrypted as a single JSON blob
 export interface VaultEntryLocal extends VaultEntry {
     id: string;
-    siteUrl?: string;
+    url: string;
     notes?: string;
     createdAt?: string;
     updatedAt?: string;
@@ -75,8 +75,7 @@ async function getAuthHeaders() {
 function normalizeEntry(raw: any): VaultEntryLocal {
     return {
         id: String(raw?.id || uuidv4()),
-        site: String(raw?.site || raw?.siteName || 'Unknown'),
-        siteUrl: String(raw?.siteUrl || raw?.url || ''),
+        url: String(raw?.url || raw?.siteUrl || raw?.siteName || raw?.site || 'Unknown'),
         username: String(raw?.username || ''),
         password: String(raw?.password || ''),
         notes: String(raw?.notes || ''),
@@ -92,8 +91,8 @@ function normalizeEntry(raw: any): VaultEntryLocal {
 function toStorageFormat(entry: VaultEntryLocal): Record<string, string> {
     return {
         id: entry.id,
-        siteName: entry.site,
-        siteUrl: entry.siteUrl || '',
+        siteName: entry.url,
+        siteUrl: entry.url,
         username: entry.username,
         password: entry.password,
         notes: entry.notes || '',
@@ -106,7 +105,7 @@ function toStorageFormat(entry: VaultEntryLocal): Record<string, string> {
 // Serialize entries array to an encrypted blob using the derived key.
 async function encryptEntries(entries: VaultEntryLocal[], derivedKey: DerivedKey): Promise<ServerVaultRecord> {
     const serialized: VaultEntry = {
-        site: '__vault__',
+        url: '__vault__',
         username: '__vault__',
         password: JSON.stringify(entries.map(toStorageFormat)),
         metadata: { isVaultBlob: true },
@@ -142,8 +141,8 @@ async function decryptEntries(record: ServerVaultRecord, derivedKey: DerivedKey)
 
     // Compatibility: web dashboard stores a VAULT_ROOT wrapper without metadata.
     if (
-        typeof decrypted.site === 'string' &&
-        decrypted.site === 'VAULT_ROOT' &&
+        typeof decrypted.url === 'string' &&
+        decrypted.url === 'VAULT_ROOT' &&
         typeof decrypted.username === 'string' &&
         decrypted.username === 'SYSTEM' &&
         typeof decrypted.password === 'string'

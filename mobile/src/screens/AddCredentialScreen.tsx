@@ -55,15 +55,15 @@ export default function AddCredentialScreen() {
     const { masterKey, userId } = useAuthStore();
     const { addEntry, isSyncing } = useVaultStore();
 
-    const [site, setSite] = useState('');
+    const [url, setUrl] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [notes, setNotes] = useState('');
     const [showPassword, setShowPassword] = useState(false);
 
     const handleSave = async () => {
-        if (!site.trim() || !username.trim() || !password.trim()) {
-            Alert.alert('Missing Fields', 'Please fill in site, username, and password.');
+        if (!url.trim() || !username.trim() || !password.trim()) {
+            Alert.alert('Missing Fields', 'Please fill in URL, username, and password.');
             return;
         }
         if (!masterKey || !userId) {
@@ -71,7 +71,7 @@ export default function AddCredentialScreen() {
             return;
         }
         try {
-            await addEntry({ site: site.trim(), username: username.trim(), password, notes, siteUrl: '' }, masterKey, userId);
+            await addEntry({ url: url.trim(), username: username.trim(), password, notes }, masterKey, userId);
             navigation.goBack();
         } catch (e) {
             Alert.alert('Error', (e as Error).message);
@@ -98,10 +98,10 @@ export default function AddCredentialScreen() {
                 </View>
 
                 <InputField
-                    label="Website / App"
-                    value={site}
-                    onChangeText={setSite}
-                    placeholder="e.g. github.com"
+                    label="URL"
+                    value={url}
+                    onChangeText={setUrl}
+                    placeholder="https://example.com"
                     icon="globe-outline"
                 />
 

@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useVaultSync } from "@/hooks/useVaultSync";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
@@ -37,7 +37,9 @@ import {
   Edit,
   FileKey,
   Share2,
-  Inbox
+  Inbox,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { toast } from "sonner";
 import { copyWithAutoClear } from "@/lib/clipboard";
@@ -107,10 +109,9 @@ export default function DashboardPage() {
 
   // Add Entry Form
   const [newEntry, setNewEntry] = useState({
-    site: "",
+    url: "",
     username: "",
     password: "",
-    url: "",
     notes: "",
     showPassword: false,
   });
@@ -138,6 +139,11 @@ export default function DashboardPage() {
   }>>([]);
   const [incomingOpen, setIncomingOpen] = useState(false);
   const [trustWarning, setTrustWarning] = useState<string | null>(null);
+  const [expandedUrls, setExpandedUrls] = useState<Record<string, boolean>>({});
+
+  const toggleUrlExpansion = (url: string) => {
+    setExpandedUrls(prev => ({ ...prev, [url]: !prev[url] }));
+  };
 
   // Auto-logout after inactivity
   const lastActivityRef = useRef<number>(Date.now());
@@ -407,13 +413,12 @@ export default function DashboardPage() {
   const handleAddEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
-      !newEntry.site ||
+      !newEntry.url ||
       !newEntry.username ||
-      !newEntry.password ||
-      !newEntry.url
+      !newEntry.password
     ) {
       toast.error(
-        "Please complete all required fields (Site, URL, Username, and Password)",
+        "Please complete all required fields (URL, Username, and Password)",
       );
       return;
     }
@@ -421,7 +426,6 @@ export default function DashboardPage() {
     setIsAddingEntry(true);
     try {
       await addEntry({
-        site: newEntry.site,
         username: newEntry.username,
         password: newEntry.password,
         url: newEntry.url,
@@ -429,10 +433,9 @@ export default function DashboardPage() {
       });
 
       setNewEntry({
-        site: "",
+        url: "",
         username: "",
         password: "",
-        url: "",
         notes: "",
         showPassword: false,
       });
@@ -540,8 +543,7 @@ export default function DashboardPage() {
       const recipient = await publicKeyRes.json();
       const envelope = await createShareEnvelope(
         {
-          site: sharingEntry.site,
-          siteUrl: sharingEntry.siteUrl,
+          url: sharingEntry.url,
           username: sharingEntry.username,
           password: sharingEntry.password,
           notes: sharingEntry.notes || "",
@@ -603,10 +605,9 @@ export default function DashboardPage() {
         iv: share.iv,
       });
       await addEntry({
-        site: decrypted.site || "Shared Credential",
         username: decrypted.username || "",
         password: decrypted.password || "",
-        url: decrypted.siteUrl || "",
+        url: decrypted.url || decrypted.siteUrl || decrypted.site || "Shared Credential",
         notes: decrypted.notes || `Shared by ${share.sender.email}`,
       });
       await fetch(buildApiUrl(`/share/${encodeURIComponent(shareId)}/accept`), {
@@ -857,12 +858,36 @@ export default function DashboardPage() {
     );
   }
 
-  // --- Render Unlocked Dashboard ---
-  const filteredEntries = decryptedEntries.filter(
-    (e) =>
-      e.site.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.username.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  // ---  // 5) Filter & Group entries
+  const filteredEntries = useMemo(() => {
+    if (!searchQuery.trim()) return decryptedEntries;
+    
+    const searchLower = searchQuery.toLowerCase();
+    return decryptedEntries.filter((entry) => {
+      const urlMatch = entry.url?.toLowerCase().includes(searchLower) ?? false;
+      const usernameMatch = entry.username?.toLowerCase().includes(searchLower) ?? false;
+      const notesMatch = entry.notes?.toLowerCase().includes(searchLower) ?? false;
+
+      return urlMatch || usernameMatch || notesMatch;
+    });
+  }, [decryptedEntries, searchQuery]);
+
+  const groupedEntries = useMemo(() => {
+    return filteredEntries.reduce((acc, entry) => {
+      const urlKey = entry.url || "No URL";
+      if (!acc[urlKey]) acc[urlKey] = [];
+      acc[urlKey].push(entry);
+      return acc;
+    }, {} as Record<string, DecryptedEntry[]>);
+  }, [filteredEntries]);
+
+  const sortedUrls = useMemo(() => {
+    return Object.keys(groupedEntries).sort((a, b) => {
+      if (a === "No URL") return 1;
+      if (b === "No URL") return -1;
+      return a.localeCompare(b);
+    });
+  }, [groupedEntries]);
 
   return (
     <div className="p-8 pt-20 max-w-7xl mx-auto space-y-8 w-full">
@@ -993,85 +1018,134 @@ export default function DashboardPage() {
                 <p>No credentials</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-3">
-                {filteredEntries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl border border-border/80 bg-card hover:border-primary transition-all hover:shadow-md gap-4"
-                  >
-                    <div className="flex items-center gap-4 min-w-0 flex-1">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 font-bold text-primary">
-                        {entry.site.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="font-semibold truncate">{entry.site}</h4>
-                        {/* Show siteUrl if it exists */}
-                        <div className="text-xs text-blue-500 hover:text-blue-600 truncate mt-0.5">
-                          <span className="text-muted-foreground mr-1">URL:</span>
-                          {entry.siteUrl}
-                        </div>
-                        <p className="text-sm font-mono mt-0.5 text-foreground">
-                          <span className="text-muted-foreground mr-1 font-sans">Username:</span>
-                          {entry.username}
-                        </p>
-                      </div>
+              <div className="grid grid-cols-1 gap-4">
+                {sortedUrls.map((url) => {
+                  const entries = groupedEntries[url];
+                  // Default to collapsed for all items
+                  const isExpanded = expandedUrls[url] || false;
+                  const hasMultiple = entries.length > 1;
+                  const isRealUrl = url !== "No URL";
+                  const faviconUrl = isRealUrl ? `https://www.google.com/s2/favicons?domain=${url}&sz=64` : "";
+
+                  return (
+                    <div key={url} className="space-y-2">
+                       {/* Group Header for ALL sites */}
+                       <div 
+                         className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 cursor-pointer hover:bg-secondary/50 transition-colors group/header"
+                         onClick={() => toggleUrlExpansion(url)}
+                       >
+                         <div className="flex items-center gap-3 min-w-0 flex-1">
+                           <div className="bg-primary/10 p-2 rounded-lg shrink-0 flex items-center justify-center h-8 w-8">
+                             {isRealUrl ? (
+                               <img 
+                                 src={faviconUrl} 
+                                 alt="" 
+                                 className="h-5 w-5 rounded-sm object-contain"
+                                 onError={(e) => {
+                                   (e.target as HTMLImageElement).style.display = 'none';
+                                   (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                                 }}
+                               />
+                             ) : null}
+                             <Shield className={`h-4 w-4 text-primary ${isRealUrl ? "hidden" : ""}`} />
+                           </div>
+                           <div className="min-w-0">
+                             <p className="text-sm font-semibold truncate text-foreground">{url}</p>
+                             <p className="text-xs text-muted-foreground">{entries.length} credential{entries.length !== 1 ? 's' : ''} stored</p>
+                           </div>
+                         </div>
+                         
+                         <div className="flex items-center pl-3">
+                           {isExpanded ? (
+                             <ChevronUp className="h-5 w-5 text-muted-foreground transition-transform duration-300 group-hover/header:text-primary" />
+                           ) : (
+                             <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-300 group-hover/header:text-primary" />
+                           )}
+                         </div>
+                       </div>
+
+                       {/* Expanded Entries */}
+                       {isExpanded && (
+                         <div className={`grid grid-cols-1 gap-3 ml-2 pl-4 border-l-2 border-primary/20 mt-2`}>
+                           {entries.map((entry) => (
+                             <div
+                               key={entry.id}
+                               className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl border border-border/80 bg-card hover:border-primary transition-all hover:shadow-md gap-4"
+                             >
+                               <div className="flex items-center gap-4 min-w-0 flex-1">
+                                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 font-bold text-primary">
+                                   {entry.url.substring(0, 2).toUpperCase()}
+                                 </div>
+                                 <div className="min-w-0">
+                               <h4 className="font-semibold truncate">{entry.url}</h4>
+                               {/* Show URL only once - site/siteUrl are merged into url */}
+                               <p className="text-sm font-mono mt-0.5 text-foreground">
+                                 <span className="text-muted-foreground mr-1 font-sans">Username:</span>
+                                     {entry.username}
+                                   </p>
+                                 </div>
+                               </div>
+
+                               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                 <div className="relative group/pass">
+                                   <div className="h-9 px-3 min-w-[120px] bg-secondary/50 rounded-md flex items-center font-mono text-sm">
+                                     {entry.isPasswordVisible
+                                       ? entry.password
+                                       : maskPassword(entry.password.length)}
+                                   </div>
+                                 </div>
+
+                                 <Button
+                                   variant="ghost"
+                                   size="icon"
+                                   onClick={() => togglePasswordVisibility(entry.id)}
+                                   className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                                 >
+                                   {entry.isPasswordVisible ? (
+                                     <EyeOff className="h-4 w-4" />
+                                   ) : (
+                                     <Eye className="h-4 w-4" />
+                                   )}
+                                 </Button>
+
+                                 <Button
+                                   variant="ghost"
+                                   size="icon"
+                                   onClick={() => copyToClipboard(entry.password)}
+                                   className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                                 >
+                                   <Copy className="h-4 w-4" />
+                                 </Button>
+
+                                 <div className="h-4 w-px bg-border mx-1" />
+
+                                 <Button
+                                   variant="ghost"
+                                   size="icon"
+                                   onClick={() => setSharingEntry(entry)}
+                                   className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                                   title="Share"
+                                 >
+                                   <Share2 className="h-4 w-4" />
+                                 </Button>
+
+                                 <Button
+                                   variant="ghost"
+                                   size="icon"
+                                   onClick={() => router.push(`/password-manager?edit=${entry.id}`)}
+                                   className="h-9 w-9 text-muted-foreground hover:text-primary"
+                                   title="Edit in Password Manager"
+                                 >
+                                   <Edit className="h-4 w-4" />
+                                 </Button>
+                               </div>
+                             </div>
+                           ))}
+                         </div>
+                       )}
                     </div>
-
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                      <div className="relative group/pass">
-                        <div className="h-9 px-3 min-w-[120px] bg-secondary/50 rounded-md flex items-center font-mono text-sm">
-                          {entry.isPasswordVisible
-                            ? entry.password
-                            : maskPassword(entry.password.length)}
-                        </div>
-                      </div>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => togglePasswordVisibility(entry.id)}
-                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                      >
-                        {entry.isPasswordVisible ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                      </Button>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => copyToClipboard(entry.password)}
-                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-
-                      <div className="h-4 w-px bg-border mx-1" />
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setSharingEntry(entry)}
-                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                        title="Share"
-                      >
-                        <Share2 className="h-4 w-4" />
-                      </Button>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => router.push(`/password-manager?edit=${entry.id}`)}
-                        className="h-9 w-9 text-muted-foreground hover:text-primary"
-                        title="Edit in Password Manager"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1107,7 +1181,7 @@ export default function DashboardPage() {
                 <div className="max-h-64 overflow-auto space-y-2 text-sm">
                   {syncConflict.localEntries.slice(0, 8).map((entry) => (
                     <div key={`local-${entry.id}`} className="rounded border border-border/60 p-2">
-                      <div className="font-medium">{entry.site}</div>
+                      <div className="font-medium">{entry.url}</div>
                       <div className="text-muted-foreground">{entry.username}</div>
                       <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
                     </div>
@@ -1119,7 +1193,7 @@ export default function DashboardPage() {
                 <div className="max-h-64 overflow-auto space-y-2 text-sm">
                   {syncConflict.serverEntries.slice(0, 8).map((entry) => (
                     <div key={`server-${entry.id}`} className="rounded border border-border/60 p-2">
-                      <div className="font-medium">{entry.site}</div>
+                      <div className="font-medium">{entry.url}</div>
                       <div className="text-muted-foreground">{entry.username}</div>
                       <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
                     </div>
@@ -1145,7 +1219,7 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle>Secure Share</CardTitle>
               <CardDescription>
-                Share "{sharingEntry.site}" with a colleague using end-to-end encryption.
+                Share "{sharingEntry.url}" with a colleague using end-to-end encryption.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

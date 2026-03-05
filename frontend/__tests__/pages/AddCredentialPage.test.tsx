@@ -34,7 +34,6 @@ describe("AddCredentialPage", () => {
     console.log("Running: submits a new credential and redirects");
     render(<AddCredentialPage />);
 
-    fireEvent.change(screen.getByLabelText(/Website\/Service/i), { target: { value: "GitHub" } });
     fireEvent.change(screen.getByLabelText(/URL/i), { target: { value: "https://github.com" } });
     fireEvent.change(screen.getByLabelText(/Username\/Email/i), { target: { value: "user@example.com" } });
     fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "Secret123!" } });
@@ -44,7 +43,6 @@ describe("AddCredentialPage", () => {
 
     await waitFor(() => {
       expect(addEntryMock).toHaveBeenCalledWith({
-        site: "GitHub",
         username: "user@example.com",
         password: "Secret123!",
         url: "https://github.com",
