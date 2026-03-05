@@ -4,10 +4,7 @@ import type React from "react";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useVaultSync } from "@/hooks/useVaultSync";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { ChangePasswordModal } from "@/components/ChangePasswordModal";
-import { usePasswordAging } from "@/hooks/usePasswordAging";
 import { useVault, type DecryptedEntry } from "@/context/VaultContext";
-import { EditCredentialModal } from "@/components/EditCredentialModal";
 import {
   Card,
   CardContent,
@@ -52,7 +49,7 @@ import {
   ensureShareKeyPair,
   verifyShareEnvelopeSignature,
 } from "@/lib/shareCrypto";
-import { generatePassword, calculatePasswordStrength, maskPassword } from "@/lib/password-utils";
+import { maskPassword } from "@/lib/password-utils";
 // --- Helpers ---
 
 import { useCallback } from "react";
@@ -72,10 +69,6 @@ export default function DashboardPage() {
     isUnlocked: isVaultUnlocked,
     unlockVault: contextUnlockVault,
     addEntry,
-    updateEntry,
-    deleteEntry,
-    snoozeEntry,
-    syncNow,
     isSyncing,
     lastSyncedAt,
     syncError,
@@ -90,38 +83,13 @@ export default function DashboardPage() {
     setMounted(true);
   }, []);
 
-  // UI State
-  const [isInitializing, setIsInitializing] = useState(!isVaultUnlocked);
-  /* Local state removed - using isVaultUnlocked from context */
-
-  const [otpCode, setOtpCode] = useState("");
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpVerified, setOtpVerified] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [timeLeft, setTimeLeft] = useState(600); // 10 minutes in seconds
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   // Vault Data (Managed by Context)
   const [masterPassword, setMasterPassword] = useState("");
   const [showMasterPassword, setShowMasterPassword] = useState(false);
 
-  // Add Entry Form
-  const [newEntry, setNewEntry] = useState({
-    url: "",
-    username: "",
-    password: "",
-    notes: "",
-    showPassword: false,
-  });
-  const [isAddingEntry, setIsAddingEntry] = useState(false);
-  const strength = calculatePasswordStrength(newEntry.password);
-
-  // Edit Entry State
-  const [editingEntry, setEditingEntry] = useState<DecryptedEntry | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isResolvingConflict, setIsResolvingConflict] = useState(false);
   const [sharingEntry, setSharingEntry] = useState<DecryptedEntry | null>(null);
   const [shareRecipientEmail, setShareRecipientEmail] = useState("");
@@ -148,45 +116,9 @@ export default function DashboardPage() {
   // Auto-logout after inactivity
   const lastActivityRef = useRef<number>(Date.now());
 
-  // Send OTP to user's email
-  const sendOTPToUser = useCallback(async () => {
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
 
-      const token = typeof window !== 'undefined' && localStorage.getItem("auth_token");
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
-      const response = await fetch(
-        buildApiUrl("/otp/send"),
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ email: session.email }),
-        },
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setOtpSent(true);
-        setTimeLeft(600); // Reset timer to 10 minutes
-        toast.success(data.message || "OTP sent to your email");
-      } else {
-        const error = await response.json();
-        console.error("[OTP] Send failed with details:", error);
-        toast.error(error.message || "Unable to send OTP. Please check your connection.");
-      }
-    } catch (error) {
-      console.error("Send OTP error:", error);
-      toast.error("Failed to send verification code. Please try again.");
-    }
-  }, [session.email]);
 
   const unlockVault = useCallback(async () => {
-    setIsVerifyingOtp(true);
     try {
       // 1. Ensure we have the master password
       let passwordToUse = masterPassword.trim();
@@ -198,7 +130,6 @@ export default function DashboardPage() {
           setMasterPassword(sessionPassword);
         } else {
           console.log("[Dashboard] Master password not in storage, manual entry required.");
-          setIsVerifyingOtp(false);
           return;
         }
       }
@@ -212,8 +143,6 @@ export default function DashboardPage() {
     } catch (err) {
       console.error("Unlock error:", err);
       toast.error("Unlock failed. Please ensure your master password is correct.");
-    } finally {
-      setIsVerifyingOtp(false);
     }
   }, [masterPassword, contextUnlockVault]);
 
@@ -223,7 +152,6 @@ export default function DashboardPage() {
     const hasToken = typeof window !== 'undefined' && localStorage.getItem("auth_token")
 
     if (!hasToken) {
-      setIsInitializing(false)
       return
     }
 
@@ -234,9 +162,6 @@ export default function DashboardPage() {
 
     // NEW: Check if vault is already unlocked to prevent re-initialization loops
     if (isVaultUnlocked) {
-      setOtpVerified(true);
-      setOtpSent(true);
-      setIsInitializing(false);
       return;
     }
 
@@ -247,32 +172,21 @@ export default function DashboardPage() {
     }
 
     // 4. User is authenticated. Check OTP status.
-    if (!otpSent) {
-      const isVerified = sessionStorage.getItem("otp_verified") === "true"
-      if (isVerified) {
-        setOtpVerified(true)
-        setOtpSent(true)
-
-        // Check if we have master password in session
-        const sessionPassword = sessionStorage.getItem("session_master_password")
-        if (sessionPassword) {
-          setMasterPassword(sessionPassword)
-          unlockVault().finally(() => {
-            setIsInitializing(false)
-          })
-        } else {
-          console.log('[Dashboard] No session password - showing empty dashboard')
-          setIsInitializing(false)
-        }
+    const isVerified = sessionStorage.getItem("otp_verified") === "true"
+    if (isVerified) {
+      // Check if we have master password in session
+      const sessionPassword = sessionStorage.getItem("session_master_password")
+      if (sessionPassword) {
+        setMasterPassword(sessionPassword)
+        unlockVault()
       } else {
-        // Not verified
-        sendOTPToUser()
-        setIsInitializing(false)
+        console.log('[Dashboard] No session password - showing empty dashboard')
       }
     } else {
-      setIsInitializing(false)
+      // Not verified - redirect to OTP
+      router.push("/otp")
     }
-  }, [session.isAuthenticated, session.email, otpSent, isVaultUnlocked, masterPassword, sendOTPToUser, unlockVault]);
+  }, [session.isAuthenticated, session.email, isVaultUnlocked, masterPassword, unlockVault, router]);
 
   const ensureSharingKeysAndSync = useCallback(async () => {
     const token = localStorage.getItem("auth_token");
@@ -301,75 +215,6 @@ export default function DashboardPage() {
       void ensureSharingKeysAndSync();
     }
   }, [session.isAuthenticated, isVaultUnlocked, ensureSharingKeysAndSync]);
-
-  // Countdown timer for OTP expiration
-  useEffect(() => {
-    if (!otpSent || otpVerified) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          toast.error("Verification code expired. Please request a new one.");
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [otpSent, otpVerified]);
-
-
-  // Verify OTP
-  const handleVerifyOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpCode || otpCode.length !== 6) return;
-
-    setIsVerifyingOtp(true);
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      const token = typeof window !== 'undefined' && localStorage.getItem("auth_token");
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
-      const response = await fetch(
-        buildApiUrl("/otp/verify"),
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            email: session.email,
-            code: otpCode,
-          }),
-        },
-      );
-
-      if (response.ok) {
-        setOtpVerified(true);
-        sessionStorage.setItem("otp_verified", "true"); // Persist verification
-
-        // Dispatch custom event to notify layout about OTP verification
-        window.dispatchEvent(new Event("otpVerified"));
-
-        toast.success("OTP verified successfully!");
-        // Automatically proceed to unlock vault
-        await unlockVault();
-      } else {
-        const error = await response.json();
-        toast.error(error.message || "Invalid verification code");
-      }
-    } catch (error) {
-      console.error("Verify OTP error:", error);
-      toast.error("Verification failed. Please try again.");
-    } finally {
-      setIsVerifyingOtp(false);
-    }
-  };
 
   // Format time as MM:SS
   const formatTime = (seconds: number) => {
@@ -404,85 +249,6 @@ export default function DashboardPage() {
     };
   }, [isVaultUnlocked, actions]);
 
-  const handleGeneratePassword = () => {
-    const password = generatePassword();
-    setNewEntry({ ...newEntry, password });
-    toast.success("Strong password generated");
-  };
-
-  const handleAddEntry = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (
-      !newEntry.url ||
-      !newEntry.username ||
-      !newEntry.password
-    ) {
-      toast.error(
-        "Please complete all required fields (URL, Username, and Password)",
-      );
-      return;
-    }
-
-    setIsAddingEntry(true);
-    try {
-      await addEntry({
-        username: newEntry.username,
-        password: newEntry.password,
-        url: newEntry.url,
-        notes: newEntry.notes,
-      });
-
-      setNewEntry({
-        url: "",
-        username: "",
-        password: "",
-        notes: "",
-        showPassword: false,
-      });
-      // Context shows success toast
-    } catch (err) {
-      console.error("[Dashboard] Add entry error:", err);
-    } finally {
-      setIsAddingEntry(false);
-    }
-  };
-
-  // Edit entry
-  const handleEditEntry = (entry: DecryptedEntry) => {
-    setEditingEntry(entry);
-    setIsEditModalOpen(true);
-  };
-
-  const handleSaveEdit = async (updatedEntry: DecryptedEntry) => {
-    setIsSavingEdit(true);
-    try {
-      await updateEntry(updatedEntry);
-      setIsEditModalOpen(false);
-      setEditingEntry(null);
-    } catch (err) {
-      console.error("[Dashboard] Edit entry error:", err);
-    } finally {
-      setIsSavingEdit(false);
-    }
-  };
-
-  // Delete entry
-  const handleDeleteEntry = async (entryId: string) => {
-    if (
-      !confirm(
-        "Are you sure you want to delete this credential? This action cannot be undone.",
-      )
-    ) {
-      return;
-    }
-
-    try {
-      await deleteEntry(entryId);
-    } catch (err) {
-      console.error("[Dashboard] Delete entry error:", err);
-    }
-  };
-
   const togglePasswordVisibility = (id: string) => {
     setDecryptedEntries((entries) =>
       entries.map((e) =>
@@ -491,24 +257,8 @@ export default function DashboardPage() {
     );
   };
 
-  // Helper functions moved to usePasswordAging hook
-  const { isPasswordOld, isSnoozed } = usePasswordAging();
-
   const copyToClipboard = (text: string) => {
     void copyWithAutoClear(text);
-  };
-
-  const handleManualSync = async () => {
-    const updated = await syncNow();
-    if (updated) {
-      toast.success("Vault synced with latest changes");
-      return;
-    }
-    if (syncError) {
-      toast.error(syncError);
-      return;
-    }
-    toast.info("Already up to date");
   };
 
   const formatLastSynced = (ts: number | null) => formatTimestampIST(ts);
@@ -632,28 +382,8 @@ export default function DashboardPage() {
   };
 
   // --- Render Loading State ---
-  if (isLoggingOut || !mounted || isInitializing) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
-      </div>
-    );
-  }
-  // Show loading screen during initialization OR during automatic unlock
-  if (isInitializing || (isVerifyingOtp && otpVerified)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background relative">
-        <div className="absolute top-4 right-4 z-50">
-          <ThemeToggle />
-        </div>
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-12 w-12 animate-spin text-primary" />
-          <p className="text-muted-foreground font-medium">
-            {isVerifyingOtp ? "Unlocking your vault..." : "Securing Dashboard..."}
-          </p>
-        </div>
-      </div>
-    )
+  if (isLoggingOut || !mounted) {
+    return null;
   }
 
   // --- Render Login Screen (Authenticated but Locked) ---
@@ -691,7 +421,7 @@ export default function DashboardPage() {
     );
   }
 
-  // --- Render OTP Verification & Lock State ---
+  // --- Render Lock State ---
   if (!isVaultUnlocked) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4 relative">
@@ -704,137 +434,58 @@ export default function DashboardPage() {
               <ShieldCheck className="h-14 w-14 text-primary animate-pulse" />
             </div>
             <CardTitle className="text-2xl font-bold text-foreground font-heading tracking-tight">
-              {otpVerified ? "Unlock Vault" : "Verify Identity"}
+              Unlock Vault
             </CardTitle>
             <CardDescription className="text-muted-foreground">
-              {otpVerified
-                ? "Enter your master password to decrypt your vault"
-                : "Enter the 6-digit code sent to your email"}
+              Enter your master password to decrypt your vault
             </CardDescription>
           </CardHeader>
 
           <form
-            onSubmit={otpVerified ? (e) => { e.preventDefault(); unlockVault(); } : handleVerifyOTP}
+            onSubmit={(e) => { e.preventDefault(); unlockVault(); }}
             style={{ position: "relative" }}
             suppressHydrationWarning
           >
             <CardContent className="space-y-6">
-              {!otpVerified && (
-                <div className="space-y-3">
-                  <Label
-                    htmlFor="otp-input"
-                    className="text-sm font-semibold text-foreground/80"
+              <div className="space-y-3">
+                <Label htmlFor="master-password-input" className="text-sm font-semibold text-foreground/80">
+                  Master Password
+                </Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="master-password-input"
+                    type={showMasterPassword ? "text" : "password"}
+                    className="pl-10 pr-10 bg-secondary/50 border-input focus:border-primary transition-all font-mono"
+                    placeholder="••••••••••••••••"
+                    value={masterPassword}
+                    onChange={(e) => setMasterPassword(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1 h-8 w-8 text-muted-foreground"
+                    onClick={() => setShowMasterPassword(!showMasterPassword)}
                   >
-                    One-Time Password
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="otp-input"
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={6}
-                      className="text-center text-2xl font-bold tracking-[0.5em] h-14 bg-secondary/50 border-input focus:border-primary transition-all font-mono"
-                      placeholder="000000"
-                      value={otpCode}
-                      onChange={(e) => {
-                        const value = e.target.value
-                          .replace(/\D/g, "")
-                          .slice(0, 6);
-                        setOtpCode(value);
-                      }}
-                      autoFocus
-                      required
-                      disabled={!otpSent || timeLeft === 0}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <p className="text-muted-foreground flex items-center">
-                      <Clock className="h-3 w-3 mr-1" />
-                      {timeLeft > 0
-                        ? `Code expires in ${formatTime(timeLeft)}`
-                        : "Code expired"}
-                    </p>
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="text-primary hover:text-primary/80 p-0 h-auto"
-                      onClick={sendOTPToUser}
-                      disabled={timeLeft > 540} // Disable if less than 1 minute has passed
-                    >
-                      Resend Code
-                    </Button>
-                  </div>
+                    {showMasterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
                 </div>
-              )}
-
-              {otpVerified && (
-                <div className="space-y-3">
-                  <Label htmlFor="master-password-input" className="text-sm font-semibold text-foreground/80">
-                    Master Password
-                  </Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="master-password-input"
-                      type={showMasterPassword ? "text" : "password"}
-                      className="pl-10 pr-10 bg-secondary/50 border-input focus:border-primary transition-all font-mono"
-                      placeholder="••••••••••••••••"
-                      value={masterPassword}
-                      onChange={(e) => setMasterPassword(e.target.value)}
-                      required
-                      disabled={isVerifyingOtp}
-                      autoFocus
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1 h-8 w-8 text-muted-foreground"
-                      onClick={() => setShowMasterPassword(!showMasterPassword)}
-                    >
-                      {showMasterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Your master password is required to decrypt your vault locally.
-                  </p>
-                </div>
-              )}
-
-
-
-              {!otpVerified && !otpSent && (
-                <Alert className="bg-yellow-500/10 border-yellow-500/20 text-yellow-500">
-                  <AlertCircle className="h-4 w-4 text-yellow-500" />
-                  <AlertDescription className="text-xs">
-                    <strong>Sending OTP...</strong> Please wait while we send
-                    the verification code to your email.
-                  </AlertDescription>
-                </Alert>
-              )}
+                <p className="text-[10px] text-muted-foreground">
+                  Your master password is required to decrypt your vault locally.
+                </p>
+              </div>
             </CardContent>
 
             <CardFooter className="flex flex-col gap-3">
               <Button
                 type="submit"
                 className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-lg shadow-primary/20 transition-all font-heading tracking-wide"
-                disabled={
-                  isVerifyingOtp || (!otpVerified && (otpCode.length !== 6 || timeLeft === 0))
-                }
               >
-                {isVerifyingOtp ? (
-                  <>
-                    <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-                    {otpVerified ? "Unlocking Vault..." : "Verifying OTP..."}
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="mr-2 h-5 w-5" />
-                    {otpVerified ? "Unlock Vault" : "Verify & Unlock"}
-                  </>
-                )}
+                <ShieldCheck className="mr-2 h-5 w-5" />
+                Unlock Vault
               </Button>
 
               <Button
@@ -971,15 +622,6 @@ export default function DashboardPage() {
                 </p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleManualSync}
-              disabled={isSyncing}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
-              {isSyncing ? "Syncing..." : "Sync Now"}
-            </Button>
             <Button variant="outline" size="sm" onClick={() => setIncomingOpen(true)}>
               <Inbox className="mr-2 h-4 w-4" />
               Incoming ({incomingShares.length})
@@ -1151,20 +793,6 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Change Password Modal - still useful if we want to trigger it from dashboard alerts */}
-      <ChangePasswordModal
-        isOpen={isChangePasswordOpen}
-        onClose={() => setIsChangePasswordOpen(false)}
-      />
-
-      {/* Edit Credential Modal */}
-      <EditCredentialModal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        entry={editingEntry}
-        onSave={handleSaveEdit}
-      />
 
       {syncConflict && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
