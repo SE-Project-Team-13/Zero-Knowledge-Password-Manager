@@ -30,6 +30,7 @@ import {
 import { useVault } from "@/context/VaultContext";
 import { toast } from "sonner";
 import { copyWithAutoClear } from "@/lib/clipboard";
+import { maskPassword } from "@/lib/password-utils";
 
 function PasswordManagerContent() {
     const [session] = useVaultSync();
@@ -232,7 +233,7 @@ function PasswordManagerContent() {
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-muted-foreground w-20">Password:</span>
                                                         <span className="text-foreground font-mono">
-                                                            {entry.isPasswordVisible ? entry.password : "••••••••"}
+                                                            {entry.isPasswordVisible ? entry.password : maskPassword(entry.password.length)}
                                                         </span>
                                                         <Button
                                                             variant="ghost"
