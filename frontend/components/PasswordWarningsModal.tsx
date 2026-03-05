@@ -53,7 +53,7 @@ export function PasswordWarningsModal({
                   <div className="flex items-center gap-2 mb-1">
                     <div className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
                     <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
-                      {entry.site}
+                      {entry.url}
                     </p>
                   </div>
                   <p className="text-xs text-muted-foreground truncate pl-4 mb-1">

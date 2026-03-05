@@ -19,7 +19,7 @@ export interface DerivedKey {
  * Vault entry structure that can be serialized to JSON.
  */
 export interface VaultEntry {
-  site: string
+  url: string
   username: string
   password: string
   metadata?: Record<string, any>

@@ -29,7 +29,7 @@ describe('Crypto Engine - AES-256-GCM', () => {
         const derivedKey = await createMockDerivedKey();
         
         const inputData = { 
-            site: 'StartPage', 
+            url: 'StartPage', 
             username: 'privacy_user', 
             password: 'CorrectHorseBatteryStaple! 🔐' 
         };
@@ -57,7 +57,7 @@ describe('Crypto Engine - AES-256-GCM', () => {
         console.log('\n--- Test: IV Uniqueness ---');
         const derivedKey = await createMockDerivedKey();
         const data = { 
-            site: 'test', 
+            url: 'test', 
             username: 'u', 
             password: 'p' 
         };

@@ -47,8 +47,8 @@ export function EditCredentialModal({
   const handleSave = async () => {
     if (!formData) return;
     
-    if (!formData.site || !formData.username || !formData.password || !formData.siteUrl) {
-      toast.error("Please complete all required fields (Site, URL, Username, and Password)");
+    if (!formData.url || !formData.username || !formData.password) {
+      toast.error("Please complete all required fields (URL, Username, and Password)");
       return;
     }
 
@@ -91,25 +91,13 @@ export function EditCredentialModal({
 
         <CardContent className="space-y-4 pt-6">
           <div className="space-y-2">
-            <Label htmlFor="edit-site" className="text-foreground/80">Website/Service</Label>
-            <Input
-              id="edit-site"
-              placeholder="e.g., GitHub, Gmail"
-              value={formData.site}
-              onChange={(e) => setFormData({ ...formData, site: e.target.value })}
-              required
-              className="bg-secondary/50 border-input focus:border-primary"
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="edit-url" className="text-foreground/80">URL</Label>
             <Input
               id="edit-url"
               type="url"
               placeholder="https://example.com"
-              value={formData.siteUrl || ""}
-              onChange={(e) => setFormData({ ...formData, siteUrl: e.target.value })}
+              value={formData.url || ""}
+              onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               required
               className="bg-secondary/50 border-input focus:border-primary"
             />

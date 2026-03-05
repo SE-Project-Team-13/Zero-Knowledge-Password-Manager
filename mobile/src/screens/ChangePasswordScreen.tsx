@@ -70,7 +70,7 @@ export default function ChangePasswordScreen({ navigation }: any) {
             const verifier = await generateVerifier(newDerivedKey.authKey);
 
             const serializedVault: VaultEntry = {
-                site: '__vault__',
+                url: '__vault__',
                 username: '__vault__',
                 password: JSON.stringify(entries),
                 metadata: { isVaultBlob: true },

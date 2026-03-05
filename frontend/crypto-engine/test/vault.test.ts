@@ -9,18 +9,18 @@ describe('Crypto Engine - Vault Logic Tests', () => {
     describe('createVaultEntry', () => {
         it('should structure inputs into valid vault object', () => {
             console.log('\n--- Test: Create Valid Vault Entry ---');
-            const site = 'SecureBank.com';
+            const url = 'SecureBank.com';
             const user = 'john_doe';
             const pass = 'SuperSecret123!';
             
-            console.log('Input Params:', { site, user, pass });
+            console.log('Input Params:', { url, user, pass });
             
             console.log('[Action] Creating Entry...');
-            const entry = createVaultEntry(site, user, pass);
+            const entry = createVaultEntry(url, user, pass);
             
             console.log('Output Vault Entry:', entry);
             
-            expect(entry.site).toBe(site);
+            expect(entry.url).toBe(url);
             // ID is not assigned by createVaultEntry (handled by DB)
             // Expect metadata to contain createdAt
             expect(entry.metadata).toBeDefined();
@@ -34,7 +34,7 @@ describe('Crypto Engine - Vault Logic Tests', () => {
     describe('validateVaultEntry', () => {
         it('should return true for a complete entry', () => {
             console.log('\n--- Test: Validate Complete Entry ---');
-            const entry = { site: 'test', username: 'u', password: 'p', id: '1', createdAt: 0 };
+            const entry = { url: 'test', username: 'u', password: 'p', id: '1', createdAt: 0 };
             console.log('Input Object:', entry);
             
             const isValid = validateVaultEntry(entry);
@@ -46,7 +46,7 @@ describe('Crypto Engine - Vault Logic Tests', () => {
 
         it('should return false for missing fields', () => {
             console.log('\n--- Test: Validate Incomplete Entry ---');
-            const entry = { site: 'test', username: 'u' }; // missing password
+            const entry = { url: 'test', username: 'u' }; // missing password
             console.log('Input Object:', entry);
             
             // @ts-ignore testing js behavior or partial type

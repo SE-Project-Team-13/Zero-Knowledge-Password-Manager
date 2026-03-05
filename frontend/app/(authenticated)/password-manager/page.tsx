@@ -25,7 +25,9 @@ import {
     Plus,
     Key,
     Edit,
-    Trash2
+    Trash2,
+    ChevronDown,
+    ChevronUp
 } from "lucide-react";
 import { useVault } from "@/context/VaultContext";
 import { toast } from "sonner";
@@ -43,6 +45,11 @@ function PasswordManagerContent() {
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingEntry, setEditingEntry] = useState<DecryptedEntry | null>(null);
+    const [expandedUrls, setExpandedUrls] = useState<Record<string, boolean>>({});
+
+    const toggleUrlExpansion = (url: string) => {
+        setExpandedUrls(prev => ({ ...prev, [url]: !prev[url] }));
+    };
 
     const handleEditEntry = (entry: DecryptedEntry) => {
         setEditingEntry(entry);
@@ -99,6 +106,28 @@ function PasswordManagerContent() {
     useEffect(() => {
         setMounted(true);
     }, []);
+
+    // Filter, Group and Sort Entries
+    const filteredEntries = decryptedEntries.filter(
+        (entry) =>
+            entry.url?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            entry.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (entry.notes && entry.notes.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+
+    // Group entries by URL and sort by URL
+    const groupedEntries = filteredEntries.reduce((acc, entry) => {
+        const url = entry.url || "No URL";
+        if (!acc[url]) acc[url] = [];
+        acc[url].push(entry);
+        return acc;
+    }, {} as Record<string, DecryptedEntry[]>);
+
+    const sortedUrls = Object.keys(groupedEntries).sort((a, b) => {
+        if (a === "No URL") return 1;
+        if (b === "No URL") return -1;
+        return a.localeCompare(b);
+    });
 
     return (
         <div className="flex-1 p-4 lg:p-8 pt-20 lg:pt-20 space-y-8 max-w-5xl mx-auto w-full">
@@ -162,10 +191,7 @@ function PasswordManagerContent() {
                             </Card>
                         ))}
                     </div>
-                ) : decryptedEntries.filter((entry) =>
-                    entry.site.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    entry.username.toLowerCase().includes(searchQuery.toLowerCase())
-                ).length === 0 ? (
+                ) : filteredEntries.length === 0 ? (
                     <div className="text-center py-20 px-6 bg-card border border-dashed border-border rounded-3xl">
                         <div className="bg-secondary p-4 rounded-full w-fit mx-auto mb-4">
                             <ShieldAlert className="h-10 w-10 text-muted-foreground" />
@@ -189,124 +215,161 @@ function PasswordManagerContent() {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-4">
-                        {decryptedEntries
-                            .filter((entry) =>
-                                entry.site.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                entry.username.toLowerCase().includes(searchQuery.toLowerCase())
-                            )
-                            .map((entry) => (
-                                <Card key={entry.id} className="border border-border bg-card/50 backdrop-blur-sm hover:border-primary/50 transition-all">
-                                    <CardContent className="p-6">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <h3 className="text-lg font-semibold text-foreground">
-                                                        {entry.site}
-                                                    </h3>
-                                                </div>
-                                                <div className="space-y-2 text-sm">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-muted-foreground w-20">URL:</span>
-                                                        <a
-                                                            href={entry.siteUrl}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-primary hover:underline truncate"
-                                                        >
-                                                            {entry.siteUrl}
-                                                        </a>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-muted-foreground w-20">Username:</span>
-                                                        <span className="text-foreground">{entry.username}</span>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-6 w-6"
-                                                            onClick={() => {
-                                                                void copyWithAutoClear(entry.username);
-                                                            }}
-                                                        >
-                                                            <Copy className="h-3 w-3" />
-                                                        </Button>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-muted-foreground w-20">Password:</span>
-                                                        <span className="text-foreground font-mono">
-                                                            {entry.isPasswordVisible ? entry.password : maskPassword(entry.password.length)}
-                                                        </span>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-6 w-6"
-                                                            onClick={() => togglePasswordVisibility(entry.id)}
-                                                        >
-                                                            {entry.isPasswordVisible ? (
-                                                                <EyeOff className="h-3 w-3" />
-                                                            ) : (
-                                                                <Eye className="h-3 w-3" />
-                                                            )}
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-6 w-6"
-                                                            onClick={() => {
-                                                                void copyWithAutoClear(entry.password);
-                                                            }}
-                                                        >
-                                                            <Copy className="h-3 w-3" />
-                                                        </Button>
-                                                        
-                                                    </div>
-                                                    {isPasswordOld(entry) && !isSnoozed(entry) && (
-                                                        <div className="flex items-center gap-2 text-xs text-amber-600 mt-2">
-                                                            <AlertCircle className="h-4 w-4 text-amber-500" />
-                                                            <span>Password is over 365 days old</span>
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                className="h-7 px-2 text-[10px]"
-                                                                onClick={() => snoozeEntry(entry.id)}
-                                                            >
-                                                                Snooze 7 days
-                                                            </Button>
-                                                        </div>
-                                                    )}
-                                                    {entry.notes && (
-                                                        <div className="flex items-start gap-2 mt-2">
-                                                            <span className="text-muted-foreground w-20">Notes:</span>
-                                                            <span className="text-foreground text-xs">{entry.notes}</span>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {/* Action Buttons */}
-                                                    <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-border/50">
-                                                        <Button 
-                                                            variant="outline" 
-                                                            size="sm" 
-                                                            onClick={() => handleEditEntry(entry)}
-                                                            className="h-8 hover:bg-primary/10 hover:text-primary transition-colors"
-                                                        >
-                                                            <Edit className="h-3 w-3 mr-2" />
-                                                            Edit
-                                                        </Button>
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="sm" 
-                                                            onClick={() => handleDeleteEntry(entry.id)}
-                                                            className="h-8 text-destructive hover:text-muted-foreground hover:text-primary transition-colors"
-                                                        >
-                                                            <Trash2 className="h-3 w-3 mr-2" />
-                                                            Delete
-                                                        </Button>
-                                                    </div>
-                                                </div>
+                        {sortedUrls.map((url) => {
+                            const entries = groupedEntries[url];
+                            // Default to collapsed for all items
+                            const isExpanded = expandedUrls[url] || false;
+                            const hasMultiple = entries.length > 1;
+                            const isRealUrl = url !== "No URL";
+                            const faviconUrl = isRealUrl ? `https://www.google.com/s2/favicons?domain=${url}&sz=64` : "";
+
+                            return (
+                                <div key={url} className="space-y-3">
+                                    {/* Group Header for ALL sites */}
+                                    <div 
+                                        className="flex items-center justify-between p-4 bg-secondary/20 rounded-2xl border border-border/50 cursor-pointer hover:bg-secondary/30 transition-all group/header"
+                                        onClick={() => toggleUrlExpansion(url)}
+                                    >
+                                        <div className="flex items-center gap-4 z-10 flex-1">
+                                            <div className="bg-primary/10 p-2.5 rounded-xl border border-primary/10 shrink-0 flex items-center justify-center h-10 w-10">
+                                                {isRealUrl ? (
+                                                    <img 
+                                                        src={faviconUrl} 
+                                                        alt="" 
+                                                        className="h-6 w-6 rounded-sm object-contain"
+                                                        onError={(e) => {
+                                                            (e.target as HTMLImageElement).style.display = 'none';
+                                                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                                                        }}
+                                                    />
+                                                ) : null}
+                                                <ShieldAlert className={`h-5 w-5 text-primary ${isRealUrl ? "hidden" : ""}`} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h3 className="font-bold text-foreground truncate">{url}</h3>
+                                                <p className="text-xs text-muted-foreground">{entries.length} credential{entries.length !== 1 ? 's' : ''} stored</p>
                                             </div>
                                         </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
+                                        
+                                        <div className="flex items-center pl-4">
+                                            {isExpanded ? (
+                                                <ChevronUp className="h-5 w-5 text-muted-foreground transition-transform duration-300 group-hover/header:text-primary" />
+                                            ) : (
+                                                <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-300 group-hover/header:text-primary" />
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Entries in group */}
+                                    {isExpanded && (
+                                        <div className={`grid grid-cols-1 gap-4 ml-6 pl-6 border-l-2 border-primary/10 mt-2`}>
+                                            {entries.map((entry) => (
+                                                <Card key={entry.id} className="border border-border bg-card/50 backdrop-blur-sm hover:border-primary/50 transition-all">
+                                                    <CardContent className="p-6">
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <h3 className="text-lg font-semibold text-foreground">
+                                                                        {entry.url}
+                                                                    </h3>
+                                                                </div>
+                                                                <div className="space-y-2 text-sm">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-muted-foreground w-20">Username:</span>
+                                                                        <span className="text-foreground">{entry.username}</span>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6"
+                                                                            onClick={() => {
+                                                                                void copyWithAutoClear(entry.username);
+                                                                            }}
+                                                                        >
+                                                                            <Copy className="h-3 w-3" />
+                                                                        </Button>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-muted-foreground w-20">Password:</span>
+                                                                        <span className="text-foreground font-mono">
+                                                                            {entry.isPasswordVisible ? entry.password : maskPassword(entry.password.length)}
+                                                                        </span>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6"
+                                                                            onClick={() => togglePasswordVisibility(entry.id)}
+                                                                        >
+                                                                            {entry.isPasswordVisible ? (
+                                                                                <EyeOff className="h-3 w-3" />
+                                                                            ) : (
+                                                                                <Eye className="h-3 w-3" />
+                                                                            )}
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6"
+                                                                            onClick={() => {
+                                                                                void copyWithAutoClear(entry.password);
+                                                                            }}
+                                                                        >
+                                                                            <Copy className="h-3 w-3" />
+                                                                        </Button>
+                                                                        
+                                                                    </div>
+                                                                    {isPasswordOld(entry) && !isSnoozed(entry) && (
+                                                                        <div className="flex items-center gap-2 text-xs text-amber-600 mt-2">
+                                                                            <AlertCircle className="h-4 w-4 text-amber-500" />
+                                                                            <span>Password is over 365 days old</span>
+                                                                            <Button
+                                                                                variant="outline"
+                                                                                size="sm"
+                                                                                className="h-7 px-2 text-[10px]"
+                                                                                onClick={() => snoozeEntry(entry.id)}
+                                                                            >
+                                                                                Snooze 7 days
+                                                                            </Button>
+                                                                        </div>
+                                                                    )}
+                                                                    {entry.notes && (
+                                                                        <div className="flex items-start gap-2 mt-2">
+                                                                            <span className="text-muted-foreground w-20">Notes:</span>
+                                                                            <span className="text-foreground text-xs">{entry.notes}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    
+                                                                    {/* Action Buttons */}
+                                                                    <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-border/50">
+                                                                        <Button 
+                                                                            variant="outline" 
+                                                                            size="sm" 
+                                                                            onClick={() => handleEditEntry(entry)}
+                                                                            className="h-8 hover:bg-primary/10 hover:text-primary transition-colors"
+                                                                        >
+                                                                            <Edit className="h-3 w-3 mr-2" />
+                                                                            Edit
+                                                                        </Button>
+                                                                        <Button 
+                                                                            variant="ghost" 
+                                                                            size="sm" 
+                                                                            onClick={() => handleDeleteEntry(entry.id)}
+                                                                            className="h-8 text-destructive hover:text-muted-foreground hover:text-primary transition-colors"
+                                                                        >
+                                                                            <Trash2 className="h-3 w-3 mr-2" />
+                                                                            Delete
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>

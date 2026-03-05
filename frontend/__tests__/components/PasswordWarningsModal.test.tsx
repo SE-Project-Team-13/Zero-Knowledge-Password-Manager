@@ -19,7 +19,7 @@ const mockGetLastUpdated = jest.fn(() => new Date('2020-01-01').getTime());
 let mockAgingEntries = [
   {
     id: '1',
-    site: 'OldSite',
+    url: 'OldSite',
     username: 'user1',
     updatedAt: '2020-01-01',
     lastUpdated: '2020-01-01',
@@ -41,7 +41,7 @@ describe('PasswordWarningsModal', () => {
         mockAgingEntries = [
             {
                 id: '1',
-                site: 'OldSite',
+                url: 'OldSite',
                 username: 'user1',
                 updatedAt: '2020-01-01',
                 lastUpdated: '2020-01-01',

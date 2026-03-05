@@ -44,13 +44,13 @@ function VaultCard({
     };
 
     const confirmDelete = () => {
-        Alert.alert('Delete Credential', `Remove "${entry.site}"?`, [
+        Alert.alert('Delete Credential', `Remove "${entry.url}"?`, [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete', style: 'destructive', onPress: () => onDelete(entry.id) },
         ]);
     };
 
-    const initials = entry.site?.charAt(0).toUpperCase() || '?';
+    const initials = entry.url?.charAt(0).toUpperCase() || '?';
 
     return (
         <View style={styles.card}>
@@ -59,9 +59,8 @@ function VaultCard({
                     <Text style={styles.siteInitial}>{initials}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.siteName}>{entry.site}</Text>
+                    <Text style={styles.siteName}>{entry.url}</Text>
                     <Text style={styles.siteUsername}>{entry.username}</Text>
-                    {!!entry.siteUrl && <Text style={styles.siteUrl}>{entry.siteUrl}</Text>}
                 </View>
                 <TouchableOpacity onPress={() => onEdit(entry)} style={styles.iconBtn}>
                     <Ionicons name="create-outline" size={18} color={Colors.primary} />
@@ -106,7 +105,6 @@ export default function VaultListScreen() {
     const { entries, isLoading, isSyncing, loadVault, deleteEntry, updateEntry, addEntry, syncConflict, resolveSyncConflict } = useVaultStore();
     const [search, setSearch] = useState('');
     const [editingEntry, setEditingEntry] = useState<VaultEntryLocal | null>(null);
-    const [editSite, setEditSite] = useState('');
     const [editUsername, setEditUsername] = useState('');
     const [editPassword, setEditPassword] = useState('');
     const [editUrl, setEditUrl] = useState('');
@@ -161,8 +159,8 @@ export default function VaultListScreen() {
     }, [userId]);
 
     const filtered = entries.filter((e) =>
-        e.site.toLowerCase().includes(search.toLowerCase()) ||
-        e.username.toLowerCase().includes(search.toLowerCase()),
+        e.url?.toLowerCase().includes(search.toLowerCase()) ||
+        e.username?.toLowerCase().includes(search.toLowerCase()),
     );
 
     const handleDelete = async (id: string) => {
@@ -171,27 +169,25 @@ export default function VaultListScreen() {
 
     const openEdit = (entry: VaultEntryLocal) => {
         setEditingEntry(entry);
-        setEditSite(entry.site || '');
         setEditUsername(entry.username || '');
         setEditPassword(entry.password || '');
-        setEditUrl(entry.siteUrl || '');
+        setEditUrl(entry.url || '');
         setEditNotes(entry.notes || '');
     };
 
     const saveEdit = async () => {
         if (!editingEntry || !masterKey || !userId) return;
-        if (!editSite.trim() || !editUsername.trim() || !editPassword.trim()) {
-            Alert.alert('Invalid Input', 'Site, username, and password are required.');
+        if (!editUrl.trim() || !editUsername.trim() || !editPassword.trim()) {
+            Alert.alert('Invalid Input', 'URL, username, and password are required.');
             return;
         }
 
         await updateEntry(
             {
                 ...editingEntry,
-                site: editSite.trim(),
+                url: editUrl.trim(),
                 username: editUsername.trim(),
                 password: editPassword,
-                siteUrl: editUrl.trim(),
                 notes: editNotes.trim(),
             },
             masterKey,
@@ -233,8 +229,7 @@ export default function VaultListScreen() {
             );
             const envelope = await createShareEnvelope(
                 {
-                    site: sharingEntry.site,
-                    siteUrl: sharingEntry.siteUrl || '',
+                    url: sharingEntry.url,
                     username: sharingEntry.username,
                     password: sharingEntry.password,
                     notes: sharingEntry.notes || '',
@@ -295,10 +290,9 @@ export default function VaultListScreen() {
             });
             await addEntry(
                 {
-                    site: decrypted.site || 'Shared Credential',
+                    url: decrypted.url || decrypted.siteUrl || decrypted.site || 'Shared Credential',
                     username: decrypted.username || '',
                     password: decrypted.password || '',
-                    siteUrl: decrypted.siteUrl || '',
                     notes: decrypted.notes || `Shared by ${share.sender.email}`,
                 },
                 masterKey,
@@ -408,7 +402,7 @@ export default function VaultListScreen() {
                     <View style={styles.modalCard}>
                         <Text style={styles.modalTitle}>Edit Credential</Text>
 
-                        <TextInput style={styles.modalInput} value={editSite} onChangeText={setEditSite} placeholder="Site" placeholderTextColor={Colors.textMuted} />
+                        <TextInput style={styles.modalInput} value={editUrl} onChangeText={setEditUrl} placeholder="URL" placeholderTextColor={Colors.textMuted} />
                         <TextInput style={styles.modalInput} value={editUsername} onChangeText={setEditUsername} placeholder="Username" placeholderTextColor={Colors.textMuted} />
 
                         <View style={styles.modalInputRow}>
@@ -425,7 +419,6 @@ export default function VaultListScreen() {
                             </TouchableOpacity>
                         </View>
 
-                        <TextInput style={styles.modalInput} value={editUrl} onChangeText={setEditUrl} placeholder="URL (optional)" placeholderTextColor={Colors.textMuted} />
                         <TextInput
                             style={[styles.modalInput, { height: 84, textAlignVertical: 'top' }]}
                             value={editNotes}
@@ -452,7 +445,7 @@ export default function VaultListScreen() {
                     <View style={styles.modalCard}>
                         <Text style={styles.modalTitle}>Secure Share</Text>
                         <Text style={styles.conflictText}>
-                            {`Share "${sharingEntry?.site || "credential"}" with recipient email`}
+                            {`Share "${sharingEntry?.url || "credential"}" with recipient email`}
                         </Text>
                         <TextInput
                             style={styles.modalInput}
@@ -519,7 +512,7 @@ export default function VaultListScreen() {
                                 <Text style={styles.conflictHeading}>Local ({syncConflict?.localEntries.length || 0})</Text>
                                 {(syncConflict?.localEntries || []).slice(0, 6).map((entry) => (
                                     <View key={`local-${entry.id}`} style={styles.conflictItem}>
-                                        <Text style={styles.siteName}>{entry.site}</Text>
+                                        <Text style={styles.siteName}>{entry.url}</Text>
                                         <Text style={styles.siteUsername}>{entry.username}</Text>
                                     </View>
                                 ))}
@@ -528,7 +521,7 @@ export default function VaultListScreen() {
                                 <Text style={styles.conflictHeading}>Server ({syncConflict?.serverEntries.length || 0})</Text>
                                 {(syncConflict?.serverEntries || []).slice(0, 6).map((entry) => (
                                     <View key={`server-${entry.id}`} style={styles.conflictItem}>
-                                        <Text style={styles.siteName}>{entry.site}</Text>
+                                        <Text style={styles.siteName}>{entry.url}</Text>
                                         <Text style={styles.siteUsername}>{entry.username}</Text>
                                     </View>
                                 ))}
