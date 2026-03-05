@@ -27,23 +27,9 @@ import {
 } from "lucide-react";
 import { useVault } from "@/context/VaultContext";
 import { toast } from "sonner";
+import { generatePassword, calculatePasswordStrength } from "@/lib/password-utils";
 
 // --- Helpers ---
-const calculatePasswordStrength = (password: string) => {
-    if (!password) return { score: 0, label: "None", color: "bg-gray-200" };
-
-    let score = 0;
-    if (password.length >= 8) score += 20;
-    if (password.length >= 12) score += 20;
-    if (/[A-Z]/.test(password)) score += 15;
-    if (/[a-z]/.test(password)) score += 15;
-    if (/[0-9]/.test(password)) score += 15;
-    if (/[^A-Za-z0-9]/.test(password)) score += 15;
-
-    if (score < 40) return { score, label: "Weak", color: "bg-red-500" };
-    if (score < 75) return { score, label: "Moderate", color: "bg-yellow-500" };
-    return { score, label: "Strong", color: "bg-green-500" };
-};
 
 export default function AddCredentialPage() {
     const [session] = useVaultSync();
@@ -72,16 +58,8 @@ export default function AddCredentialPage() {
     // Check authentication happens in Layout
 
     // Generate strong password
-    const generatePassword = () => {
-        const length = 16;
-        const charset =
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
-        let password = "";
-        const array = new Uint8Array(length);
-        crypto.getRandomValues(array);
-        for (let i = 0; i < length; i++) {
-            password += charset[array[i] % charset.length];
-        }
+    const handleGeneratePassword = () => {
+        const password = generatePassword();
         setNewEntry({ ...newEntry, password });
         toast.success("Strong password generated");
     };
@@ -243,7 +221,7 @@ export default function AddCredentialPage() {
                                         variant="ghost"
                                         size="icon"
                                         className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
-                                        onClick={generatePassword}
+                                        onClick={handleGeneratePassword}
                                         title="Generate strong password"
                                     >
                                         <Sparkles className="h-4 w-4" />

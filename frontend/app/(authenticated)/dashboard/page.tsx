@@ -50,22 +50,8 @@ import {
   ensureShareKeyPair,
   verifyShareEnvelopeSignature,
 } from "@/lib/shareCrypto";
+import { generatePassword, calculatePasswordStrength, maskPassword } from "@/lib/password-utils";
 // --- Helpers ---
-const calculatePasswordStrength = (password: string) => {
-  if (!password) return { score: 0, label: "None", color: "bg-gray-200" };
-
-  let score = 0;
-  if (password.length >= 8) score += 20;
-  if (password.length >= 12) score += 20;
-  if (/[A-Z]/.test(password)) score += 15;
-  if (/[a-z]/.test(password)) score += 15;
-  if (/[0-9]/.test(password)) score += 15;
-  if (/[^A-Za-z0-9]/.test(password)) score += 15;
-
-  if (score < 40) return { score, label: "Weak", color: "bg-red-500" };
-  if (score < 75) return { score, label: "Moderate", color: "bg-yellow-500" };
-  return { score, label: "Strong", color: "bg-green-500" };
-};
 
 import { useCallback } from "react";
 
@@ -412,17 +398,8 @@ export default function DashboardPage() {
     };
   }, [isVaultUnlocked, actions]);
 
-  // Generate strong password
-  const generatePassword = () => {
-    const length = 16;
-    const charset =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
-    let password = "";
-    const array = new Uint8Array(length);
-    crypto.getRandomValues(array);
-    for (let i = 0; i < length; i++) {
-      password += charset[array[i] % charset.length];
-    }
+  const handleGeneratePassword = () => {
+    const password = generatePassword();
     setNewEntry({ ...newEntry, password });
     toast.success("Strong password generated");
   };
@@ -1045,7 +1022,7 @@ export default function DashboardPage() {
                         <div className="h-9 px-3 min-w-[120px] bg-secondary/50 rounded-md flex items-center font-mono text-sm">
                           {entry.isPasswordVisible
                             ? entry.password
-                            : "••••••••••••"}
+                            : maskPassword(entry.password.length)}
                         </div>
                       </div>
 

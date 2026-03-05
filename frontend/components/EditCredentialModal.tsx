@@ -12,7 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ShieldCheck, RefreshCw, X, Eye, EyeOff, Edit } from "lucide-react";
+import { ShieldCheck, RefreshCw, X, Eye, EyeOff, Edit, Sparkles } from "lucide-react";
+import { generatePassword, calculatePasswordStrength } from "@/lib/password-utils";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { DecryptedEntry } from "@/context/VaultContext";
@@ -25,21 +26,6 @@ interface EditCredentialModalProps {
   onSave: (updatedEntry: DecryptedEntry) => Promise<void>;
 }
 
-const calculatePasswordStrength = (password: string) => {
-  if (!password) return { score: 0, label: "None", color: "bg-gray-200" };
-
-  let score = 0;
-  if (password.length >= 8) score += 20;
-  if (password.length >= 12) score += 20;
-  if (/[A-Z]/.test(password)) score += 15;
-  if (/[a-z]/.test(password)) score += 15;
-  if (/[0-9]/.test(password)) score += 15;
-  if (/[^A-Za-z0-9]/.test(password)) score += 15;
-
-  if (score < 40) return { score, label: "Weak", color: "bg-red-500" };
-  if (score < 75) return { score, label: "Moderate", color: "bg-yellow-500" };
-  return { score, label: "Strong", color: "bg-green-500" };
-};
 
 export function EditCredentialModal({
   isOpen,
@@ -160,18 +146,34 @@ export function EditCredentialModal({
                 placeholder="Enter password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="pr-10 bg-secondary/50 border-input focus:border-primary font-mono"
+                className="pr-20 bg-secondary/50 border-input focus:border-primary font-mono"
                 required
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
-                onClick={() => setIsPasswordVisible(!isPasswordVisible)}
-              >
-                {isPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
+              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
+                  onClick={() => setIsPasswordVisible(!isPasswordVisible)}
+                >
+                  {isPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-transparent"
+                  onClick={() => {
+                    const newPass = generatePassword();
+                    setFormData({ ...formData, password: newPass });
+                    toast.success("Strong password generated");
+                  }}
+                  title="Generate strong password"
+                >
+                  <Sparkles className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div className="space-y-1">
               {(() => {
