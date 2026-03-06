@@ -175,9 +175,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       
       set({
-        isAuthenticated: true,
-        isOtpPending: false,
-        pendingEmail: null,
+        isAuthenticated: false,
+        isOtpPending: true,
+        pendingEmail: email.trim().toLowerCase(),
         userId,
         email: email.trim().toLowerCase(),
         fullName: fullName || null,

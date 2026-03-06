@@ -75,7 +75,7 @@ export default function OtpScreen({ email, onVerified }: Props) {
     };
 
     const verifyOtp = async () => {
-        if (code.length < 4) { setError('Please enter the code'); return; }
+        if (code.length !== 6) { setError('Please enter the 6-digit code'); return; }
         setIsLoading(true);
         setError(null);
         try {
@@ -132,7 +132,7 @@ export default function OtpScreen({ email, onVerified }: Props) {
                                 placeholder="000000"
                                 placeholderTextColor={Colors.textDim}
                                 keyboardType="number-pad"
-                                maxLength={8}
+                                maxLength={6}
                                 autoFocus
                             />
                         </View>
