@@ -381,6 +381,37 @@ export default function DashboardPage() {
     setIncomingShares((prev) => prev.filter((s) => s.id !== shareId));
   };
 
+  // ---  // 5) Filter & Group entries
+  const filteredEntries = useMemo(() => {
+    if (!searchQuery.trim()) return decryptedEntries;
+    
+    const searchLower = searchQuery.toLowerCase();
+    return decryptedEntries.filter((entry) => {
+      const urlMatch = entry.url?.toLowerCase().includes(searchLower) ?? false;
+      const usernameMatch = entry.username?.toLowerCase().includes(searchLower) ?? false;
+      const notesMatch = entry.notes?.toLowerCase().includes(searchLower) ?? false;
+
+      return urlMatch || usernameMatch || notesMatch;
+    });
+  }, [decryptedEntries, searchQuery]);
+
+  const groupedEntries = useMemo(() => {
+    return filteredEntries.reduce((acc, entry) => {
+      const urlKey = entry.url || "No URL";
+      if (!acc[urlKey]) acc[urlKey] = [];
+      acc[urlKey].push(entry);
+      return acc;
+    }, {} as Record<string, DecryptedEntry[]>);
+  }, [filteredEntries]);
+
+  const sortedUrls = useMemo(() => {
+    return Object.keys(groupedEntries).sort((a, b) => {
+      if (a === "No URL") return 1;
+      if (b === "No URL") return -1;
+      return a.localeCompare(b);
+    });
+  }, [groupedEntries]);
+
   // --- Render Loading State ---
   if (isLoggingOut || !mounted) {
     return null;
@@ -509,81 +540,52 @@ export default function DashboardPage() {
     );
   }
 
-  // ---  // 5) Filter & Group entries
-  const filteredEntries = useMemo(() => {
-    if (!searchQuery.trim()) return decryptedEntries;
-    
-    const searchLower = searchQuery.toLowerCase();
-    return decryptedEntries.filter((entry) => {
-      const urlMatch = entry.url?.toLowerCase().includes(searchLower) ?? false;
-      const usernameMatch = entry.username?.toLowerCase().includes(searchLower) ?? false;
-      const notesMatch = entry.notes?.toLowerCase().includes(searchLower) ?? false;
-
-      return urlMatch || usernameMatch || notesMatch;
-    });
-  }, [decryptedEntries, searchQuery]);
-
-  const groupedEntries = useMemo(() => {
-    return filteredEntries.reduce((acc, entry) => {
-      const urlKey = entry.url || "No URL";
-      if (!acc[urlKey]) acc[urlKey] = [];
-      acc[urlKey].push(entry);
-      return acc;
-    }, {} as Record<string, DecryptedEntry[]>);
-  }, [filteredEntries]);
-
-  const sortedUrls = useMemo(() => {
-    return Object.keys(groupedEntries).sort((a, b) => {
-      if (a === "No URL") return 1;
-      if (b === "No URL") return -1;
-      return a.localeCompare(b);
-    });
-  }, [groupedEntries]);
-
   return (
-    <div className="p-8 pt-20 max-w-7xl mx-auto space-y-8 w-full">
+    <div className="p-4 sm:p-8 pt-24 sm:pt-20 max-w-7xl mx-auto space-y-8 w-full">
       {/* Breach Alert Banner */}
       {session.isBreached && (
-        <div className="bg-destructive/10 border-l-4 border-destructive p-4 m-6 mb-0 rounded-r flex items-start gap-4">
-          <div className="p-2 bg-destructive/20 rounded-full">
-            <ShieldAlert className="h-6 w-6 text-destructive" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-destructive text-lg">Data Breach Detected</h3>
-            <p className="text-sm text-destructive-foreground/90 mt-1 max-w-3xl">
-              Your email address ({session.email}) was found in a data breach.
-              This means your email and potentially other data (on other sites) were exposed.
-              We recommend changing your Master Password immediately to ensure your vault remains secure.
-            </p>
-            <div className="mt-4 flex gap-3">
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => {
-                  // Ideally redirect to change password
-                  toast.info("Password change feature coming soon. Please ensure your new password is strong.");
-                }}
-              >
-                Change Master Password
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-destructive/30 text-destructive hover:bg-destructive/10"
-                onClick={async () => {
-                  try {
-                    await actions.resolveBreach();
-                    toast.success("Breach alert dismissed.");
-                  } catch (err) {
-                    toast.error("Failed to dismiss breach alert.");
-                  }
-                }}
-              >
-                Dismiss
-              </Button>
+        <Alert variant="destructive" className="m-4 sm:m-6 mb-0 border-destructive/20 bg-destructive/10 backdrop-blur-md relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-r from-destructive/10 to-transparent pointer-events-none" />
+          <div className="flex flex-col sm:flex-row items-start gap-4 relative z-10">
+            <div className="p-3 bg-destructive/20 rounded-xl shadow-inner">
+              <ShieldAlert className="h-6 w-6 text-destructive" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <h3 className="font-bold text-destructive text-lg font-heading tracking-tight">Security Alert: Data Breach Detected</h3>
+              <p className="text-sm text-destructive-foreground/90 max-w-3xl leading-relaxed">
+                Your email address (<span className="font-semibold">{session.email}</span>) was found in a data breach. 
+                We recommend changing your master password immediately to ensure your vault remains secure.
+              </p>
+              <div className="pt-4 flex flex-col sm:flex-row gap-3">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="w-full sm:w-auto font-semibold shadow-lg shadow-destructive/20"
+                  onClick={() => {
+                    toast.info("Password change feature coming soon. Please update your master password soon.");
+                  }}
+                >
+                  Change Master Password
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full sm:w-auto border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
+                  onClick={async () => {
+                    try {
+                      await actions.resolveBreach();
+                      toast.success("Breach alert dismissed.");
+                    } catch (err) {
+                      toast.error("Failed to dismiss breach alert.");
+                    }
+                  }}
+                >
+                  Dismiss Alert
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        </Alert>
       )}
 
       {/* Header and Stats */}
@@ -712,7 +714,7 @@ export default function DashboardPage() {
                            {entries.map((entry) => (
                              <div
                                key={entry.id}
-                               className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl border border-border/80 bg-card hover:border-primary transition-all hover:shadow-md gap-4"
+                               className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-xl border border-border/80 bg-card hover:border-primary transition-all hover:shadow-md gap-4"
                              >
                                <div className="flex items-center gap-4 min-w-0 flex-1">
                                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 font-bold text-primary">
@@ -728,7 +730,7 @@ export default function DashboardPage() {
                                  </div>
                                </div>
 
-                               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                               <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                                  <div className="relative group/pass">
                                    <div className="h-9 px-3 min-w-[120px] bg-secondary/50 rounded-md flex items-center font-mono text-sm">
                                      {entry.isPasswordVisible
@@ -803,7 +805,7 @@ export default function DashboardPage() {
                 Two devices changed vault data at nearly the same time. Choose which version to keep as the new master copy.
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CardContent className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="rounded-lg border border-border p-3">
                 <h4 className="font-semibold mb-2">Your Local Version ({syncConflict.localEntries.length})</h4>
                 <div className="max-h-64 overflow-auto space-y-2 text-sm">

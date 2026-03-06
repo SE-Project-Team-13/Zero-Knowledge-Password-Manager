@@ -14,6 +14,7 @@ import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export default function AuthenticatedLayout({
   children,
@@ -141,9 +142,10 @@ export default function AuthenticatedLayout({
       {/* Main Content Wrapper */}
       {/* Dynamic margin based on collapsed state handled here */}
       <main 
-        className={`flex-1 transition-all duration-300 flex flex-col min-w-0 ${
-          isOtpVerified && !isCollapsed ? "ml-72" : isOtpVerified && isCollapsed ? "ml-20" : "ml-0" // Desktop
-        }`}
+        className={cn(
+          "flex-1 transition-all duration-300 flex flex-col min-w-0",
+          isOtpVerified && !isCollapsed ? "lg:ml-72" : isOtpVerified && isCollapsed ? "lg:ml-20" : "ml-0"
+        )}
       >
         {/* Mobile toggle is handled inside Sidebar component which uses fixed positioning */}
         {/* But main content needs to respect Sidebar width on Desktop */}

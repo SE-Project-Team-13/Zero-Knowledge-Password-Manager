@@ -130,7 +130,7 @@ function PasswordManagerContent() {
     });
 
     return (
-        <div className="flex-1 p-4 lg:p-8 pt-20 lg:pt-20 space-y-8 max-w-5xl mx-auto w-full">
+        <div className="flex-1 p-4 lg:p-8 pt-24 lg:pt-20 space-y-8 max-w-5xl mx-auto w-full">
             {/* Header with Search and Add Button */}
             <div className="flex items-center gap-3 mb-6">
                 <div className="bg-primary/10 p-3 rounded-xl border border-primary/20">
@@ -143,7 +143,7 @@ function PasswordManagerContent() {
             </div>
 
             {/* Search Bar and Add Button */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col md:flex-row items-center gap-4">
                 <div className="flex-1 relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -154,7 +154,7 @@ function PasswordManagerContent() {
                     />
                 </div>
                 <Link href="/add-credential">
-                    <Button className="h-12 px-6 font-heading tracking-wide">
+                    <Button className="w-full md:w-auto h-12 px-6 font-heading tracking-wide">
                         <Plus className="h-4 w-4 mr-2" />
                         Add New Credential
                     </Button>

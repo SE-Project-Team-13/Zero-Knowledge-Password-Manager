@@ -152,18 +152,25 @@ export default function OTPPage() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  useEffect(() => {
+    if (!mounted) return;
+
+    // Redirect if not authenticated
+    if (!session.isLoading && !session.isAuthenticated) {
+      router.push("/login");
+    }
+
+    // Redirect if already unlocked
+    if (isVaultUnlocked) {
+      router.push("/dashboard");
+    }
+  }, [mounted, session.isLoading, session.isAuthenticated, isVaultUnlocked, router]);
+
   if (!mounted) return null;
 
-  // Redirect if not authenticated
-  if (!session.isLoading && !session.isAuthenticated) {
-    router.push("/login");
+  // Render null while redirecting to avoid flickering or "Cannot update while rendering"
+  if ((!session.isLoading && !session.isAuthenticated) || isVaultUnlocked) {
     return null;
-  }
-
-  // Redirect if already unlocked
-  if (isVaultUnlocked) {
-      router.push("/dashboard");
-      return null;
   }
 
   return (
