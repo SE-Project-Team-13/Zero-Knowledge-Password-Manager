@@ -58,3 +58,15 @@ export function generateChallenge(): string {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+/**
+ * Generate a SHA-256 hash of a string or buffer
+ * Returns a hex-encoded string
+ */
+export function sha256Hash(data: string | Uint8Array): string {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  const hash = sha256(bytes);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}

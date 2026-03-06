@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TextInput, TouchableOpacity,
-    ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+    ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StatusBar,
 } from 'react-native';
 import axios from 'axios';
 import { Colors, Spacing, Radius, Typography } from '../theme';
@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '../config';
 import { SecureStorageService } from '../services/secureStorage';
 import { useAuthStore } from '../store/authStore';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface Props {
     email: string;
@@ -50,21 +51,14 @@ export default function OtpScreen({ email, onVerified }: Props) {
             if (!token) {
                 throw new Error('Missing session token. Please login again.');
             }
-            console.log('[OTP] Sending OTP', { apiUrl: API_URL, email: email.trim().toLowerCase() });
-            const response = await axios.post(`${API_URL}/otp/send`, { email: email.trim().toLowerCase() }, {
+            await axios.post(`${API_URL}/otp/send`, { email: email.trim().toLowerCase() }, {
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                 timeout: 60000,
             });
-            console.log('[OTP] Send response', response.status, response.data);
             setCountdown(60);
         } catch (e: any) {
-            console.error('[OTP] Send failed', {
-                status: e?.response?.status,
-                data: e?.response?.data,
-                message: e?.message,
-            });
             const msg = e?.response?.status === 429
-                ? 'Too many OTP attempts. Please wait a minute and try again.'
+                ? 'Too many attempts. Please wait a minute.'
                 : getApiErrorMessage(e, 'Failed to send OTP');
             setError(msg);
         } finally {
@@ -81,7 +75,7 @@ export default function OtpScreen({ email, onVerified }: Props) {
     };
 
     const verifyOtp = async () => {
-        if (code.length < 4) { setError('Please enter the full code'); return; }
+        if (code.length < 4) { setError('Please enter the code'); return; }
         setIsLoading(true);
         setError(null);
         try {
@@ -89,18 +83,12 @@ export default function OtpScreen({ email, onVerified }: Props) {
             if (!token) {
                 throw new Error('Missing session token. Please login again.');
             }
-            const response = await axios.post(`${API_URL}/otp/verify`, { email: email.trim().toLowerCase(), code }, {
+            await axios.post(`${API_URL}/otp/verify`, { email: email.trim().toLowerCase(), code }, {
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                 timeout: 60000,
             });
-            console.log('[OTP] Verify response', response.status, response.data);
             onVerified();
         } catch (e: any) {
-            console.error('[OTP] Verify failed', {
-                status: e?.response?.status,
-                data: e?.response?.data,
-                message: e?.message,
-            });
             const msg = getApiErrorMessage(e, 'Invalid OTP code');
             setError(msg);
         } finally {
@@ -109,126 +97,171 @@ export default function OtpScreen({ email, onVerified }: Props) {
     };
 
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-            <View style={styles.inner}>
-                {/* Icon */}
-                <View style={styles.iconRing}>
-                    <Ionicons name="mail" size={36} color={Colors.primary} />
-                </View>
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" />
+            <LinearGradient
+                colors={[Colors.background, '#080808', '#121212']}
+                style={styles.gradient}
+            >
+                <KeyboardAvoidingView
+                    style={{ flex: 1, justifyContent: 'center' }}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                >
+                    <View style={styles.inner}>
+                        <View style={styles.iconContainer}>
+                            <LinearGradient
+                                colors={[Colors.primaryDim, 'rgba(234, 179, 8, 0.05)']}
+                                style={styles.iconRing}
+                            >
+                                <Ionicons name="shield-checkmark" size={40} color={Colors.primary} />
+                            </LinearGradient>
+                        </View>
 
-                <Text style={styles.title}>Verify Your Identity</Text>
-                <Text style={styles.subtitle}>
-                    A 6-digit code was sent to{'\n'}
-                    <Text style={{ color: Colors.primary }}>{email}</Text>
-                </Text>
+                        <Text style={styles.title}>Two-Factor Auth</Text>
+                        <Text style={styles.subtitle}>
+                            Protecting your vault. Enter the 6-digit code sent to{'\n'}
+                            <Text style={{ color: Colors.primary, fontWeight: '700' }}>{email}</Text>
+                        </Text>
 
-                {/* OTP Input */}
-                <TextInput
-                    style={styles.input}
-                    value={code}
-                    onChangeText={setCode}
-                    placeholder="Enter verification code"
-                    placeholderTextColor={Colors.textMuted}
-                    keyboardType="number-pad"
-                    maxLength={8}
-                    autoFocus
-                />
+                        {/* OTP Input */}
+                        <View style={styles.inputContainer}>
+                            <TextInput
+                                style={styles.input}
+                                value={code}
+                                onChangeText={setCode}
+                                placeholder="000000"
+                                placeholderTextColor={Colors.textDim}
+                                keyboardType="number-pad"
+                                maxLength={8}
+                                autoFocus
+                            />
+                        </View>
 
-                {error && (
-                    <View style={styles.errorBox}>
-                        <Ionicons name="alert-circle" size={14} color={Colors.destructive} />
-                        <Text style={styles.errorText}>{error}</Text>
+                        {error && (
+                            <View style={styles.errorBox}>
+                                <Ionicons name="alert-circle" size={14} color={Colors.destructive} />
+                                <Text style={styles.errorText}>{error}</Text>
+                            </View>
+                        )}
+
+                        <TouchableOpacity
+                            style={[styles.btn, isLoading && styles.btnDisabled]}
+                            onPress={verifyOtp}
+                            disabled={isLoading}
+                        >
+                            <LinearGradient
+                                colors={!isLoading ? [Colors.primary, '#EAB308'] : [Colors.border, Colors.border]}
+                                style={styles.btnGradient}
+                            >
+                                {isLoading
+                                    ? <ActivityIndicator color={Colors.background} />
+                                    : (
+                                        <>
+                                            <Ionicons name="lock-open" size={18} color={Colors.background} style={{ marginRight: 8 }} />
+                                            <Text style={styles.btnText}>Unlock Vault</Text>
+                                        </>
+                                    )}
+                            </LinearGradient>
+                        </TouchableOpacity>
+
+                        <View style={styles.footerActions}>
+                            <TouchableOpacity
+                                style={styles.resendBtn}
+                                onPress={sendOtp}
+                                disabled={isSending || countdown > 0}
+                            >
+                                <Text style={[styles.resendText, countdown > 0 && styles.resendDisabled]}>
+                                    {countdown > 0 ? `Resend in ${countdown}s` : 'Resend Code'}
+                                </Text>
+                            </TouchableOpacity>
+
+                            <View style={styles.divider} />
+
+                            <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+                                <Text style={styles.signOutText}>Sign Out</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.securitySeal}>
+                            <Ionicons name="shield-half" size={16} color={Colors.textDim} />
+                            <Text style={styles.securityText}>Zenith Zero-Knowledge Protection</Text>
+                        </View>
                     </View>
-                )}
-
-                {/* Verify Button */}
-                <TouchableOpacity
-                    style={[styles.btn, isLoading && styles.btnDisabled]}
-                    onPress={verifyOtp}
-                    disabled={isLoading}
-                >
-                    {isLoading
-                        ? <ActivityIndicator color={Colors.background} />
-                        : <Text style={styles.btnText}>Verify Code</Text>}
-                </TouchableOpacity>
-
-                {/* Resend */}
-                <TouchableOpacity
-                    style={styles.resendBtn}
-                    onPress={sendOtp}
-                    disabled={isSending || countdown > 0}
-                >
-                    {isSending
-                        ? <ActivityIndicator size="small" color={Colors.primary} />
-                        : <Text style={[styles.resendText, countdown > 0 && styles.resendDisabled]}>
-                            {countdown > 0 ? `Resend in ${countdown}s` : 'Resend Code'}
-                        </Text>}
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-                    <Ionicons name="log-out-outline" size={14} color={Colors.textMuted} />
-                    <Text style={styles.signOutText}>Sign Out</Text>
-                </TouchableOpacity>
-
-                {/* Security note */}
-                <View style={styles.note}>
-                    <Ionicons name="shield-checkmark" size={12} color={Colors.success} />
-                    <Text style={styles.noteText}>2FA protects your vault from unauthorized access</Text>
-                </View>
-            </View>
-        </KeyboardAvoidingView>
+                </KeyboardAvoidingView>
+            </LinearGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: Colors.background, justifyContent: 'center' },
-    inner: { paddingHorizontal: Spacing.lg, alignItems: 'center' },
-    iconRing: {
-        width: 80, height: 80, borderRadius: 40,
-        backgroundColor: Colors.primaryDim, borderWidth: 2, borderColor: Colors.primaryBorder,
-        justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.lg,
+    container: { flex: 1 },
+    gradient: { flex: 1 },
+    inner: { paddingHorizontal: Spacing.xl, alignItems: 'center' },
+    iconContainer: {
+        marginBottom: 24,
     },
-    title: { ...Typography.heading, fontSize: 24, marginBottom: Spacing.sm },
-    subtitle: { ...Typography.muted, fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: Spacing.xl },
+    iconRing: {
+        width: 100, height: 100, borderRadius: 50,
+        justifyContent: 'center', alignItems: 'center',
+        borderWidth: 2, borderColor: Colors.primaryBorder,
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 10,
+        elevation: 8,
+    },
+    title: { ...Typography.heading, fontSize: 26, marginBottom: 8 },
+    subtitle: { ...Typography.muted, fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: 32 },
+    inputContainer: {
+        width: '100%',
+        marginBottom: 16,
+    },
     input: {
-        width: '100%', backgroundColor: Colors.surface,
-        borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border,
-        color: Colors.text, fontSize: 20, letterSpacing: 4,
-        padding: Spacing.md, textAlign: 'center', marginBottom: Spacing.sm,
+        backgroundColor: Colors.surface + '88',
+        borderRadius: Radius.lg,
+        borderWidth: 1, borderColor: Colors.border,
+        fontSize: 28, letterSpacing: 8,
+        paddingVertical: 16,
+        textAlign: 'center',
+        ...Typography.mono,
     },
     errorBox: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
-        backgroundColor: Colors.destructiveDim, borderRadius: Radius.sm,
-        paddingHorizontal: Spacing.sm, paddingVertical: 6, marginBottom: Spacing.sm,
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderRadius: Radius.md,
+        paddingHorizontal: 12, paddingVertical: 8, marginBottom: 16,
+        borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.2)',
     },
-    errorText: { color: Colors.destructive, fontSize: 13 },
+    errorText: { color: Colors.destructive, fontSize: 13, fontWeight: '500' },
     btn: {
-        width: '100%', backgroundColor: Colors.primary,
-        borderRadius: Radius.lg, padding: Spacing.md,
-        alignItems: 'center', marginBottom: Spacing.sm,
+        width: '100%',
+        borderRadius: Radius.lg,
+        overflow: 'hidden',
+        marginBottom: 24,
+    },
+    btnGradient: {
+        paddingVertical: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     btnDisabled: { opacity: 0.6 },
     btnText: { color: Colors.background, fontWeight: '700', fontSize: 16 },
-    resendBtn: { padding: Spacing.sm, marginBottom: Spacing.lg },
-    resendText: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
-    resendDisabled: { color: Colors.textMuted },
-    signOutBtn: {
+    footerActions: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        marginBottom: Spacing.lg,
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: 4,
+        gap: 16,
+        marginBottom: 40,
     },
-    signOutText: { color: Colors.textMuted, fontSize: 13, fontWeight: '600' },
-    note: {
-        flexDirection: 'row', alignItems: 'center', gap: 6,
-        backgroundColor: Colors.surface, borderRadius: Radius.full,
-        paddingHorizontal: Spacing.md, paddingVertical: 8,
-        borderWidth: 1, borderColor: Colors.border,
+    resendBtn: { padding: 8 },
+    resendText: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
+    resendDisabled: { color: Colors.textDim },
+    divider: { width: 1, height: 14, backgroundColor: Colors.border },
+    signOutBtn: { padding: 8 },
+    signOutText: { color: Colors.textMuted, fontSize: 14, fontWeight: '500' },
+    securitySeal: {
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        opacity: 0.6,
     },
-    noteText: { ...Typography.muted, fontSize: 12 },
+    securityText: { ...Typography.muted, fontSize: 11, letterSpacing: 0.5 },
 });

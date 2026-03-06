@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import { useVault } from "@/context/VaultContext";
 import { toast } from "sonner";
+import { ShareCredentialModal } from "@/components/ShareCredentialModal";
+import { Share2, Check, X, Bell } from "lucide-react";
 import { copyWithAutoClear } from "@/lib/clipboard";
 import { maskPassword } from "@/lib/password-utils";
 
@@ -46,6 +48,9 @@ function PasswordManagerContent() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingEntry, setEditingEntry] = useState<DecryptedEntry | null>(null);
     const [expandedUrls, setExpandedUrls] = useState<Record<string, boolean>>({});
+    const { incomingShares, acceptShare, rejectShare } = useVault();
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [sharingEntry, setSharingEntry] = useState<DecryptedEntry | null>(null);
 
     const toggleUrlExpansion = (url: string) => {
         setExpandedUrls(prev => ({ ...prev, [url]: !prev[url] }));
@@ -54,6 +59,11 @@ function PasswordManagerContent() {
     const handleEditEntry = (entry: DecryptedEntry) => {
         setEditingEntry(entry);
         setIsEditModalOpen(true);
+    };
+
+    const handleShareEntry = (entry: DecryptedEntry) => {
+        setSharingEntry(entry);
+        setIsShareModalOpen(true);
     };
 
     const handleSaveEdit = async (updatedEntry: DecryptedEntry) => {
@@ -141,6 +151,43 @@ function PasswordManagerContent() {
                     <p className="text-sm text-muted-foreground">Manage your secure credentials</p>
                 </div>
             </div>
+
+            {/* Incoming Shares Notification */}
+            {incomingShares.length > 0 && (
+                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-4 flex flex-col gap-3">
+                    <div className="flex items-center gap-2 text-yellow-500 font-semibold">
+                        <Bell className="h-4 w-4" />
+                        <span>Incoming Shared Credentials ({incomingShares.length})</span>
+                    </div>
+                    <div className="space-y-2">
+                        {incomingShares.map((share) => (
+                            <div key={share.id} className="bg-black/40 border border-yellow-500/10 rounded-xl p-3 flex items-center justify-between">
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-medium text-white">{share.sender.email}</span>
+                                    <span className="text-[10px] text-gray-500">Shared on {new Date(share.createdAt).toLocaleDateString()}</span>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button 
+                                        size="sm" 
+                                        variant="ghost" 
+                                        className="h-8 px-3 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                        onClick={() => rejectShare(share.id)}
+                                    >
+                                        <X className="h-3 w-3 mr-1" /> Reject
+                                    </Button>
+                                    <Button 
+                                        size="sm" 
+                                        className="h-8 px-3 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
+                                        onClick={() => acceptShare(share.id)}
+                                    >
+                                        <Check className="h-3 w-3 mr-1" /> Accept
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Search Bar and Add Button */}
             <div className="flex flex-col md:flex-row items-center gap-4">
@@ -343,6 +390,15 @@ function PasswordManagerContent() {
                                                                         <Button 
                                                                             variant="outline" 
                                                                             size="sm" 
+                                                                            onClick={() => handleShareEntry(entry)}
+                                                                            className="h-8 hover:bg-primary/10 hover:text-primary transition-colors text-yellow-500 border-yellow-500/50"
+                                                                        >
+                                                                            <Share2 className="h-3 w-3 mr-2" />
+                                                                            Share
+                                                                        </Button>
+                                                                        <Button 
+                                                                            variant="outline" 
+                                                                            size="sm" 
                                                                             onClick={() => handleEditEntry(entry)}
                                                                             className="h-8 hover:bg-primary/10 hover:text-primary transition-colors"
                                                                         >
@@ -385,6 +441,12 @@ function PasswordManagerContent() {
                 onClose={() => setIsEditModalOpen(false)}
                 entry={editingEntry}
                 onSave={handleSaveEdit}
+            />
+
+            <ShareCredentialModal
+                isOpen={isShareModalOpen}
+                onClose={() => setIsShareModalOpen(false)}
+                entry={sharingEntry}
             />
         </div>
     );

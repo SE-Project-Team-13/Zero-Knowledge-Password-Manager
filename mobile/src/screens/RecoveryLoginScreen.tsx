@@ -9,6 +9,8 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    StatusBar,
+    ScrollView,
 } from 'react-native';
 import axios from 'axios';
 import { Buffer } from 'buffer';
@@ -17,11 +19,43 @@ import { API_URL } from '../config';
 import { Colors, Radius, Spacing, Typography } from '../theme';
 import { SecureStorageService } from '../services/secureStorage';
 import { useAuthStore } from '../store/authStore';
+import { LinearGradient } from 'expo-linear-gradient';
+import { decryptData } from '@password-manager/crypto-engine';
 
 function parseHexBytes(hex: string, fieldName: string): Uint8Array {
     const chunks = hex.match(/.{1,2}/g);
     if (!chunks) throw new Error(`Invalid ${fieldName} format`);
     return new Uint8Array(chunks.map((byte) => parseInt(byte, 16)));
+}
+
+function InputField({
+    label, value, onChangeText, placeholder, icon, multiline = false,
+}: {
+    label: string;
+    value: string;
+    onChangeText: (v: string) => void;
+    placeholder?: string;
+    icon?: string;
+    multiline?: boolean;
+}) {
+    return (
+        <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>{label}</Text>
+            <View style={[styles.fieldRow, multiline && { alignItems: 'flex-start', minHeight: 100 }]}>
+                {icon && <Ionicons name={icon as any} size={16} color={Colors.textMuted} style={{ marginRight: 8, marginTop: multiline ? 4 : 0 }} />}
+                <TextInput
+                    style={[styles.fieldInput, multiline && { textAlignVertical: 'top' }]}
+                    value={value}
+                    onChangeText={onChangeText}
+                    placeholder={placeholder}
+                    placeholderTextColor={Colors.textMuted}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    multiline={multiline}
+                />
+            </View>
+        </View>
+    );
 }
 
 export default function RecoveryLoginScreen({ navigation }: any) {
@@ -35,7 +69,7 @@ export default function RecoveryLoginScreen({ navigation }: any) {
         setError(null);
 
         if (!email.trim() || !recoveryKey.trim()) {
-            setError('Please enter email and recovery key.');
+            setError('Email and Recovery Key are required.');
             return;
         }
 
@@ -55,7 +89,7 @@ export default function RecoveryLoginScreen({ navigation }: any) {
             const encryptedVaultKey = data?.encryptedVaultKey as string | undefined;
 
             if (!token || !userId) {
-                throw new Error('Invalid recovery login response from server.');
+                throw new Error('Invalid recovery response.');
             }
 
             await SecureStorageService.saveSessionId(token);
@@ -65,34 +99,22 @@ export default function RecoveryLoginScreen({ navigation }: any) {
             if (encryptedVaultKey) {
                 try {
                     const encryptedObj = JSON.parse(encryptedVaultKey);
-                    const iv = parseHexBytes(encryptedObj.iv, 'iv');
-                    const ciphertext = parseHexBytes(encryptedObj.ciphertext, 'ciphertext');
-
+                    
+                    // The recovery key is base64 encoded
                     const keyBytes = new Uint8Array(Buffer.from(cleanRecoveryKey, 'base64'));
-                    const wrappingKey = await crypto.subtle.importKey(
-                        'raw',
-                        keyBytes as any,
-                        { name: 'AES-GCM' },
-                        false,
-                        ['decrypt'],
-                    );
-
-                    const decryptedBuffer = await crypto.subtle.decrypt(
-                        { name: 'AES-GCM', iv: iv as any },
-                        wrappingKey,
-                        ciphertext as any,
-                    );
-
+                    
+                    // Decrypt using our platform-agnostic tool
+                    const decryptedBuffer = await decryptData(encryptedObj.ciphertext, encryptedObj.iv, keyBytes);
                     recoveredMasterPassword = new TextDecoder().decode(decryptedBuffer);
                 } catch (decryptError) {
-                    console.warn('[Recovery] Could not decrypt encrypted vault key:', decryptError);
+                    console.warn('[Recovery] Key derivation failed:', decryptError);
                 }
             }
 
             setRecoveryContext(normalizedEmail, recoveredMasterPassword);
             navigation.replace('ResetPassword');
         } catch (e: any) {
-            const message = e?.response?.data?.message || e?.response?.data?.error || e?.message || 'Recovery login failed';
+            const message = e?.response?.data?.message || e?.message || 'Recovery failed';
             setError(message);
         } finally {
             setIsLoading(false);
@@ -100,95 +122,191 @@ export default function RecoveryLoginScreen({ navigation }: any) {
     };
 
     return (
-        <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={22} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Recovery Login</Text>
-                <View style={{ width: 40 }} />
-            </View>
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" />
+            <LinearGradient
+                colors={[Colors.background, '#080808', '#121212']}
+                style={styles.gradient}
+            >
+                <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                >
+                    <View style={styles.header}>
+                        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>Account Recovery</Text>
+                        <View style={{ width: 44 }} />
+                    </View>
 
-            <View style={styles.content}>
-                <Text style={styles.helperText}>Use your Emergency Kit recovery key to regain account access.</Text>
+                    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                        <View style={styles.card}>
+                            <View style={styles.iconRingContainer}>
+                                <LinearGradient
+                                    colors={['rgba(239, 68, 68, 0.1)', 'transparent']}
+                                    style={styles.iconRing}
+                                >
+                                    <Ionicons name="medical" size={40} color={Colors.destructive} />
+                                </LinearGradient>
+                            </View>
 
-                <View style={styles.inputBlock}>
-                    <Text style={styles.label}>Email</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={email}
-                        onChangeText={setEmail}
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        placeholder="your@email.com"
-                        placeholderTextColor={Colors.textMuted}
-                    />
-                </View>
+                            <Text style={styles.title}>Emergency Access</Text>
+                            <Text style={styles.subtitle}>
+                                Use your Emergency Kit recovery key to regain access to your vault.
+                            </Text>
 
-                <View style={styles.inputBlock}>
-                    <Text style={styles.label}>Recovery Key</Text>
-                    <TextInput
-                        style={[styles.input, styles.monoInput]}
-                        value={recoveryKey}
-                        onChangeText={setRecoveryKey}
-                        autoCapitalize="none"
-                        placeholder="Paste recovery key"
-                        placeholderTextColor={Colors.textMuted}
-                        multiline
-                    />
-                </View>
+                            <InputField
+                                label="Email Address"
+                                value={email}
+                                onChangeText={setEmail}
+                                placeholder="your@email.com"
+                                icon="mail-outline"
+                            />
 
-                {error ? <Text style={styles.errorText}>{error}</Text> : null}
+                            <InputField
+                                label="Recovery Key"
+                                value={recoveryKey}
+                                onChangeText={setRecoveryKey}
+                                placeholder="Paste your 256-bit recovery key here"
+                                icon="key-outline"
+                                multiline
+                            />
 
-                <TouchableOpacity style={[styles.submitBtn, isLoading && { opacity: 0.7 }]} onPress={handleRecoveryLogin} disabled={isLoading}>
-                    {isLoading ? <ActivityIndicator color={Colors.background} /> : <Text style={styles.submitText}>Recover Account</Text>}
-                </TouchableOpacity>
+                            {error && (
+                                <View style={styles.errorBox}>
+                                    <Ionicons name="alert-circle" size={14} color={Colors.destructive} />
+                                    <Text style={styles.errorText}>{error}</Text>
+                                </View>
+                            )}
 
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.linkBtn}>
-                    <Text style={styles.linkText}>Back to Sign In</Text>
-                </TouchableOpacity>
-            </View>
-        </KeyboardAvoidingView>
+                            <TouchableOpacity
+                                style={[styles.submitBtn, isLoading && styles.submitBtnDisabled]}
+                                disabled={isLoading}
+                                onPress={handleRecoveryLogin}
+                            >
+                                <LinearGradient
+                                    colors={!isLoading ? [Colors.primary, '#EAB308'] : [Colors.border, Colors.border]}
+                                    style={styles.btnGradient}
+                                >
+                                    {isLoading ? (
+                                        <ActivityIndicator color={Colors.background} />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="shield-checkmark" size={18} color={Colors.background} style={{ marginRight: 8 }} />
+                                            <Text style={styles.submitText}>Initiate Recovery</Text>
+                                        </>
+                                    )}
+                                </LinearGradient>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity 
+                                style={styles.cancelBtn} 
+                                onPress={() => navigation.goBack()}
+                                disabled={isLoading}
+                            >
+                                <Text style={styles.cancelText}>Back to Sign In</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </ScrollView>
+                </KeyboardAvoidingView>
+            </LinearGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: Colors.background },
+    container: { flex: 1 },
+    gradient: { flex: 1 },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: Spacing.md,
-        paddingTop: 60,
+        paddingTop: Platform.OS === 'ios' ? 60 : 40,
         paddingBottom: Spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
     },
-    backBtn: { width: 40, height: 40, justifyContent: 'center' },
-    headerTitle: { ...Typography.heading, fontSize: 18 },
-    content: { padding: Spacing.md, gap: Spacing.md },
-    helperText: { ...Typography.muted, fontSize: 13, lineHeight: 20 },
-    inputBlock: { gap: 6 },
-    label: { ...Typography.muted, fontSize: 12, fontWeight: '600' },
-    input: {
-        ...Typography.body,
+    backBtn: {
+        width: 44, height: 44,
+        justifyContent: 'center', alignItems: 'center',
         backgroundColor: Colors.surface,
+        borderRadius: 22,
+        borderWidth: 1, borderColor: Colors.border,
+    },
+    headerTitle: { ...Typography.heading, fontSize: 18 },
+    scrollContent: {
+        padding: Spacing.lg,
+        paddingBottom: 40,
+    },
+    card: {
+        backgroundColor: Colors.surface + 'CC',
+        borderRadius: Radius.xl,
+        borderWidth: 1, borderColor: Colors.border,
+        padding: Spacing.lg,
+        gap: Spacing.lg,
+        alignItems: 'center',
+    },
+    iconRingContainer: {
+        marginBottom: 8,
+    },
+    iconRing: {
+        width: 80, height: 80, borderRadius: 40,
+        justifyContent: 'center', alignItems: 'center',
+        borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.2)',
+    },
+    title: { ...Typography.heading, fontSize: 22, textAlign: 'center' },
+    subtitle: { ...Typography.muted, fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 8 },
+    fieldContainer: { width: '100%', gap: 6 },
+    fieldLabel: {
+        ...Typography.muted,
+        fontSize: 12,
+        fontWeight: '600',
+        color: Colors.textMuted,
+        marginLeft: 4,
+    },
+    fieldRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.surfaceElevated,
         borderRadius: Radius.md,
         borderWidth: 1,
         borderColor: Colors.border,
         paddingHorizontal: Spacing.md,
         paddingVertical: 12,
     },
-    monoInput: { fontFamily: 'Courier New' },
-    errorText: { color: Colors.destructive, fontSize: 13 },
-    submitBtn: {
-        marginTop: Spacing.sm,
-        backgroundColor: Colors.primary,
-        borderRadius: Radius.md,
-        paddingVertical: 14,
-        alignItems: 'center',
+    fieldInput: {
+        flex: 1,
+        ...Typography.body,
+        fontSize: 15,
+        padding: 0,
     },
-    submitText: { color: Colors.background, fontSize: 15, fontWeight: '700' },
-    linkBtn: { alignItems: 'center', paddingVertical: 8 },
-    linkText: { color: Colors.primary, fontSize: 13, fontWeight: '600' },
+    errorBox: {
+        width: '100%',
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderRadius: Radius.md,
+        paddingHorizontal: 12, paddingVertical: 8,
+        borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.2)',
+    },
+    errorText: { color: Colors.destructive, fontSize: 13, fontWeight: '500' },
+    submitBtn: {
+        width: '100%',
+        borderRadius: Radius.md,
+        overflow: 'hidden',
+        marginTop: Spacing.sm,
+    },
+    submitBtnDisabled: { opacity: 0.5 },
+    btnGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+    },
+    submitText: {
+        color: Colors.background,
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    cancelBtn: { paddingVertical: 8 },
+    cancelText: { ...Typography.muted, fontSize: 14, fontWeight: '600', color: Colors.primary },
 });

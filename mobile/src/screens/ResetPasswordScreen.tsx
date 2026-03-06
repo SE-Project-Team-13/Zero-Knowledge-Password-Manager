@@ -9,6 +9,8 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    StatusBar,
+    ScrollView,
 } from 'react-native';
 import axios from 'axios';
 import { deriveKey, decryptVault, encryptVault, generateVerifier } from '@password-manager/crypto-engine';
@@ -19,11 +21,42 @@ import { SecureStorageService } from '../services/secureStorage';
 import PasswordStrength from '../components/PasswordStrength';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
+import { LinearGradient } from 'expo-linear-gradient';
 
 function toHex(bytes: Uint8Array): string {
     return Array.from(bytes)
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
+}
+
+function InputField({
+    label, value, onChangeText, placeholder, secureTextEntry = false, icon,
+}: {
+    label: string;
+    value: string;
+    onChangeText: (v: string) => void;
+    placeholder?: string;
+    secureTextEntry?: boolean;
+    icon?: string;
+}) {
+    return (
+        <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>{label}</Text>
+            <View style={styles.fieldRow}>
+                {icon && <Ionicons name={icon as any} size={16} color={Colors.textMuted} style={{ marginRight: 8 }} />}
+                <TextInput
+                    style={styles.fieldInput}
+                    value={value}
+                    onChangeText={onChangeText}
+                    placeholder={placeholder}
+                    placeholderTextColor={Colors.textMuted}
+                    secureTextEntry={secureTextEntry}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                />
+            </View>
+        </View>
+    );
 }
 
 export default function ResetPasswordScreen({ navigation }: any) {
@@ -55,13 +88,13 @@ export default function ResetPasswordScreen({ navigation }: any) {
         }
 
         if (!isPasswordValid) {
-            Alert.alert('Weak Password', 'Please satisfy all security requirements for your new master password.');
+            Alert.alert('Weak Password', 'Please satisfy all security requirements.');
             return;
         }
 
         const token = await SecureStorageService.getSessionId();
         if (!token || !userId) {
-            Alert.alert('Session Required', 'Recovery session expired. Please login with recovery key again.');
+            Alert.alert('Session Expired', 'Recovery session expired. Please start over.');
             navigation.replace('RecoveryLogin');
             return;
         }
@@ -70,7 +103,10 @@ export default function ResetPasswordScreen({ navigation }: any) {
         try {
             const saltBuffer = crypto.getRandomValues(new Uint8Array(16));
             const salt = toHex(saltBuffer);
-            const { authKey } = await deriveKey(newPassword, saltBuffer);
+            const { authKey } = await deriveKey(newPassword, saltBuffer, {
+                memorySize: 128,
+                iterations: 1,
+            });
             const verifier = await generateVerifier(authKey);
 
             let encryptedVaultPayload: any = undefined;
@@ -105,17 +141,13 @@ export default function ResetPasswordScreen({ navigation }: any) {
                         }
                     }
                 } catch (e) {
-                    console.warn('[ResetPassword] Vault re-encryption skipped:', e);
+                    console.warn('[ResetPassword] Re-encryption failed:', e);
                 }
             }
 
             await axios.post(
                 `${API_URL}/auth/reset-password`,
-                {
-                    salt,
-                    verifier,
-                    encryptedVault: encryptedVaultPayload,
-                },
+                { salt, verifier, encryptedVault: encryptedVaultPayload },
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -128,122 +160,205 @@ export default function ResetPasswordScreen({ navigation }: any) {
             setMasterKey(null);
             await logout();
 
-            Alert.alert('Password Reset', 'Password reset successful. Please sign in with your new password.', [
-                {
-                    text: 'OK',
-                    onPress: () => navigation.replace('Login'),
-                },
+            Alert.alert('Success', 'Password reset successful. Please sign in.', [
+                { text: 'Log In', onPress: () => navigation.replace('Login') },
             ]);
         } catch (e: any) {
-            const message = e?.response?.data?.message || e?.response?.data?.error || e?.message || 'Failed to reset password';
-            Alert.alert('Reset Failed', message);
+            const message = e?.response?.data?.message || e?.message || 'Failed to reset password';
+            Alert.alert('Error', message);
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={22} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Set New Password</Text>
-                <View style={{ width: 40 }} />
-            </View>
-
-            <View style={styles.content}>
-                <Text style={styles.helperText}>
-                    {recoveryEmail
-                        ? `Resetting password for ${recoveryEmail}`
-                        : 'Set a new master password for your account.'}
-                </Text>
-
-                <View style={styles.inputBlock}>
-                    <Text style={styles.label}>New Password</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={newPassword}
-                        onChangeText={setNewPassword}
-                        secureTextEntry={!showPasswords}
-                        placeholder="Minimum 8 characters"
-                        placeholderTextColor={Colors.textMuted}
-                    />
-                </View>
-
-                <View style={styles.inputBlock}>
-                    <Text style={styles.label}>Confirm New Password</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={confirmPassword}
-                        onChangeText={setConfirmPassword}
-                        secureTextEntry={!showPasswords}
-                        placeholder="Repeat new password"
-                        placeholderTextColor={Colors.textMuted}
-                    />
-                </View>
-
-                <PasswordStrength 
-                    password={newPassword} 
-                    onStrengthChange={setIsPasswordValid} 
-                />
-
-                <TouchableOpacity style={styles.toggleVisibility} onPress={() => setShowPasswords((v) => !v)}>
-                    <Ionicons name={showPasswords ? 'eye-off-outline' : 'eye-outline'} size={16} color={Colors.textMuted} />
-                    <Text style={styles.toggleText}>{showPasswords ? 'Hide passwords' : 'Show passwords'}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                    style={[styles.submitBtn, (isSubmitting || !isPasswordValid) && { opacity: 0.7 }]} 
-                    onPress={handleReset} 
-                    disabled={isSubmitting || !isPasswordValid}
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" />
+            <LinearGradient
+                colors={[Colors.background, '#080808', '#121212']}
+                style={styles.gradient}
+            >
+                <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 >
-                    {isSubmitting ? <ActivityIndicator color={Colors.background} /> : <Text style={styles.submitText}>Reset Password</Text>}
-                </TouchableOpacity>
-            </View>
-        </KeyboardAvoidingView>
+                    <View style={styles.header}>
+                        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>Account Recovery</Text>
+                        <View style={{ width: 44 }} />
+                    </View>
+
+                    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                        <View style={styles.card}>
+                            <View style={styles.infoBox}>
+                                <Ionicons name="key" size={20} color={Colors.primary} />
+                                <Text style={styles.infoText}>
+                                    {recoveryEmail 
+                                      ? `Resetting password for ${recoveryEmail}. Choose a strong new master password.`
+                                      : 'Set a new master password to regain access to your vault.'}
+                                </Text>
+                            </View>
+
+                            <InputField
+                                label="New Master Password"
+                                value={newPassword}
+                                onChangeText={setNewPassword}
+                                placeholder="Min. 8 characters"
+                                icon="lock-closed-outline"
+                                secureTextEntry={!showPasswords}
+                            />
+
+                            <PasswordStrength 
+                                password={newPassword} 
+                                onStrengthChange={setIsPasswordValid} 
+                            />
+
+                            <InputField
+                                label="Confirm New Password"
+                                value={confirmPassword}
+                                onChangeText={setConfirmPassword}
+                                placeholder="Repeat your new password"
+                                icon="shield-checkmark-outline"
+                                secureTextEntry={!showPasswords}
+                            />
+
+                            <TouchableOpacity 
+                                style={styles.toggleVisibility} 
+                                onPress={() => setShowPasswords((v) => !v)}
+                            >
+                                <Ionicons 
+                                    name={showPasswords ? 'eye-off-outline' : 'eye-outline'} 
+                                    size={16} 
+                                    color={Colors.textMuted} 
+                                />
+                                <Text style={styles.toggleText}>
+                                    {showPasswords ? 'Hide characters' : 'Show characters'}
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.submitBtn, (isSubmitting || !isPasswordValid) && styles.submitBtnDisabled]}
+                                disabled={isSubmitting || !isPasswordValid}
+                                onPress={handleReset}
+                            >
+                                <LinearGradient
+                                    colors={isPasswordValid ? [Colors.primary, '#EAB308'] : [Colors.border, Colors.border]}
+                                    style={styles.submitGradient}
+                                >
+                                    {isSubmitting ? (
+                                        <ActivityIndicator color={Colors.background} />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="refresh-circle" size={20} color={Colors.background} style={{ marginRight: 8 }} />
+                                            <Text style={styles.submitText}>Reset & Secure Account</Text>
+                                        </>
+                                    )}
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </View>
+                    </ScrollView>
+                </KeyboardAvoidingView>
+            </LinearGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: Colors.background },
+    container: { flex: 1 },
+    gradient: { flex: 1 },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: Spacing.md,
-        paddingTop: 60,
+        paddingTop: Platform.OS === 'ios' ? 60 : 40,
         paddingBottom: Spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
     },
-    backBtn: { width: 40, height: 40, justifyContent: 'center' },
-    headerTitle: { ...Typography.heading, fontSize: 18 },
-    content: { padding: Spacing.md, gap: Spacing.md },
-    helperText: { ...Typography.muted, fontSize: 13, lineHeight: 20 },
-    inputBlock: { gap: 6 },
-    label: { ...Typography.muted, fontSize: 12, fontWeight: '600' },
-    input: {
-        ...Typography.body,
+    backBtn: {
+        width: 44, height: 44,
+        justifyContent: 'center', alignItems: 'center',
         backgroundColor: Colors.surface,
+        borderRadius: 22,
+        borderWidth: 1, borderColor: Colors.border,
+    },
+    headerTitle: { ...Typography.heading, fontSize: 18 },
+    scrollContent: {
+        padding: Spacing.lg,
+        paddingBottom: 40,
+    },
+    card: {
+        backgroundColor: Colors.surface + 'CC',
+        borderRadius: Radius.xl,
+        borderWidth: 1, borderColor: Colors.border,
+        padding: Spacing.lg,
+        gap: Spacing.lg,
+    },
+    infoBox: {
+        flexDirection: 'row',
+        backgroundColor: Colors.primaryDim,
+        padding: Spacing.md,
+        borderRadius: Radius.md,
+        gap: 12,
+        borderWidth: 1, borderColor: Colors.primaryBorder,
+        marginBottom: 8,
+    },
+    infoText: {
+        flex: 1,
+        ...Typography.body,
+        fontSize: 13,
+        lineHeight: 18,
+    },
+    fieldContainer: { gap: 6 },
+    fieldLabel: {
+        ...Typography.muted,
+        fontSize: 12,
+        fontWeight: '600',
+        color: Colors.textMuted,
+        marginLeft: 4,
+    },
+    fieldRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.surfaceElevated,
         borderRadius: Radius.md,
         borderWidth: 1,
         borderColor: Colors.border,
         paddingHorizontal: Spacing.md,
         paddingVertical: 12,
     },
+    fieldInput: {
+        flex: 1,
+        ...Typography.body,
+        fontSize: 15,
+        padding: 0,
+    },
     toggleVisibility: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
         gap: 6,
+        paddingVertical: 4,
     },
     toggleText: { ...Typography.muted, fontSize: 12 },
     submitBtn: {
-        marginTop: Spacing.md,
-        backgroundColor: Colors.primary,
         borderRadius: Radius.md,
-        paddingVertical: 14,
-        alignItems: 'center',
+        overflow: 'hidden',
+        marginTop: Spacing.md,
     },
-    submitText: { color: Colors.background, fontSize: 15, fontWeight: '700' },
+    submitBtnDisabled: {
+        opacity: 0.5,
+    },
+    submitGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+    },
+    submitText: {
+        color: Colors.background,
+        fontSize: 16,
+        fontWeight: '700',
+    },
 });

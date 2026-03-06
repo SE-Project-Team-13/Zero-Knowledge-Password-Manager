@@ -12,6 +12,8 @@ export {
 export {
   encrypt,
   decrypt,
+  encryptData,
+  decryptData,
 } from "./aes"
 
 export {
@@ -25,6 +27,7 @@ export {
   generateVerifier,
   generateClientProof,
   generateChallenge,
+  sha256Hash,
 } from "./auth"
 
 export type {

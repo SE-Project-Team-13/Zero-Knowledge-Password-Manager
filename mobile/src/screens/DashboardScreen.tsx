@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image
+    View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, StatusBar, Platform
 } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
@@ -8,21 +8,24 @@ import { Colors, Spacing, Radius, Typography } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { formatTimestampIST } from '../utils/formatIST';
+import { LinearGradient } from 'expo-linear-gradient';
 
 function StatCard({ icon, label, value, color }: { icon: string; label: string; value: string | number; color?: string }) {
     return (
-        <View style={[styles.statCard, color ? { borderColor: color + '33' } : {}]}>
-            <View style={[styles.statIcon, { backgroundColor: (color || Colors.primary) + '22' }]}>
+        <View style={styles.statCard}>
+            <View style={[styles.statIcon, { backgroundColor: (color || Colors.primary) + '15' }]}>
                 <Ionicons name={icon as any} size={20} color={color || Colors.primary} />
             </View>
-            <Text style={styles.statValue}>{value}</Text>
-            <Text style={styles.statLabel}>{label}</Text>
+            <View>
+                <Text style={styles.statValue}>{value}</Text>
+                <Text style={styles.statLabel}>{label}</Text>
+            </View>
         </View>
     );
 }
 
 export default function DashboardScreen() {
-    const { masterKey, userId, fullName, logout } = useAuthStore() as any;
+    const { masterKey, userId, fullName } = useAuthStore() as any;
     const { entries, isLoading, isSyncing, lastSyncTime, loadVault } = useVaultStore();
     const navigation = useNavigation<any>();
 
@@ -30,146 +33,229 @@ export default function DashboardScreen() {
         if (masterKey && userId) loadVault(masterKey, userId);
     }, [masterKey, userId]);
 
-    useEffect(() => {
-        if (masterKey && userId) loadVault(masterKey, userId);
-    }, [masterKey, userId]);
-
     return (
-        <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 80 }}>
-            {/* Header */}
-            <View style={styles.header}>
-                <View style={styles.logoContainer}>
-                    <Image 
-                        source={require('../../assets/logo.png')} 
-                        style={styles.logoImage}
-                    />
-                </View>
-                <Text style={styles.appName}>Zenith <Text style={{ color: Colors.primary }}>Vault</Text></Text>
-                <Text style={styles.subtext}>Your passwords, encrypted end-to-end</Text>
-            </View>
-
-            {/* Syncing indicator strip — non-blocking */}
-            {isSyncing && (
-                <View style={styles.syncBanner}>
-                    <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 6 }} />
-                    <Text style={styles.syncBannerText}>Syncing vault…</Text>
-                </View>
-            )}
-
-            {/* Stats */}
-            <View style={styles.statsRow}>
-                <StatCard icon="key" label="Credentials" value={isLoading ? '…' : entries.length} />
-                <StatCard icon="shield-checkmark" label="Encryption" value="AES-256" color={Colors.success} />
-                <StatCard
-                    icon="sync"
-                    label="Last Sync"
-                    value={isSyncing ? 'Syncing…' : formatTimestampIST(lastSyncTime)}
-                    color={Colors.purple}
-                />
-            </View>
-
-            {/* Quick Actions */}
-            <Text style={styles.sectionTitle}>Quick Actions</Text>
-            <View style={styles.actionsGrid}>
-                <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('Vault')}>
-                    <View style={[styles.actionIcon, { backgroundColor: Colors.primaryDim }]}>
-                        <Ionicons name="list" size={24} color={Colors.primary} />
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" />
+            <LinearGradient
+                colors={[Colors.background, '#080808', '#121212']}
+                style={styles.gradient}
+            >
+                <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+                    {/* Header */}
+                    <View style={styles.header}>
+                        <View style={styles.headerRow}>
+                            <View>
+                                <Text style={styles.greeting}>Welcome back,</Text>
+                                <Text style={styles.userName}>{fullName || 'User'}</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.profileBtn}>
+                                <Ionicons name="person-circle-outline" size={40} color={Colors.primary} />
+                            </TouchableOpacity>
+                        </View>
+                        
+                        {/* Summary Card */}
+                        <LinearGradient
+                            colors={[Colors.surfaceElevated, Colors.surface]}
+                            style={styles.summaryCard}
+                        >
+                            <View style={styles.summaryHeader}>
+                                <View style={styles.iconCircle}>
+                                    <Ionicons name="shield-checkmark" size={24} color={Colors.primary} />
+                                </View>
+                                <View>
+                                    <Text style={styles.summaryTitle}>Zenith <Text style={{ color: Colors.primary }}>Vault</Text></Text>
+                                    <Text style={styles.summarySubtitle}>Security overview</Text>
+                                </View>
+                            </View>
+                            
+                            <View style={styles.statsRow}>
+                                <StatCard icon="key" label="Stored Passwords" value={isLoading ? '…' : entries.length} />
+                                <StatCard icon="sync" label="Last Sync" value={formatTimestampIST(lastSyncTime).split(',')[0]} color={Colors.success} />
+                            </View>
+                            
+                            {isSyncing && (
+                                <View style={styles.syncingRow}>
+                                    <ActivityIndicator size="small" color={Colors.primary} />
+                                    <Text style={styles.syncingText}>Syncing securely...</Text>
+                                </View>
+                            )}
+                        </LinearGradient>
                     </View>
-                    <Text style={styles.actionTitle}>View Vault</Text>
-                    <Text style={styles.actionSub}>Browse your passwords</Text>
-                </TouchableOpacity>
 
-                <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('AddCredential')}>
-                    <View style={[styles.actionIcon, { backgroundColor: Colors.purpleDim }]}>
-                        <Ionicons name="add-circle" size={24} color={Colors.purple} />
-                    </View>
-                    <Text style={styles.actionTitle}>Add Password</Text>
-                    <Text style={styles.actionSub}>Encrypt & store new credential</Text>
-                </TouchableOpacity>
+                    {/* Quick Actions */}
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>Quick Actions</Text>
+                        <View style={styles.actionsGrid}>
+                            <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('Vault')}>
+                                <LinearGradient colors={['rgba(255,193,7,0.1)', 'rgba(255,193,7,0.02)']} style={styles.actionGradient}>
+                                    <View style={styles.actionIconContainer}>
+                                        <Ionicons name="list" size={26} color={Colors.primary} />
+                                    </View>
+                                    <Text style={styles.actionTitle}>View Vault</Text>
+                                    <Text style={styles.actionSub}>Browse passwords</Text>
+                                    <Ionicons name="chevron-forward" size={16} color={Colors.textDim} style={styles.actionArrow} />
+                                </LinearGradient>
+                            </TouchableOpacity>
 
-                <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('Settings')}>
-                    <View style={[styles.actionIcon, { backgroundColor: Colors.destructiveDim }]}>
-                        <Ionicons name="settings" size={24} color={Colors.destructive} />
+                            <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('AddCredential')}>
+                                <LinearGradient colors={['rgba(111,66,193,0.1)', 'rgba(111,66,193,0.02)']} style={styles.actionGradient}>
+                                    <View style={styles.actionIconContainer}>
+                                        <Ionicons name="add-circle" size={26} color={Colors.purple} />
+                                    </View>
+                                    <Text style={styles.actionTitle}>Add Entry</Text>
+                                    <Text style={styles.actionSub}>Encrypt & store</Text>
+                                    <Ionicons name="chevron-forward" size={16} color={Colors.textDim} style={styles.actionArrow} />
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </View>
                     </View>
-                    <Text style={styles.actionTitle}>Settings</Text>
-                    <Text style={styles.actionSub}>Security & account</Text>
-                </TouchableOpacity>
-            </View>
-        </ScrollView>
+
+                    {/* Security Info */}
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>Vault Security</Text>
+                        <View style={styles.securityCard}>
+                            <View style={styles.securityItem}>
+                                <Ionicons name="lock-closed" size={18} color={Colors.success} />
+                                <Text style={styles.securityText}>AES-256-GCM Encryption</Text>
+                            </View>
+                            <View style={styles.securityItem}>
+                                <Ionicons name="key" size={18} color={Colors.primary} />
+                                <Text style={styles.securityText}>Zero-Knowledge Protocol</Text>
+                            </View>
+                            <View style={styles.securityItem}>
+                                <Ionicons name="finger-print" size={18} color={Colors.purple} />
+                                <Text style={styles.securityText}>Local Biometric Ready</Text>
+                            </View>
+                        </View>
+                    </View>
+                </ScrollView>
+            </LinearGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: Colors.background },
-    syncBanner: {
+    container: { flex: 1 },
+    gradient: { flex: 1 },
+    header: {
+        paddingTop: Platform.OS === 'ios' ? 60 : 40,
+        paddingHorizontal: Spacing.lg,
+        paddingBottom: Spacing.xl,
+    },
+    headerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    greeting: { ...Typography.muted, fontSize: 13 },
+    userName: { ...Typography.heading, fontSize: 24 },
+    profileBtn: { padding: 4 },
+    summaryCard: {
+        borderRadius: Radius.xl,
+        padding: Spacing.lg,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        gap: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 10,
+    },
+    summaryHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 6,
+        gap: 12,
+    },
+    iconCircle: {
+        width: 48, height: 48, borderRadius: Radius.md,
         backgroundColor: Colors.primaryDim,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.primaryBorder,
+        justifyContent: 'center', alignItems: 'center',
+        borderWidth: 1, borderColor: Colors.primaryBorder,
     },
-    syncBannerText: {
-        color: Colors.primary,
-        fontSize: 12,
-        fontWeight: '600',
+    summaryTitle: { ...Typography.heading, fontSize: 20 },
+    summarySubtitle: { ...Typography.muted, fontSize: 12 },
+    statsRow: {
+        flexDirection: 'row',
+        gap: Spacing.md,
     },
-    header: {
-        alignItems: 'center', paddingTop: 60, paddingBottom: Spacing.xl,
-        paddingHorizontal: Spacing.md, overflow: 'hidden', position: 'relative',
-        borderBottomWidth: 1, borderBottomColor: Colors.border,
-    },
-    logoContainer: {
-        width: 100, height: 100,
-        justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.sm,
-    },
-    logoImage: {
-        width: 84, height: 84, borderRadius: Radius.lg,
-    },
-    greeting: { ...Typography.muted, fontSize: 13, marginBottom: 4 },
-    appName: { ...Typography.heading, fontSize: 26, marginBottom: 4 },
-    subtext: { ...Typography.muted, fontSize: 13 },
-    statsRow: { flexDirection: 'row', gap: Spacing.sm, padding: Spacing.md, paddingBottom: 0 },
     statCard: {
-        flex: 1, backgroundColor: Colors.surface, borderRadius: Radius.lg,
-        borderWidth: 1, borderColor: Colors.border, alignItems: 'center', padding: Spacing.md, gap: 4,
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
     statIcon: {
         width: 36, height: 36, borderRadius: Radius.sm,
-        justifyContent: 'center', alignItems: 'center', marginBottom: 4,
+        justifyContent: 'center', alignItems: 'center',
     },
-    statValue: { ...Typography.heading, fontSize: 18 },
-    statLabel: { ...Typography.muted, fontSize: 11, textAlign: 'center' },
+    statValue: { ...Typography.heading, fontSize: 16 },
+    statLabel: { ...Typography.muted, fontSize: 10 },
+    syncingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
+    },
+    syncingText: { fontSize: 11, color: Colors.primary, fontWeight: '600' },
+    sectionContainer: {
+        paddingHorizontal: Spacing.lg,
+        marginBottom: Spacing.xl,
+    },
     sectionTitle: {
         ...Typography.muted, fontSize: 11, fontWeight: '700',
-        textTransform: 'uppercase', letterSpacing: 1,
-        paddingHorizontal: Spacing.md, marginTop: Spacing.lg, marginBottom: Spacing.sm,
+        textTransform: 'uppercase', letterSpacing: 1.5,
+        marginBottom: 16,
     },
-    actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.sm, gap: Spacing.sm },
+    actionsGrid: {
+        flexDirection: 'row',
+        gap: Spacing.md,
+    },
     actionCard: {
-        flex: 1, minWidth: '44%', backgroundColor: Colors.surface,
-        borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border,
-        padding: Spacing.md, gap: 6,
+        flex: 1,
+        borderRadius: Radius.lg,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: Colors.border,
     },
-    actionIcon: {
+    actionGradient: {
+        padding: Spacing.md,
+        gap: 6,
+        height: 140,
+    },
+    actionIconContainer: {
         width: 44, height: 44, borderRadius: Radius.md,
-        justifyContent: 'center', alignItems: 'center', marginBottom: 4,
+        backgroundColor: Colors.background,
+        justifyContent: 'center', alignItems: 'center',
+        marginBottom: 8,
+        borderWidth: 1, borderColor: Colors.border,
     },
-    actionTitle: { ...Typography.subheading, fontSize: 14 },
+    actionTitle: { ...Typography.subheading, fontSize: 15 },
     actionSub: { ...Typography.muted, fontSize: 12 },
+    actionArrow: {
+        position: 'absolute',
+        bottom: 12,
+        right: 12,
+    },
     securityCard: {
-        margin: Spacing.md,
-        backgroundColor: Colors.primaryDim, borderRadius: Radius.lg,
-        borderWidth: 1, borderColor: Colors.primaryBorder, padding: Spacing.md,
+        backgroundColor: Colors.surface + '88',
+        borderRadius: Radius.lg,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        padding: Spacing.md,
+        gap: 12,
     },
-    securityTitle: { ...Typography.subheading, fontSize: 14, marginBottom: 6 },
-    securityText: { ...Typography.muted, fontSize: 13, lineHeight: 20, marginBottom: Spacing.sm },
-    securityBadges: { flexDirection: 'row', gap: Spacing.xs, flexWrap: 'wrap' },
-    securityBadge: {
-        backgroundColor: Colors.primary + '22', borderRadius: Radius.full,
-        paddingHorizontal: 10, paddingVertical: 4,
-        borderWidth: 1, borderColor: Colors.primaryBorder,
+    securityItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
-    securityBadgeText: { color: Colors.primary, fontSize: 11, fontWeight: '600' },
+    securityText: {
+        ...Typography.body,
+        fontSize: 13,
+        color: Colors.textMuted,
+    },
 });
