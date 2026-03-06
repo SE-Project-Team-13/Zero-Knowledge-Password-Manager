@@ -56,7 +56,7 @@ interface VaultState {
     snoozeEntry: (id: string, derivedKey: DerivedKey, userId: string) => Promise<void>;
     getDeviceIdForSync: () => Promise<string>;
     flushSyncQueue: (derivedKey: DerivedKey, userId: string) => Promise<void>;
-    resolveSyncConflict: (choice: 'local' | 'server', derivedKey: DerivedKey, userId: string) => Promise<boolean>;
+    resolveSyncConflict: (choice: 'local' | 'server' | 'merge', derivedKey: DerivedKey, userId: string, conflictOverride?: SyncConflictState) => Promise<boolean>;
     clearVault: () => void;
 }
 
@@ -74,7 +74,12 @@ async function getAuthHeaders() {
     return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 }
 
-function normalizeEntry(raw: any): VaultEntryLocal {
+function normalizeEntry(raw: any): VaultEntryLocal | null {
+    const siteName = String(raw?.siteName || raw?.site || "");
+    if (siteName === "VAULT_ROOT" || siteName === "SYSTEM" || siteName === "SYSTEM_SHARING_KEYS") {
+        return null;
+    }
+
     return {
         id: String(raw?.id || uuidv4()),
         url: String(raw?.url || raw?.siteUrl || raw?.siteName || raw?.site || 'Unknown'),
@@ -105,13 +110,63 @@ function toStorageFormat(entry: VaultEntryLocal): Record<string, string> {
     };
 }
 
+function mergeEntries(local: VaultEntryLocal[], server: VaultEntryLocal[]): VaultEntryLocal[] {
+    const mergedMap = new Map<string, VaultEntryLocal>();
+
+    // Add all local entries
+    local.forEach((e) => mergedMap.set(e.id, e));
+
+    // Add or merge server entries
+    server.forEach((s) => {
+        const existing = mergedMap.get(s.id);
+        if (!existing) {
+            // New from server
+            mergedMap.set(s.id, s);
+        } else {
+            // Both have it, compare updatedAt
+            const localTs = new Date(existing.updatedAt || 0).getTime();
+            const serverTs = new Date(s.updatedAt || 0).getTime();
+            if (serverTs > localTs) {
+                mergedMap.set(s.id, s);
+            }
+        }
+    });
+
+    return Array.from(mergedMap.values());
+}
+
 // Serialize entries array to an encrypted blob using the derived key.
 async function encryptEntries(entries: VaultEntryLocal[], derivedKey: DerivedKey): Promise<ServerVaultRecord> {
+    const transportEntries = entries.map(toStorageFormat);
+    
+    // Re-add sharing keys if they exist in SecureStorage (Parity with web)
+    const pub = await SecureStorageService.getItem("share_public_key_spki");
+    const priv = await SecureStorageService.getItem("share_private_key_pkcs8");
+    const sPub = await SecureStorageService.getItem("share_sign_public_key_spki");
+    const sPriv = await SecureStorageService.getItem("share_sign_private_key_pkcs8");
+
+    if (pub && priv && sPub && sPriv) {
+        transportEntries.push({
+            id: "system-sharing-keys",
+            siteName: "SYSTEM_SHARING_KEYS",
+            siteUrl: "system-sharing-keys",
+            username: "system",
+            password: "system-sharing-keys",
+            notes: "Auto-synced sharing keys",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            reminderSnoozeUntil: "",
+            publicKey: pub,
+            privateKey: priv,
+            signingPublicKey: sPub,
+            signingPrivateKey: sPriv
+        } as any);
+    }
+
     const serialized: VaultEntry = {
-        url: '__vault__',
-        username: '__vault__',
-        password: JSON.stringify(entries.map(toStorageFormat)),
-        metadata: { isVaultBlob: true },
+        url: 'VAULT_ROOT',
+        username: 'SYSTEM',
+        password: JSON.stringify(transportEntries),
     };
     const encrypted = await encrypt(serialized, derivedKey);
     return encrypted as ServerVaultRecord;
@@ -127,44 +182,38 @@ async function decryptEntries(record: ServerVaultRecord, derivedKey: DerivedKey)
         algorithm: 'AES-256-GCM',
         derivationAlgorithm: 'Argon2id',
     };
-    if (!normalized.tag) {
-        // Legacy compatibility: some old payloads append the GCM tag to ciphertext.
-        // The shared crypto engine supports this mode when tag is omitted.
-        console.log('[Sync] Decrypting legacy payload without explicit auth tag');
-    }
 
     const decrypted = await decrypt(normalized, derivedKey);
-    if (decrypted.metadata?.isVaultBlob && typeof decrypted.password === 'string') {
-        const parsed = JSON.parse(decrypted.password);
-        if (Array.isArray(parsed)) {
-            return parsed.map(normalizeEntry);
-        }
-        return [normalizeEntry(parsed)];
-    }
+    let rawEntries: any[] = [];
 
-    // Compatibility: web dashboard stores a VAULT_ROOT wrapper without metadata.
-    if (
-        typeof decrypted.url === 'string' &&
+    if (decrypted.metadata?.isVaultBlob && typeof decrypted.password === 'string') {
+        rawEntries = JSON.parse(decrypted.password);
+    } else if (
         decrypted.url === 'VAULT_ROOT' &&
-        typeof decrypted.username === 'string' &&
         decrypted.username === 'SYSTEM' &&
         typeof decrypted.password === 'string'
     ) {
-        try {
-            const parsed = JSON.parse(decrypted.password);
-            if (Array.isArray(parsed)) {
-                return parsed.map(normalizeEntry);
-            }
-            if (parsed && typeof parsed === 'object') {
-                return [normalizeEntry(parsed)];
-            }
-        } catch (e) {
-            console.warn('[Sync] Failed to parse VAULT_ROOT payload, falling back to single entry', e);
-        }
+        rawEntries = JSON.parse(decrypted.password);
+    } else {
+        // Single entry or unknown format
+        rawEntries = [decrypted];
     }
 
-    // Legacy: single entry
-    return [normalizeEntry(decrypted)];
+    if (!Array.isArray(rawEntries)) rawEntries = [rawEntries];
+
+    // Extract sharing keys fromraw entries if present (Parity with web)
+    const sharingKeysEntry = rawEntries.find(e => e.siteName === "SYSTEM_SHARING_KEYS");
+    if (sharingKeysEntry) {
+        console.log('[Sync] Found persisted sharing keys in blob, restoring...');
+        if (sharingKeysEntry.publicKey) await SecureStorageService.saveItem("share_public_key_spki", sharingKeysEntry.publicKey);
+        if (sharingKeysEntry.privateKey) await SecureStorageService.saveItem("share_private_key_pkcs8", sharingKeysEntry.privateKey);
+        if (sharingKeysEntry.signingPublicKey) await SecureStorageService.saveItem("share_sign_public_key_spki", sharingKeysEntry.signingPublicKey);
+        if (sharingKeysEntry.signingPrivateKey) await SecureStorageService.saveItem("share_sign_private_key_pkcs8", sharingKeysEntry.signingPrivateKey);
+    }
+
+    return rawEntries
+        .map(normalizeEntry)
+        .filter((e): e is VaultEntryLocal => e !== null);
 }
 
 async function pullVaults(userId: string, version: number, lastSyncTime: number | null): Promise<{ vaults: any[]; currentVersion: number }> {
@@ -480,17 +529,15 @@ export const useVaultStore = create<VaultState>((set, get) => ({
                         nonce: conflict.latestServerBlob.nonce,
                     };
                     const serverEntries = await decryptEntries(serverBlob, derivedKey);
-                    set({
-                        syncConflict: {
-                            serverEntries,
-                            localEntries: newEntries,
-                            serverBlob,
-                            localBlob: encrypted,
-                            serverTimestamp: Number(conflict.latestServerTimestamp || 0),
-                        },
-                        isSyncing: false,
-                        error: null,
-                    });
+                    const conflictData = {
+                        serverEntries,
+                        localEntries: newEntries,
+                        serverBlob,
+                        localBlob: encrypted,
+                        serverTimestamp: Number(conflict.latestServerTimestamp || 0),
+                    };
+                    set({ syncConflict: conflictData });
+                    await get().resolveSyncConflict('merge', derivedKey, userId, conflictData);
                     return;
                 }
                 const pending = await enqueueSync(userId, nextVersion, encrypted);
@@ -538,17 +585,15 @@ export const useVaultStore = create<VaultState>((set, get) => ({
                         nonce: conflict.latestServerBlob.nonce,
                     };
                     const serverEntries = await decryptEntries(serverBlob, derivedKey);
-                    set({
-                        syncConflict: {
-                            serverEntries,
-                            localEntries: newEntries,
-                            serverBlob,
-                            localBlob: encrypted,
-                            serverTimestamp: Number(conflict.latestServerTimestamp || 0),
-                        },
-                        isSyncing: false,
-                        error: null,
-                    });
+                    const conflictData = {
+                        serverEntries,
+                        localEntries: newEntries,
+                        serverBlob,
+                        localBlob: encrypted,
+                        serverTimestamp: Number(conflict.latestServerTimestamp || 0),
+                    };
+                    set({ syncConflict: conflictData });
+                    await get().resolveSyncConflict('merge', derivedKey, userId, conflictData);
                     return;
                 }
                 const pending = await enqueueSync(userId, nextVersion, encrypted);
@@ -596,17 +641,15 @@ export const useVaultStore = create<VaultState>((set, get) => ({
                         nonce: conflict.latestServerBlob.nonce,
                     };
                     const serverEntries = await decryptEntries(serverBlob, derivedKey);
-                    set({
-                        syncConflict: {
-                            serverEntries,
-                            localEntries: newEntries,
-                            serverBlob,
-                            localBlob: encrypted,
-                            serverTimestamp: Number(conflict.latestServerTimestamp || 0),
-                        },
-                        isSyncing: false,
-                        error: null,
-                    });
+                    const conflictData = {
+                        serverEntries,
+                        localEntries: newEntries,
+                        serverBlob,
+                        localBlob: encrypted,
+                        serverTimestamp: Number(conflict.latestServerTimestamp || 0),
+                    };
+                    set({ syncConflict: conflictData });
+                    await get().resolveSyncConflict('merge', derivedKey, userId, conflictData);
                     return;
                 }
                 const pending = await enqueueSync(userId, nextVersion, encrypted);
@@ -668,13 +711,23 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         }
     },
 
-    resolveSyncConflict: async (choice, _derivedKey, userId) => {
-        const conflict = get().syncConflict;
+    resolveSyncConflict: async (choice, derivedKey, userId, conflictOverride) => {
+        const conflict = conflictOverride || get().syncConflict;
         if (!conflict) return false;
         try {
             const headers = await getAuthHeaders();
             const deviceId = await getDeviceId();
-            const chosenBlob = choice === 'local' ? conflict.localBlob : conflict.serverBlob;
+            
+            let chosenBlob: ServerVaultRecord;
+            let resolvedEntries: VaultEntryLocal[];
+
+            if (choice === 'merge') {
+                resolvedEntries = mergeEntries(conflict.localEntries, conflict.serverEntries);
+                chosenBlob = await encryptEntries(resolvedEntries, derivedKey);
+            } else {
+                chosenBlob = choice === 'local' ? conflict.localBlob : conflict.serverBlob;
+                resolvedEntries = choice === 'local' ? conflict.localEntries : conflict.serverEntries;
+            }
 
             const response = await axios.post(
                 `${API_URL}/sync/blob/resolve`,
@@ -692,7 +745,6 @@ export const useVaultStore = create<VaultState>((set, get) => ({
                 { headers },
             );
 
-            const resolvedEntries = choice === 'local' ? conflict.localEntries : conflict.serverEntries;
             const resolvedVersion = Number(response.data?.resolvedVersion || get().version + 1);
             const resolvedTimestamp = Number(response.data?.resolvedTimestamp || Date.now());
             await persistSnapshot(userId, {
@@ -701,6 +753,26 @@ export const useVaultStore = create<VaultState>((set, get) => ({
                 lastSyncTime: resolvedTimestamp,
                 updatedAt: Date.now(),
             });
+
+            // If we merged, update Compatibility API (parity with web)
+            if (choice === 'merge') {
+                try {
+                    const transportEntries = resolvedEntries.map(toStorageFormat);
+                    const serialized = {
+                        url: 'VAULT_ROOT',
+                        username: 'SYSTEM',
+                        password: JSON.stringify(transportEntries),
+                    };
+                    const encryptedVault = await encrypt(serialized, derivedKey);
+                    const labels = resolvedEntries.map((e) => e.url.toLowerCase());
+                    await axios.put(`${API_URL}/api/vault/${encodeURIComponent(userId)}`, 
+                        { encryptedVault, labels },
+                        { headers }
+                    );
+                } catch (compatErr) {
+                    console.warn('[Sync] Post-merge compatibility sync failed', compatErr);
+                }
+            }
 
             set({
                 entries: resolvedEntries,

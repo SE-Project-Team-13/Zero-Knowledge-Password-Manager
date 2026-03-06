@@ -52,7 +52,7 @@ interface VaultContextType {
     syncError: string | null;
     pendingSyncCount: number;
     syncConflict: SyncConflictState | null;
-    resolveSyncConflict: (choice: "local" | "server") => Promise<boolean>;
+    resolveSyncConflict: (choice: "local" | "server" | "merge", conflict?: SyncConflictState) => Promise<boolean>;
     incomingShares: any[];
     refreshIncoming: () => Promise<void>;
     acceptShare: (shareId: string) => Promise<void>;
@@ -126,6 +126,43 @@ function toStorageFormat(entry: DecryptedEntry): StorageVaultEntry {
         reminderSnoozeUntil: entry.reminderSnoozeUntil || "",
     };
 }
+
+function mergeEntries(local: DecryptedEntry[], server: DecryptedEntry[]): DecryptedEntry[] {
+    const mergedMap = new Map<string, DecryptedEntry>();
+
+    // Add all local entries
+    local.forEach((e) => mergedMap.set(e.id, e));
+
+    // Add or merge server entries
+    server.forEach((s) => {
+        const existing = mergedMap.get(s.id);
+        if (!existing) {
+            // New from server
+            mergedMap.set(s.id, s);
+        } else {
+            // Both have it, compare updatedAt
+            const localTs = new Date(existing.updatedAt).getTime();
+            const serverTs = new Date(s.updatedAt).getTime();
+            if (serverTs > localTs) {
+                mergedMap.set(s.id, s);
+            }
+        }
+    });
+
+    return Array.from(mergedMap.values());
+}
+
+const restoreSharingKeys = (entries: any[]) => {
+    const sharingKeysEntry = entries.find(e => e.siteName === "SYSTEM_SHARING_KEYS");
+    if (sharingKeysEntry) {
+        console.log("[Sync] Found persisted sharing keys in blob, restoring to localStorage...");
+        const userId = (localStorage.getItem("user_id") || "").trim();
+        if (sharingKeysEntry.publicKey) localStorage.setItem(getPublicKeyKey(userId), sharingKeysEntry.publicKey);
+        if (sharingKeysEntry.privateKey) localStorage.setItem(getPrivateKeyKey(userId), sharingKeysEntry.privateKey);
+        if (sharingKeysEntry.signingPublicKey) localStorage.setItem(getSignPublicKeyKey(userId), sharingKeysEntry.signingPublicKey);
+        if (sharingKeysEntry.signingPrivateKey) localStorage.setItem(getSignPrivateKeyKey(userId), sharingKeysEntry.signingPrivateKey);
+    }
+};
 
 export function VaultProvider({ children }: { children: ReactNode }) {
     const [decryptedEntries, setDecryptedEntries] = useState<DecryptedEntry[]>([]);
@@ -632,32 +669,28 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 newCredential,
             ];
 
+            setDecryptedEntries((prev) => {
+                const displayEntry: DecryptedEntry = {
+                    id: entryId,
+                    url: entryCtx.url,
+                    username: entryCtx.username,
+                    password: entryCtx.password,
+                    notes: entryCtx.notes,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: newCredential.updatedAt,
+                    lastUpdated: newCredential.updatedAt,
+                    reminderSnoozeUntil: "",
+                    isPasswordVisible: false,
+                };
+                return [...prev, displayEntry];
+            });
+
             // Re-encrypt and save
             await saveVault(updatedEntries, derivedKeys);
-
-            // Update local state
-            const displayEntry: DecryptedEntry = {
-                id: entryId,
-                url: entryCtx.url,
-                username: entryCtx.username,
-                password: entryCtx.password,
-                notes: entryCtx.notes,
-                createdAt: new Date().toISOString(),
-                updatedAt: newCredential.updatedAt,
-                lastUpdated: newCredential.updatedAt,
-                reminderSnoozeUntil: "",
-                isPasswordVisible: false,
-            };
-
-            setDecryptedEntries([...decryptedEntries, displayEntry]);
             toast.success("Credential saved successfully!");
         } catch (err) {
             console.error("Add entry error:", err);
-            if (err instanceof Error && err.message === "SYNC_CONFLICT_DETECTED") {
-                toast.error("Conflict detected. Choose which version to keep.");
-            } else {
-                toast.error("Unable to save credential at this time");
-            }
+            toast.error("Unable to save credential at this time");
         }
     };
 
@@ -732,28 +765,32 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if (!derivedKeys) return;
 
         try {
-            const updatedEntries = decryptedEntries.map((e) =>
+            const transportEntries = decryptedEntries.map((e) =>
                 e.id === entry.id
-                    ? {
+                    ? toStorageFormat({
                         ...entry,
-                        lastUpdated: new Date().toISOString(),
                         updatedAt: new Date().toISOString(),
-                    }
-                    : e,
+                    })
+                    : toStorageFormat(e)
             );
 
-            const transportEntries = updatedEntries.map((e) => toStorageFormat(e));
+            setDecryptedEntries((prev) =>
+                prev.map((e) =>
+                    e.id === entry.id
+                        ? {
+                            ...entry,
+                            lastUpdated: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                        }
+                        : e
+                )
+            );
 
             await saveVault(transportEntries, derivedKeys);
-            setDecryptedEntries(updatedEntries);
             toast.success("Credential updated!");
         } catch (err) {
             console.error("Update entry error:", err);
-            if (err instanceof Error && err.message === "SYNC_CONFLICT_DETECTED") {
-                toast.error("Conflict detected. Choose which version to keep.");
-            } else {
-                toast.error("Unable to update credential");
-            }
+            toast.error("Unable to update credential");
         }
     };
 
@@ -764,19 +801,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            const updatedEntries = decryptedEntries.filter((e) => e.id !== id);
-            const transportEntries = updatedEntries.map((e) => toStorageFormat(e));
+            const transportEntries = decryptedEntries
+                .filter((e) => e.id !== id)
+                .map((e) => toStorageFormat(e));
+
+            setDecryptedEntries((prev) => prev.filter((e) => e.id !== id));
 
             await saveVault(transportEntries, derivedKeys);
-            setDecryptedEntries(updatedEntries);
             toast.success("Credential deleted!");
         } catch (err) {
             console.error("Delete entry error:", err);
-            if (err instanceof Error && err.message === "SYNC_CONFLICT_DETECTED") {
-                toast.error("Conflict detected. Choose which version to keep.");
-            } else {
-                toast.error("Unable to delete credential");
-            }
+            toast.error("Unable to delete credential");
         }
     };
 
@@ -825,6 +860,167 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             toast.error("Unable to update timestamp");
         }
     };
+
+    const resolveSyncConflict = React.useCallback(async (choice: "local" | "server" | "merge", conflictOverride?: SyncConflictState): Promise<boolean> => {
+        const conflict = conflictOverride || syncConflict;
+        if (!conflict) return false;
+        const token = localStorage.getItem("auth_token");
+        const userId = (session.userId || localStorage.getItem("user_id") || "").trim();
+        const deviceId = localStorage.getItem("deviceId") || "web-dashboard";
+        if (!token || !userId) return false;
+
+        let chosenBlob: SyncBlobPayload;
+        let finalDecryptedEntries: DecryptedEntry[];
+
+        if (choice === "merge") {
+            if (!derivedKeys) {
+                toast.error("Encryption keys unavailable for merge. Try unlocking again.");
+                return false;
+            }
+
+            finalDecryptedEntries = mergeEntries(conflict.localEntries, conflict.serverEntries);
+
+            const { encrypt } = await import("@password-manager/crypto-engine");
+            const transportEntries = finalDecryptedEntries.map((e) => toStorageFormat(e));
+            
+            const pub = localStorage.getItem(getPublicKeyKey(userId));
+            const priv = localStorage.getItem(getPrivateKeyKey(userId));
+            const sPub = localStorage.getItem(getSignPublicKeyKey(userId));
+            const sPriv = localStorage.getItem(getSignPrivateKeyKey(userId));
+
+            if (pub && priv && sPub && sPriv) {
+                const filtered = transportEntries.filter(e => e.siteName !== "SYSTEM_SHARING_KEYS");
+                filtered.push({
+                    id: "system-sharing-keys",
+                    siteName: "SYSTEM_SHARING_KEYS",
+                    siteUrl: "system-sharing-keys",
+                    username: "system",
+                    password: "system-sharing-keys",
+                    notes: "Auto-synced sharing keys",
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    reminderSnoozeUntil: "",
+                    publicKey: pub,
+                    privateKey: priv,
+                    signingPublicKey: sPub,
+                    signingPrivateKey: sPriv
+                } as any);
+                const vaultEntry = {
+                    url: "VAULT_ROOT",
+                    username: "SYSTEM",
+                    password: JSON.stringify(filtered),
+                };
+                const encrypted = await encrypt(vaultEntry, derivedKeys);
+                chosenBlob = {
+                    ciphertext: encrypted.ciphertext,
+                    iv: encrypted.iv,
+                    salt: encrypted.salt,
+                    authTag: encrypted.tag,
+                    version: Date.now(),
+                    timestamp: Date.now(),
+                    nonce: Math.random().toString(36).substring(7),
+                };
+            } else {
+                const vaultEntry = {
+                    url: "VAULT_ROOT",
+                    username: "SYSTEM",
+                    password: JSON.stringify(transportEntries),
+                };
+                const encrypted = await encrypt(vaultEntry, derivedKeys);
+                chosenBlob = {
+                    ciphertext: encrypted.ciphertext,
+                    iv: encrypted.iv,
+                    salt: encrypted.salt,
+                    authTag: encrypted.tag,
+                    version: Date.now(),
+                    timestamp: Date.now(),
+                    nonce: Math.random().toString(36).substring(7),
+                };
+            }
+        } else {
+            chosenBlob = choice === "local" ? conflict.localBlob : conflict.serverBlob;
+            finalDecryptedEntries = choice === "local" ? conflict.localEntries : conflict.serverEntries;
+        }
+
+        const response = await fetch(buildApiUrl("/sync/blob/resolve"), {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                userId,
+                deviceId,
+                chosenBlob: {
+                    ciphertext: chosenBlob.ciphertext,
+                    iv: chosenBlob.iv,
+                    salt: chosenBlob.salt,
+                    authTag: chosenBlob.authTag || (chosenBlob as any).tag
+                },
+                expectedServerTimestamp: conflict.serverTimestamp,
+            }),
+        });
+
+        if (!response.ok) {
+            return false;
+        }
+
+        const payload = await response.json();
+        const resolvedTs = Number(payload?.resolvedTimestamp || Date.now());
+        localStorage.setItem(getSyncTsKey(userId), String(resolvedTs));
+        setLastSyncedAt(resolvedTs);
+
+        if (choice === "local" || choice === "merge") {
+            setDecryptedEntries(finalDecryptedEntries);
+            localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(chosenBlob));
+            setHasSharingKeysInVault(true); 
+
+            if (choice === "merge") {
+                try {
+                    const { encrypt } = await import("@password-manager/crypto-engine");
+                    const transportEntries = finalDecryptedEntries.map((e) => toStorageFormat(e));
+                    const vaultEntry = { url: "VAULT_ROOT", username: "SYSTEM", password: JSON.stringify(transportEntries) };
+                    const encryptedVault = await encrypt(vaultEntry, derivedKeys!);
+                    const labels = finalDecryptedEntries.map((e) => e.url.toLowerCase());
+                    await fetch(buildApiUrl(`/api/vault/${encodeURIComponent(userId)}`), {
+                        method: "PUT",
+                        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ encryptedVault, labels }),
+                    });
+                } catch (err) {
+                    console.warn("[VaultContext] Post-merge compatibility sync failed", err);
+                }
+            }
+        } else {
+            setDecryptedEntries(conflict.serverEntries);
+            localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(conflict.serverBlob));
+            
+            try {
+                const sessionPassword = sessionStorage.getItem("session_master_password");
+                if (sessionPassword) {
+                    const { decryptVault } = await import("@password-manager/crypto-engine");
+                    const decrypted = await decryptVault(sessionPassword, {
+                        ciphertext: conflict.serverBlob.ciphertext,
+                        iv: conflict.serverBlob.iv,
+                        salt: conflict.serverBlob.salt,
+                        tag: conflict.serverBlob.authTag || conflict.serverBlob.tag,
+                        algorithm: "AES-256-GCM" as const,
+                        derivationAlgorithm: "Argon2id" as const,
+                    });
+                    if (decrypted.success && decrypted.data) {
+                        const rawEntries = Array.isArray(decrypted.data) ? decrypted.data : [];
+                        restoreSharingKeys(rawEntries);
+                        setHasSharingKeysInVault(true);
+                    }
+                }
+            } catch (err) {
+                console.warn("[VaultContext] Post-resolve server keys restore failed", err);
+            }
+        }
+
+        setSyncConflict(null);
+        return true;
+    }, [syncConflict, session.userId, derivedKeys, getLocalBlobKey]);
 
     // Helper to encrypt and save
     const saveVault = async (entries: StorageVaultEntry[], keys: DerivedKey) => {
@@ -941,24 +1137,24 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     localStorage.setItem(getSyncTsKey(userId), String(nowTs));
                     setLastSyncedAt(nowTs);
                     await drainOfflineQueue();
-                } else {
-                    if (syncResponse.status === 409) {
-                        const payload = await syncResponse.json();
-                        const conflict = payload?.conflict;
-                        const sessionPassword = sessionStorage.getItem("session_master_password");
-                        if (conflict?.latestServerBlob?.ciphertext && sessionPassword) {
-                            const cryptoEngine = await import("@password-manager/crypto-engine");
-                            const serverDecrypt = await cryptoEngine.decryptVault(sessionPassword, {
-                                ciphertext: conflict.latestServerBlob.ciphertext,
-                                iv: conflict.latestServerBlob.iv,
-                                salt: conflict.latestServerBlob.salt,
-                                tag: conflict.latestServerBlob.authTag || conflict.latestServerBlob.tag,
-                                algorithm: "AES-256-GCM" as const,
-                                derivationAlgorithm: "Argon2id" as const,
-                            });
-                            const serverEntries = serverDecrypt.success && serverDecrypt.data
-                                ? parseDecryptedEntries(serverDecrypt.data)
-                                : [];
+                } else if (syncResponse.status === 409) {
+                    const payload = await syncResponse.json();
+                    const conflict = payload?.conflict;
+                    const sessionPassword = sessionStorage.getItem("session_master_password");
+                    if (conflict?.latestServerBlob?.ciphertext && sessionPassword && keys) {
+                        console.log("[VaultContext] Sync conflict detected, attempting automatic merge...");
+                        const cryptoEngine = await import("@password-manager/crypto-engine");
+                        const serverDecrypt = await cryptoEngine.decryptVault(sessionPassword, {
+                            ciphertext: conflict.latestServerBlob.ciphertext,
+                            iv: conflict.latestServerBlob.iv,
+                            salt: conflict.latestServerBlob.salt,
+                            tag: conflict.latestServerBlob.authTag || conflict.latestServerBlob.tag,
+                            algorithm: "AES-256-GCM" as const,
+                            derivationAlgorithm: "Argon2id" as const,
+                        });
+                        
+                        if (serverDecrypt.success && serverDecrypt.data) {
+                            const serverEntries = parseDecryptedEntries(serverDecrypt.data);
                             const localEntries = entries.map((entry) => ({
                                 id: String(entry.id),
                                 url: String(entry.siteUrl || entry.siteName || "Unknown"),
@@ -971,104 +1167,39 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                                 reminderSnoozeUntil: String(entry.reminderSnoozeUntil || ""),
                                 isPasswordVisible: false,
                             }));
-                            setSyncConflict({
+
+                            // Perform automatic merge
+                            const mergedEntries = mergeEntries(localEntries, serverEntries);
+                            
+                            const conflictData = {
                                 serverEntries,
                                 localEntries,
                                 serverBlob: conflict.latestServerBlob,
                                 localBlob: blobPayload,
                                 serverTimestamp: Number(conflict.latestServerTimestamp || 0),
-                            });
-                            throw new Error("SYNC_CONFLICT_DETECTED");
+                            };
+                            setSyncConflict(conflictData);
+
+                            const ok = await resolveSyncConflict("merge", conflictData);
+                            if (ok) {
+                                toast.success("Changes automatically merged with cloud");
+                                return; // Success!
+                            }
                         }
                     }
+                    console.warn(`[VaultContext] Automatic merge failed or status ${syncResponse.status}`);
+                    enqueueOfflineSync({ userId: syncUserId, deviceId, blob: blobPayload });
+                } else {
                     console.warn(`[VaultContext] Sync API push failed with status: ${syncResponse.status}`);
                     enqueueOfflineSync({ userId: syncUserId, deviceId, blob: blobPayload });
                 }
             } catch (syncErr) {
-                if (syncErr instanceof Error && syncErr.message === "SYNC_CONFLICT_DETECTED") {
-                    throw syncErr;
-                }
                 console.warn("[VaultContext] Sync API push failed:", syncErr);
                 enqueueOfflineSync({ userId: syncUserId, deviceId, blob: blobPayload });
             }
         }
     };
 
-    const resolveSyncConflict = React.useCallback(async (choice: "local" | "server"): Promise<boolean> => {
-        if (!syncConflict) return false;
-        const token = localStorage.getItem("auth_token");
-        const userId = (session.userId || localStorage.getItem("user_id") || "").trim();
-        const deviceId = localStorage.getItem("device_id") || "web-dashboard";
-        if (!token || !userId) return false;
-
-        const chosenBlob = choice === "local" ? syncConflict.localBlob : syncConflict.serverBlob;
-
-        const response = await fetch(buildApiUrl("/sync/blob/resolve"), {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                userId,
-                deviceId,
-                chosenBlob: {
-                    ciphertext: chosenBlob.ciphertext,
-                    iv: chosenBlob.iv,
-                    salt: chosenBlob.salt,
-                    authTag: chosenBlob.authTag || (chosenBlob as any).tag
-                },
-                expectedServerTimestamp: syncConflict.serverTimestamp,
-            }),
-        });
-
-        if (!response.ok) {
-            return false;
-        }
-
-        const payload = await response.json();
-        const resolvedTs = Number(payload?.resolvedTimestamp || Date.now());
-        localStorage.setItem(getSyncTsKey(userId), String(resolvedTs));
-        setLastSyncedAt(resolvedTs);
-
-        if (choice === "local") {
-            setDecryptedEntries(syncConflict.localEntries);
-            localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(syncConflict.localBlob));
-            // When choosing local, we MUST check if local has sharing keys
-            // The conflict state stores localEntries (filtered), so we check localBlob unparsed if needed
-            // but for simplicity, if we were the ones saving, we almost certainly have keys.
-            setHasSharingKeysInVault(true); 
-        } else {
-            setDecryptedEntries(syncConflict.serverEntries);
-            localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(syncConflict.serverBlob));
-            
-            // Critical Fix: SyncConflict serverEntries are filtered by parseDecryptedEntries.
-            // We need to check the raw content to see if sharing keys exist in the server version.
-            try {
-                const sessionPassword = sessionStorage.getItem("session_master_password");
-                if (sessionPassword) {
-                    const { decryptVault } = await import("@password-manager/crypto-engine");
-                    const decrypted = await decryptVault(sessionPassword, {
-                        ciphertext: syncConflict.serverBlob.ciphertext,
-                        iv: syncConflict.serverBlob.iv,
-                        salt: syncConflict.serverBlob.salt,
-                        tag: syncConflict.serverBlob.authTag || syncConflict.serverBlob.tag,
-                        algorithm: "AES-256-GCM" as const,
-                        derivationAlgorithm: "Argon2id" as const,
-                    });
-                    if (decrypted.success && decrypted.data) {
-                        const rawEntries = Array.isArray(decrypted.data) ? decrypted.data : [];
-                        const keysFound = restoreSharingKeys(rawEntries, userId);
-                        setHasSharingKeysInVault(keysFound);
-                    }
-                }
-            } catch (err) {
-                console.error("[VaultContext] Failed to restore keys from server conflict selection:", err);
-            }
-        }
-        setSyncConflict(null);
-        return true;
-    }, [syncConflict, session.userId, getLocalBlobKey, restoreSharingKeys]);
 
     // Auto-unlock effect
     useEffect(() => {

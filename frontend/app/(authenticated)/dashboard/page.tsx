@@ -223,12 +223,15 @@ export default function DashboardPage() {
 
   const formatLastSynced = (ts: number | null) => formatTimestampIST(ts);
 
-  const handleResolveConflict = async (choice: "local" | "server") => {
+  const handleResolveConflict = async (choice: "local" | "server" | "merge") => {
     setIsResolvingConflict(true);
     try {
       const ok = await resolveSyncConflict(choice);
       if (ok) {
-        toast.success(choice === "local" ? "Kept local changes and overwrote server copy" : "Kept server version");
+        let msg = "Kept server version";
+        if (choice === "local") msg = "Kept local changes and overwrote server copy";
+        if (choice === "merge") msg = "Smart merge completed: changes from both devices combined";
+        toast.success(msg);
       } else {
         toast.error("Unable to resolve conflict. Please refresh and try again.");
       }
@@ -686,64 +689,6 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {syncConflict && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <Card className="w-full max-w-6xl border-primary/30">
-            <CardHeader>
-              <CardTitle>Sync Conflict Detected</CardTitle>
-              <CardDescription>
-                Two devices changed vault data at nearly the same time. Choose which version to keep as the new master copy.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="rounded-lg border border-border p-3">
-                <h4 className="font-semibold mb-2">Your Local Version ({syncConflict.localEntries.length})</h4>
-                <div className="max-h-64 overflow-auto space-y-2 text-sm">
-                  {syncConflict.localEntries.length === 0 ? (
-                    <div className="p-3 bg-secondary/20 rounded border border-dashed border-border/50 text-muted-foreground italic">
-                      No user-facing credentials (system updates only)
-                    </div>
-                  ) : (
-                    syncConflict.localEntries.slice(0, 8).map((entry) => (
-                      <div key={`local-${entry.id}`} className="rounded border border-border/60 p-2">
-                        <div className="font-medium">{entry.url}</div>
-                        <div className="text-muted-foreground">{entry.username}</div>
-                        <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <h4 className="font-semibold mb-2">Server Version ({syncConflict.serverEntries.length})</h4>
-                <div className="max-h-64 overflow-auto space-y-2 text-sm">
-                  {syncConflict.serverEntries.length === 0 ? (
-                    <div className="p-3 bg-secondary/20 rounded border border-dashed border-border/50 text-muted-foreground italic">
-                      No user-facing credentials (system updates only)
-                    </div>
-                  ) : (
-                    syncConflict.serverEntries.slice(0, 8).map((entry) => (
-                      <div key={`server-${entry.id}`} className="rounded border border-border/60 p-2">
-                        <div className="font-medium">{entry.url}</div>
-                        <div className="text-muted-foreground">{entry.username}</div>
-                        <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="flex justify-end gap-3">
-              <Button variant="outline" disabled={isResolvingConflict} onClick={() => handleResolveConflict("server")}>
-                Keep Server Version
-              </Button>
-              <Button disabled={isResolvingConflict} onClick={() => handleResolveConflict("local")}>
-                Keep My Version
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
-      )}
 
       {sharingEntry && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
