@@ -33,7 +33,7 @@ export function PasswordWarningsModal({
         <DialogHeader>
           <DialogTitle className="text-xl font-bold font-heading">Password Warnings</DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Passwords older than 365 days should be updated. You can snooze each warning for 7 days.
+            Passwords older than 6 months should be updated. You can snooze each warning for 6 months.
           </DialogDescription>
         </DialogHeader>
 
@@ -70,7 +70,7 @@ export function PasswordWarningsModal({
                     className="h-8 text-xs font-medium"
                     onClick={() => snoozeEntry(entry.id)}
                   >
-                    Snooze 7 days
+                    Snooze 6 months
                   </Button>
                   <Button
                     size="sm"

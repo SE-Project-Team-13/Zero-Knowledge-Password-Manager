@@ -67,7 +67,6 @@ export function Sidebar({
   const navItems = [
     { icon: LayoutDashboard, label: "Home", id: "home", href: "/dashboard" },
     { icon: Key, label: "Password Manager", id: "password-manager", href: "/password-manager" },
-    { icon: Shield, label: "Security Audit", id: "security-audit", href: "#" },
   ];
 
   return (

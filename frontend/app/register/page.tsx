@@ -205,7 +205,7 @@ export default function RegisterPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     className="pl-10 pr-10 bg-secondary/50 border-input focus:border-primary transition-colors font-mono"
-                    placeholder="Enter your master password"
+                    placeholder="Create Master Password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isSubmitting}
@@ -233,7 +233,7 @@ export default function RegisterPage() {
                     id="confirm-password"
                     type={showPassword ? "text" : "password"}
                     className="pl-10 bg-secondary/50 border-input focus:border-primary transition-colors font-mono"
-                    placeholder="Confirm your master password"
+                    placeholder="Confirm Master Password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     disabled={isSubmitting}

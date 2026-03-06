@@ -50,13 +50,14 @@ export function createShareRouter(): Router {
 
   router.post("/send", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { recipientEmail, encryptedSessionKey, ciphertext, iv, signature, senderSigningPublicKey } = req.body as {
+      const { recipientEmail, encryptedSessionKey, ciphertext, iv, signature, senderSigningPublicKey, credentialLabel } = req.body as {
         recipientEmail?: string
         encryptedSessionKey?: string
         ciphertext?: string
         iv?: string
         signature?: string
         senderSigningPublicKey?: string
+        credentialLabel?: string
       }
       if (!recipientEmail || !encryptedSessionKey || !ciphertext || !iv || !signature || !senderSigningPublicKey) {
         return res.status(400).json({ error: "Invalid share payload" })
@@ -88,6 +89,7 @@ export function createShareRouter(): Router {
         iv,
         signature,
         senderSigningPublicKey,
+        credentialLabel: credentialLabel || undefined,
         status: "pending",
       })
       return res.status(201).json({ success: true, shareId: share._id.toString() })
@@ -123,6 +125,7 @@ export function createShareRouter(): Router {
             fullName: (share.senderUserId as any)?.fullName || "",
           },
           createdAt: share.createdAt,
+          credentialLabel: share.credentialLabel || null,
         })),
       })
     } catch (error) {
