@@ -30,6 +30,8 @@
     "react-native-screens": "~4.16.0",
     "react-native-webview": "^13.11.1",
     "react-native-webview-crypto": "^0.0.28",
+    "react-native-quick-crypto": "^0.7.12",
+    "react-native-argon2": "^2.0.1",
     "text-encoding": "^0.7.0",
     "uuid": "^9.0.0",
     "zustand": "^5.0.11"

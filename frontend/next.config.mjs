@@ -14,6 +14,14 @@ const nextConfig = {
     workerThreads: false,
     cpus: 1,
   },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "react-native-quick-crypto": false,
+      "react-native-argon2": false,
+    }
+    return config
+  },
 }
 
 export default nextConfig

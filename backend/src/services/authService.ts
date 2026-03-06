@@ -65,6 +65,7 @@ export async function registerUser(email: string, fullName: string, salt: string
     verifier: user.verifier,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
+    is2faEnabled: user.is2faEnabled,
   }
 }
 
@@ -95,9 +96,8 @@ export async function authenticateUser(
     return { success: false, error: "Authentication challenge expired or not found. Please request a new salt/challenge." }
   }
 
-  // Check TTL (ISO comparison)
-  const now = new Date().toISOString().replace("T", " ").substring(0, 19)
-  if (storedChallenge.expiresAt < now) {
+  // Check TTL (Date comparison)
+  if (storedChallenge.expiresAt < new Date()) {
     await LoginChallenge.deleteOne({ _id: storedChallenge._id })
     return { success: false, error: "Authentication challenge expired. Please try again." }
   }
@@ -131,11 +131,12 @@ export async function authenticateUser(
       salt: user.salt,
       verifier: user.verifier,
       createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      isBreached: user.isBreached,
-      lastBreachCheck: user.lastBreachCheck,
-    },
-  }
+       updatedAt: user.updatedAt,
+       isBreached: user.isBreached,
+       lastBreachCheck: user.lastBreachCheck,
+       is2faEnabled: user.is2faEnabled,
+     },
+   }
 }
 
 /**
@@ -145,12 +146,12 @@ export async function authenticateUser(
  * @param ttlMinutes - Challenge validity duration (e.g., 5 mins).
  * @returns Hex-encoded challenge.
  */
-export async function generateLoginChallenge(
+ export async function generateLoginChallenge(
   email: string,
   ttlMinutes: number = 5
 ): Promise<string> {
   const challenge = crypto.randomBytes(16).toString("hex")
-  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000)
 
   await LoginChallenge.findOneAndUpdate(
     { email: email.trim().toLowerCase() },
@@ -168,13 +169,13 @@ export async function generateLoginChallenge(
  * @param isOtpVerified - Initial OTP verification status (default: false).
  * @returns The generated session token.
  */
-export async function generateSessionToken(
+ export async function generateSessionToken(
   userId: string,
   expirationMinutes: number = 24 * 60,
   isOtpVerified: boolean = false,
 ): Promise<string> {
   const token = crypto.randomBytes(32).toString("hex")
-  const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
+  const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000)
 
   const session = new Session({
     userId,
@@ -192,13 +193,11 @@ export async function generateSessionToken(
  * @param token - The session token to check.
  * @returns Validation status and userId if valid.
  */
-export async function validateSessionToken(
+ export async function validateSessionToken(
   token: string,
-): Promise<{ valid: boolean; userId?: string; error?: string; isOtpVerified?: boolean }> {
-  // ISO string comparison works lexicographically
-  const now = new Date().toISOString().replace("T", " ").substring(0, 19)
+): Promise<{ valid: boolean; userId?: string; error?: string; isOtpVerified?: boolean; is2faEnabled?: boolean }> {
   const hashedToken = hashToken(token)
-  const session = await Session.findOne({ token: hashedToken, expiresAt: { $gt: now } })
+  const session = await Session.findOne({ token: hashedToken, expiresAt: { $gt: new Date() } }).populate("userId")
 
   if (!session) {
     if (!isProduction || isDebug) {
@@ -210,7 +209,14 @@ export async function validateSessionToken(
   if (!isProduction || isDebug) {
     console.log("[VaultSync:Auth] Session validated successfully. isOtpVerified:", session.isOtpVerified)
   }
-  return { valid: true, userId: session.userId.toString(), isOtpVerified: session.isOtpVerified }
+  
+  const user = session.userId as any;
+  return { 
+    valid: true, 
+    userId: session.userId._id.toString(), 
+    isOtpVerified: session.isOtpVerified,
+    is2faEnabled: user?.is2faEnabled || false
+  }
 }
 
 /**
@@ -275,7 +281,7 @@ export async function updateUserCredentials(
   userId: string,
   salt: string,
   verifier: string,
-  encryptedVault?: {
+   encryptedVault?: {
     ciphertext: string
     iv: string
     salt: string
@@ -284,7 +290,8 @@ export async function updateUserCredentials(
     deviceId: string
   },
   argon2Memory?: number,
-  argon2Iterations?: number
+  argon2Iterations?: number,
+  confirmVaultDeletion?: boolean
 ): Promise<void> {
   // Update User credentials
   const updateData: any = { salt, verifier }
@@ -309,9 +316,9 @@ export async function updateUserCredentials(
         salt: encryptedVault.salt,
         authTag: encryptedVault.authTag,
         version: encryptedVault.version,
-        timestamp: Date.now(),
+         timestamp: Date.now(),
         nonce: crypto.randomBytes(12).toString("hex"), // New nonce
-        updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
+        updatedAt: new Date()
       },
       { upsert: true }
     )
@@ -329,18 +336,24 @@ export async function updateUserCredentials(
             ciphertext: encryptedVault.ciphertext,
             iv: encryptedVault.iv,
             salt: encryptedVault.salt,
-            tag: encryptedVault.authTag, // Compatibility layer uses 'tag'
+             tag: encryptedVault.authTag, // Compatibility layer uses 'tag'
             version: encryptedVault.version
           },
-          updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
+          updatedAt: new Date()
         },
         { upsert: true }
       );
     }
-  } else {
+   } else {
     // RECOVERY FLOW WITHOUT OLD PASSWORD:
     // If no new vault is provided, it means we couldn't re-encrypt.
     // We must clear the old vault data so the user doesn't get decryption errors.
+    
+    if (!confirmVaultDeletion) {
+      console.warn(`[AuthService] updateUserCredentials: Vault deletion aborted for user ${userId} because confirmVaultDeletion was false/missing.`);
+      return;
+    }
+
     console.log(`[AuthService] Clearing unreadable vault data for user ${userId} after password reset.`);
     
     // Clear Sync Vaults

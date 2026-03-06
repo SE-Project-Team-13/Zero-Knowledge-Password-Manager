@@ -5,7 +5,7 @@
 
 import { Router, type Request, type Response } from "express"
 import * as crypto from "crypto"
-import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount, generateLoginChallenge, invalidateSessionToken } from "../services/authService.js"
+import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount, generateLoginChallenge, invalidateSessionToken, markSessionOtpVerified } from "../services/authService.js"
 import { User } from "../database/models.js"
 import type { RegisterRequest, LoginRequest, LoginResponse, ErrorResponse } from "../types/index.js"
 import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
@@ -110,7 +110,7 @@ export function createAuthRouter(): Router {
       }
 
       const user = authResult.user!
-      const sessionToken = await generateSessionToken(user.id)
+      const sessionToken = await generateSessionToken(user.id, 24 * 60, !user.is2faEnabled)
       const serverProof = crypto
         .createHash("sha256")
         .update(user.verifier + challenge)
@@ -124,6 +124,7 @@ export function createAuthRouter(): Router {
         serverProof,
         isBreached: user.isBreached,
         lastBreachCheck: user.lastBreachCheck,
+        is2faEnabled: user.is2faEnabled,
       }
 
       return res.status(200).json(response)
@@ -134,6 +135,31 @@ export function createAuthRouter(): Router {
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred during login",
       } as ErrorResponse)
+    }
+  })
+
+  /**
+   * GET /auth/me
+   * Get the current authenticated user's profile.
+   */
+  router.get("/me", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const user = await User.findById(req.userId)
+      if (!user) {
+        return res.status(404).json({ error: "User not found" })
+      }
+
+      return res.status(200).json({
+        userId: user._id.toString(),
+        email: user.email,
+        fullName: user.fullName,
+        isBreached: user.isBreached,
+        lastBreachCheck: user.lastBreachCheck,
+        is2faEnabled: user.is2faEnabled,
+      })
+    } catch (error) {
+      console.error("[Auth] Me error:", error)
+      return res.status(500).json({ error: "Internal server error" })
     }
   })
 
@@ -219,7 +245,7 @@ export function createAuthRouter(): Router {
         return res.status(401).json(errorResponse)
       }
 
-      const { salt, verifier, argon2Memory, argon2Iterations, encryptedVault } = req.body
+      const { salt, verifier, argon2Memory, argon2Iterations, encryptedVault, confirmVaultDeletion } = req.body
 
       if (!salt || !verifier) {
         const errorResponse: ErrorResponse = {
@@ -230,7 +256,7 @@ export function createAuthRouter(): Router {
         return res.status(400).json(errorResponse)
       }
 
-      await updateUserCredentials(sessionValidation.userId, salt, verifier, encryptedVault, argon2Memory, argon2Iterations)
+      await updateUserCredentials(sessionValidation.userId, salt, verifier, encryptedVault, argon2Memory, argon2Iterations, confirmVaultDeletion)
 
       return res.status(200).json({
         success: true,
@@ -310,6 +336,39 @@ export function createAuthRouter(): Router {
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred during logout",
       } as ErrorResponse)
+    }
+  })
+
+  /**
+   * POST /auth/2fa/toggle
+   * Toggles 2FA for the authenticated user.
+   */
+  router.post("/2fa/toggle", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.userId
+      if (!userId) return res.status(401).json({ error: "Unauthorized" })
+
+      const { enabled } = req.body
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ error: "Missing 'enabled' boolean in request body" })
+      }
+
+      await User.findByIdAndUpdate(userId, { is2faEnabled: enabled })
+      console.log(`[AuthService] 2FA toggled to ${enabled} for user ${userId}`)
+
+      // If they just enabled 2FA, their current session should be implicitly 
+      // verified so they aren't instantly locked out of the dashboard.
+      if (enabled) {
+        const token = extractBearerToken(req.headers.authorization)
+        if (token) {
+           await markSessionOtpVerified(token)
+        }
+      }
+
+      return res.status(200).json({ success: true, is2faEnabled: enabled })
+    } catch (error) {
+      console.error("2FA toggle error:", error)
+      return res.status(500).json({ error: "Internal server error" })
     }
   })
 

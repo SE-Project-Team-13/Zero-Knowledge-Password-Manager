@@ -54,7 +54,7 @@ export async function storeRecoveryKeyHash(
         userId: new mongoose.Types.ObjectId(userId),
         keyHash,
         encryptedVaultKey,
-        createdAt: new Date().toISOString().replace("T", " ").substring(0, 19),
+        createdAt: new Date(),
         isRevoked: false,
     })
 
@@ -91,7 +91,7 @@ export async function verifyRecoveryKey(
         }
 
         // Mark the recovery key as used
-        storedKey.usedAt = new Date().toISOString().replace("T", " ").substring(0, 19)
+        storedKey.usedAt = new Date()
         await storedKey.save()
 
         return { 

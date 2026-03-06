@@ -11,10 +11,11 @@ import { useRouter } from "next/navigation";
 import { buildApiUrl } from "@/lib/api-base-url";
 
 export default function SettingsPage() {
-    const [session] = useVaultSync();
-    const router = useRouter(); // Keeping router for manual redirects if needed, though Layout handles initial auth
+    const [session, { logout, refreshProfile }] = useVaultSync();
+    const router = useRouter(); 
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [is2faToggling, setIs2faToggling] = useState(false);
 
     // Handle Delete Account
     const handleDeleteAccount = async () => {
@@ -59,6 +60,46 @@ export default function SettingsPage() {
         }
     };
 
+    // Handle 2FA Toggle
+    const handleToggle2FA = async () => {
+        setIs2faToggling(true);
+        const newState = !session.is2faEnabled;
+        
+        try {
+            const token = localStorage.getItem("auth_token");
+            const response = await fetch(buildApiUrl("/auth/2fa/toggle"), {
+                method: "POST",
+                headers: { 
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ enabled: newState })
+            });
+
+            if (response.ok) {
+                toast.success(`2FA has been ${newState ? "enabled" : "disabled"}.`);
+                
+                // If enabling 2FA, mark the current session as verified in the UI 
+                // so the layout doesn't instantly hide the sidebar when the profile refreshes.
+                if (newState) {
+                    sessionStorage.setItem("otp_verified", "true");
+                    window.dispatchEvent(new Event("otpVerified"));
+                }
+                
+                // Smoothly refresh the profile instead of a full reload
+                await refreshProfile();
+            } else {
+                const data = await response.json();
+                toast.error(data.error || "Failed to toggle 2FA");
+            }
+        } catch (error) {
+            console.error("2FA toggle error:", error);
+            toast.error("An unexpected error occurred.");
+        } finally {
+            setIs2faToggling(false);
+        }
+    };
+
     return (
         <div className="max-w-4xl mx-auto space-y-8 pt-24 sm:pt-20 p-4">
             <header>
@@ -88,6 +129,26 @@ export default function SettingsPage() {
                         </div>
                         <Button onClick={() => setIsChangePasswordOpen(true)} variant="outline">
                             Change Password
+                        </Button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                        <div className="space-y-1">
+                            <h3 className="font-medium">Two-Factor Authentication (2FA)</h3>
+                            <p className="text-sm text-muted-foreground">
+                                Add an extra layer of security to your account with email OTP.
+                                <br />
+                                <span className={session.is2faEnabled ? "text-green-500 font-bold" : "text-yellow-500 font-bold"}>
+                                    Status: {session.is2faEnabled ? "Enabled" : "Disabled"}
+                                </span>
+                            </p>
+                        </div>
+                        <Button 
+                            onClick={handleToggle2FA} 
+                            variant={session.is2faEnabled ? "destructive" : "default"}
+                            disabled={is2faToggling}
+                        >
+                            {is2faToggling ? "Processing..." : session.is2faEnabled ? "Disable 2FA" : "Enable 2FA"}
                         </Button>
                     </div>
                 </CardContent>

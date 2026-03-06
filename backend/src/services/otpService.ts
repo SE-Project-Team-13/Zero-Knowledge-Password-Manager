@@ -64,10 +64,7 @@ export async function sendOTP(
     await otpModel.deleteMany({ email: normalizedEmail });
 
     const code = generateOTPCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
-      .toISOString()
-      .replace("T", " ")
-      .substring(0, 19);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await otpModel.create({
       email: normalizedEmail,
@@ -173,12 +170,11 @@ export async function verifyOTP(
       };
     }
 
-    const now = new Date().toISOString().replace("T", " ").substring(0, 19);
     const otp = await otpModel.findOne({
       email: normalizedEmail,
       code,
       verified: false,
-      expiresAt: { $gt: now },
+      expiresAt: { $gt: new Date() },
     });
 
     if (!otp) {
@@ -211,8 +207,7 @@ export async function verifyOTP(
  */
 export async function cleanupExpiredOTPs(otpModel = OTP): Promise<void> {
   try {
-    const now = new Date().toISOString().replace("T", " ").substring(0, 19);
-    const result = await otpModel.deleteMany({ expiresAt: { $lt: now } });
+    const result = await otpModel.deleteMany({ expiresAt: { $lt: new Date() } });
     if (result.deletedCount > 0) {
       console.log(
         `[VaultSync:OTP] Cleaned up ${result.deletedCount} expired OTPs`,

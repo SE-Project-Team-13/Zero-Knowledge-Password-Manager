@@ -12,6 +12,15 @@ import { deriveKey } from "./argon2"
 import { encrypt, decrypt } from "./aes"
 import type { VaultEntry, EncryptedVault, Argon2idOptions, DecryptResult } from "./types"
 
+// Detection for React Native Quick Crypto
+let quickCrypto: any = null;
+if (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') {
+  try {
+    // @ts-ignore
+    quickCrypto = require('react-native-quick-crypto').default;
+  } catch (e) {}
+}
+
 /**
  * Complete encryption workflow: password → key → encrypted vault entry
  *
@@ -30,7 +39,12 @@ export async function encryptVault(
   entry: VaultEntry,
   options?: Argon2idOptions,
 ): Promise<EncryptedVault> {
-  const derivedKey = await deriveKey(masterPassword, undefined, options)
+  // Generate salt if not provided (though deriveKey also does it, we align here)
+  const salt = quickCrypto 
+    ? new Uint8Array(quickCrypto.randomBytes(16))
+    : crypto.getRandomValues(new Uint8Array(16));
+    
+  const derivedKey = await deriveKey(masterPassword, salt, options)
   const encrypted = await encrypt(entry, derivedKey)
 
   // Key is now out of scope and cannot be accessed

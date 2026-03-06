@@ -32,7 +32,7 @@ function fromBase64(base64: string): ArrayBuffer {
   return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength)
 }
 
-export async function ensureShareKeyPair(userId?: string): Promise<ShareKeyPair> {
+export async function ensureShareKeyPair(userId?: string, allowGenerate = true): Promise<ShareKeyPair | null> {
   const pkKey = getPrivateKeyKey(userId)
   const pubKey = getPublicKeyKey(userId)
   const sPkKey = getSignPrivateKeyKey(userId)
@@ -77,6 +77,11 @@ export async function ensureShareKeyPair(userId?: string): Promise<ShareKeyPair>
       signingPublicKey: existingSignPublic,
       signingPrivateKey: existingSignPrivate,
     }
+  }
+  
+  if (!allowGenerate) {
+    console.log(`[shareCrypto] Keys missing for ${userId || "legacy"}, but allowGenerate is false. Returning null.`)
+    return null;
   }
 
   console.log(`[shareCrypto] Generating new sharing keys for user: ${userId || "legacy"}`)
@@ -170,6 +175,8 @@ export async function createShareEnvelope(
   userId?: string,
 ): Promise<ShareEnvelope> {
   const keys = await ensureShareKeyPair(userId)
+  if (!keys) throw new Error("Sharing keys not available");
+
   const recipientPublicKey = await importPublicKey(recipientPublicKeyBase64)
   const aesKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"])
   const iv = crypto.getRandomValues(new Uint8Array(12))
@@ -202,16 +209,18 @@ export async function createShareEnvelope(
   }
 }
 
-export async function decryptShareEnvelope(envelope: ShareEnvelope, userId?: string): Promise<any> {
+export async function decryptShareEnvelope(envelope: ShareEnvelope, userId?: string, expectedRecipient?: string): Promise<any> {
   const pkKey = getPrivateKeyKey(userId)
   const privateKeyBase64 = localStorage.getItem(pkKey)
   if (!privateKeyBase64) {
-    console.error(`[shareCrypto] Decryption failed: No private key in localStorage (${pkKey})`)
+    console.error(`[shareCrypto] Decryption failed: No private key in localStorage (${pkKey}) for user ${userId || 'legacy'}`)
     throw new Error("No private key found for share decryption")
   }
-  console.log("[shareCrypto] Found private key (starts with):", privateKeyBase64.substring(0, 20) + "...")
-  console.log("[shareCrypto] Encrypted session key length (base64):", envelope.encryptedSessionKey.length)
   
+  console.log(`[shareCrypto] Decrypting for recipient: ${expectedRecipient || 'unknown'} using LOCAL userId: ${userId || 'legacy'}`)
+  console.log(`[shareCrypto] Found private key (starts with): ${privateKeyBase64.substring(0, 20)}...`)
+  console.log(`[shareCrypto] Encrypted session key length (base64): ${envelope.encryptedSessionKey.length}`)
+
   const privateKey = await importPrivateKey(privateKeyBase64)
   const rawSessionKey = await crypto.subtle.decrypt(
     { name: "RSA-OAEP" },

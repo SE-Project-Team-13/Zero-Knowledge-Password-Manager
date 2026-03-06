@@ -158,7 +158,7 @@ export default function DashboardPage() {
     }
 
     // 4. User is authenticated. Check OTP status.
-    const isVerified = sessionStorage.getItem("otp_verified") === "true"
+    const isVerified = !session.is2faEnabled || sessionStorage.getItem("otp_verified") === "true"
     if (isVerified) {
       // Check if we have master password in session
       const sessionPassword = sessionStorage.getItem("session_master_password")
@@ -172,7 +172,7 @@ export default function DashboardPage() {
       // Not verified - redirect to OTP
       router.push("/otp")
     }
-  }, [session.isAuthenticated, session.email, isVaultUnlocked, masterPassword, unlockVault, router]);
+  }, [session.isAuthenticated, session.email, session.is2faEnabled, isVaultUnlocked, masterPassword, unlockVault, router]);
 
   // Removed ensureSharingKeysAndSync loop - now handled in VaultContext effect
 

@@ -121,6 +121,9 @@ export default function OTPPage() {
         window.dispatchEvent(new Event("otpVerified"));
         toast.success("OTP verified successfully!");
         
+        // Force a profile refresh to guarantee state sync (e.g. is2faEnabled)
+        await actions.refreshProfile();
+
         // Try to unlock automatically if password is in session
         const sessionPassword = sessionStorage.getItem("session_master_password");
         if (sessionPassword) {

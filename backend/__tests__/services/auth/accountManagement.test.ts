@@ -27,11 +27,11 @@ describe('AuthService - Account Management Tests', () => {
 
         // Setup: Create all related data to ensure cascade delete works
         await User.create({ _id: userId, email, fullName: 'Del', salt: 's', verifier: 'v' });
-        await Session.create({ userId, token: 't', expiresAt: new Date().toISOString() });
+        await Session.create({ userId, token: 't', expiresAt: new Date(Date.now() + 1000 * 60 * 60) });
         await RecoveryKey.create({ userId, keyHash: 'k', encryptedVaultKey: 'e' });
         // OTP and LoginChallenge use email
-        await OTP.create({ email, code: '123456', expiresAt: 'future' });
-        await LoginChallenge.create({ email, challenge: 'c', expiresAt: 'future' });
+        await OTP.create({ email, code: '123456', expiresAt: new Date(Date.now() + 1000 * 60 * 10) });
+        await LoginChallenge.create({ email, challenge: 'c', expiresAt: new Date(Date.now() + 1000 * 60 * 10) });
 
         await deleteUserAccount(userId.toString());
 

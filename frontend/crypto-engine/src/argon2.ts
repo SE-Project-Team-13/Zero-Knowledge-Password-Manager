@@ -12,6 +12,17 @@
 import { argon2id } from "@noble/hashes/argon2.js";
 import type { Argon2idOptions, DerivedKey } from "./types";
 
+// Dynamic import for React Native (handled by bundler)
+let rnArgon2: any = null;
+if (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') {
+  try {
+    // @ts-ignore
+    rnArgon2 = require('react-native-argon2').default;
+  } catch (e) {
+    console.warn('[CryptoEngine] React Native Argon2 lookup failed', e);
+  }
+}
+
 /**
  * Default Argon2id parameters optimized for password hashing in browsers.
  * These provide strong security without being prohibitively slow.
@@ -61,12 +72,27 @@ export async function deriveKey(
     passwordBytes = masterPassword;
   }
 
-  // Derive key material using Argon2id
-  const derivedKeyMaterial = argon2id(passwordBytes, salt, {
-    t: mergedOptions.iterations,
-    m: mergedOptions.memorySize,
-    p: mergedOptions.parallelism,
-  });
+  // Derive key material
+  let derivedKeyMaterial: Uint8Array;
+
+  if (rnArgon2) {
+    // Native implementation
+    const result = await rnArgon2(passwordBytes instanceof Uint8Array ? Buffer.from(passwordBytes).toString('utf8') : passwordBytes, Buffer.from(salt).toString('hex'), {
+      iterations: mergedOptions.iterations,
+      memory: mergedOptions.memorySize,
+      parallelism: mergedOptions.parallelism,
+      hashLength: mergedOptions.hashLength,
+      mode: 'argon2id'
+    });
+    derivedKeyMaterial = new Uint8Array(Buffer.from(result.rawHash, 'hex'));
+  } else {
+    // JS implementation
+    derivedKeyMaterial = argon2id(passwordBytes, salt, {
+      t: mergedOptions.iterations,
+      m: mergedOptions.memorySize,
+      p: mergedOptions.parallelism,
+    });
+  }
 
   // Split the key material
   const encryptionKey = new Uint8Array(derivedKeyMaterial.slice(0, mergedOptions.hashLength));

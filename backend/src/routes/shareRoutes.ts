@@ -142,8 +142,8 @@ export function createShareRouter(): Router {
         { _id: shareId, recipientUserId, status: "pending" },
         {
           status: "accepted",
-          acceptedAt: new Date().toISOString().replace("T", " ").substring(0, 19),
-          updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19),
+          acceptedAt: new Date(),
+          updatedAt: new Date(),
         },
         { new: true },
       )
@@ -165,7 +165,7 @@ export function createShareRouter(): Router {
         { _id: shareId, recipientUserId, status: "pending" },
         {
           status: "rejected",
-          updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19),
+          updatedAt: new Date(),
         },
         { new: true },
       )

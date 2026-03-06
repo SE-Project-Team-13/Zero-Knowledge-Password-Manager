@@ -71,10 +71,15 @@ export default function LoginPage() {
 
     setIsSubmitting(true)
     try {
-      await actions.login(email, password)
+      const result = await actions.login(email, password)
       sessionStorage.setItem("session_master_password", password)
       toast.success("Login successful!")
-      router.push("/otp")
+      
+      if (result.is2faEnabled) {
+        router.push("/otp")
+      } else {
+        router.push("/dashboard")
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Wrong password"
       toast.error(message)

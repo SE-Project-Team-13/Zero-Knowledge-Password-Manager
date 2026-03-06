@@ -50,7 +50,7 @@ describe('AuthService Integration Tests', () => {
         await LoginChallenge.create({
             email,
             challenge: clientChallenge,
-            expiresAt: new Date(Date.now() + 10000).toISOString()
+            expiresAt: new Date(Date.now() + 10000)
         });
 
         // Generate valid proof: hash(verifier + challenge)
@@ -92,7 +92,7 @@ describe('AuthService Integration Tests', () => {
         await LoginChallenge.create({
             email,
             challenge: clientChallenge,
-            expiresAt: new Date(Date.now() + 10000).toISOString()
+            expiresAt: new Date(Date.now() + 10000)
         });
 
         const result = await authService.authenticateUser(email, clientChallenge, invalidProof);

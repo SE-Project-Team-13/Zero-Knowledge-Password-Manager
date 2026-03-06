@@ -1,5 +1,5 @@
-
 import { generateEmergencyKitPDF } from "./pdfService"
+import { getApiBaseUrl } from "./api-base-url"
 
 /**
  * Generates a recovery key, encrypts the master password with it, 
@@ -9,7 +9,7 @@ export async function generateAndDownloadRecoveryKey(
     email: string, 
     masterPassword: string, 
     token: string, 
-    apiBaseUrl: string = process.env.NEXT_PUBLIC_API_URL || "https://zero-knowledge-password-manager.onrender.com"
+    apiBaseUrl: string = getApiBaseUrl()
 ): Promise<string> {
     // 1. Get a random key from the server
     const response = await fetch(`${apiBaseUrl}/recovery/generate`, {

@@ -1,5 +1,4 @@
-import { jest, describe, it, expect, beforeEach, beforeAll } from '@jest/globals';
-import { Session } from '../../../src/database/models.js';
+import { Session, User } from '../../../src/database/models.js';
 import * as authService from '../../../src/services/authService.js';
 import mongoose from 'mongoose';
 
@@ -12,6 +11,9 @@ describe('AuthService - Session Management Integration Tests', () => {
         const expirationMinutes = 60;
 
         console.log(`Test Case 1: Generating session for User ${userId}`);
+        
+        // Ensure user exists for population
+        await User.create({ _id: userId, email: 'session-test@example.com', fullName: 'Session Test', salt: 's', verifier: 'v' });
 
         const token = await authService.generateSessionToken(userId, expirationMinutes);
 
@@ -32,6 +34,8 @@ describe('AuthService - Session Management Integration Tests', () => {
 
     it('validateSessionToken: should validate a correct token', async () => {
         const userId = new mongoose.Types.ObjectId().toString();
+        // Ensure user exists for population in validateSessionToken
+        await User.create({ _id: userId, email: 'validate-test@example.com', fullName: 'Validate Test', salt: 's', verifier: 'v' });
         // We first generate a real session to get a valid token and hash in DB
         const token = await authService.generateSessionToken(userId);
 
@@ -57,6 +61,8 @@ describe('AuthService - Session Management Integration Tests', () => {
 
     it('invalidateSessionToken: should delete the session', async () => {
         const userId = new mongoose.Types.ObjectId().toString();
+        // Ensure user exists
+        await User.create({ _id: userId, email: 'invalidate-test@example.com', fullName: 'Invalidate Test', salt: 's', verifier: 'v' });
         const token = await authService.generateSessionToken(userId);
 
         console.log(`Test Case 3: Invalidating token ${token}`);

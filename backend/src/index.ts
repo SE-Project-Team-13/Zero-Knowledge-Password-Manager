@@ -97,18 +97,24 @@ async function start() {
         const url = new URL(origin)
         const host = url.hostname
         if (url.protocol !== "http:" && url.protocol !== "https:") return false
-        return host === "localhost" || host === "127.0.0.1"
+        
+        // Localhost and 127.0.0.1
+        if (host === "localhost" || host === "127.0.0.1") return true
+        
+        // Private network IP ranges
+        return host.startsWith("10.") || 
+               host.startsWith("192.168.") || 
+               (host.startsWith("172.") && Number(host.split(".")[1]) >= 16 && Number(host.split(".")[1]) <= 31)
       } catch {
         return false
       }
     }
 
-    const isRenderOrigin = (origin: string): boolean => /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin)
 
 
     app.use((req, res, next) => {
       const origin = req.headers.origin
-      if (origin && (ALLOWED_ORIGINS.includes(origin) || isAllowedDevOrigin(origin) || isRenderOrigin(origin))) {
+      if (origin && (ALLOWED_ORIGINS.includes(origin) || isAllowedDevOrigin(origin))) {
         res.header("Access-Control-Allow-Origin", origin)
         res.header("Vary", "Origin")
       } else if (!origin && !isProduction) {
@@ -228,7 +234,7 @@ async function start() {
           {
             data: vaultData,
             labels: labels || [],
-            updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
+            updatedAt: new Date()
           },
           { upsert: true, new: true }
         )
@@ -265,7 +271,7 @@ async function start() {
     })
 
     app.get("/health", (req, res) => {
-      res.json({ status: "ok", db: "mongodb", timestamp: new Date().toISOString() })
+      res.json({ status: "ok", db: "mongodb", timestamp: new Date() })
     })
 
     app.use((req, res) => {
