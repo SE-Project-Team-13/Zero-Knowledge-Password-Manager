@@ -101,7 +101,9 @@ export default function ChangePasswordScreen({ navigation }: any) {
         try {
             const newSaltBuffer = crypto.getRandomValues(new Uint8Array(16));
             const newSaltHex = toHex(newSaltBuffer);
-            const newDerivedKey = await deriveKey(newPassword, newSaltBuffer);
+            // Explicitly use 128 KB memory and 1 iteration to match mobile registration
+            const argon2Params = { memorySize: 128, iterations: 1 };
+            const newDerivedKey = await deriveKey(newPassword, newSaltBuffer, argon2Params);
             const verifier = await generateVerifier(newDerivedKey.authKey);
 
             const serializedVault: VaultEntry = {
@@ -124,6 +126,8 @@ export default function ChangePasswordScreen({ navigation }: any) {
                 {
                     salt: newSaltHex,
                     verifier,
+                    argon2Memory: argon2Params.memorySize,
+                    argon2Iterations: argon2Params.iterations,
                     encryptedVault: {
                         ciphertext: encryptedVault.ciphertext,
                         iv: encryptedVault.iv,

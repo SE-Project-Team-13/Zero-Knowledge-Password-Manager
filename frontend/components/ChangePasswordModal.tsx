@@ -159,7 +159,9 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
             // 4. Generate new security parameters
             const saltBuffer = crypto.getRandomValues(new Uint8Array(16))
             const salt = Array.from(saltBuffer).map((b) => b.toString(16).padStart(2, "0")).join("")
-            const { authKey } = await deriveKey(newPassword, saltBuffer)
+            // Explicitly use 128 KB memory and 1 iteration to match mobile registration and fix 401 login errors
+            const argon2Params = { memorySize: 128, iterations: 1 }
+            const { authKey } = await deriveKey(newPassword, saltBuffer, argon2Params)
             
             const verifier = await generateVerifier(authKey)
 
@@ -175,6 +177,8 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
                     body: JSON.stringify({
                         salt,
                         verifier,
+                        argon2Memory: argon2Params.memorySize,
+                        argon2Iterations: argon2Params.iterations,
                         encryptedVault: newVaultBlob
                     })
                 }

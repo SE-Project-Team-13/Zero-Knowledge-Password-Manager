@@ -43,7 +43,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function SettingsScreen() {
-    const { logout, userId, fullName, email } = useAuthStore() as any;
+    const { logout, userId, fullName, email } = useAuthStore();
     const { entries, clearVault } = useVaultStore();
     const navigation = useNavigation<any>();
 
@@ -119,16 +119,9 @@ export default function SettingsScreen() {
                             <View style={styles.avatarRing}>
                                 <Ionicons name="person" size={40} color={Colors.primary} />
                             </View>
-                            <TouchableOpacity style={styles.editAvatarBtn}>
-                                <Ionicons name="camera" size={16} color={Colors.background} />
-                            </TouchableOpacity>
                         </View>
-                        <Text style={styles.headerTitle}>{fullName || 'Zenith User'}</Text>
+                        <Text style={styles.headerTitle}>{fullName}</Text>
                         <Text style={styles.headerSub}>{email || 'No email provided'}</Text>
-                        
-                        <View style={styles.userIdBadge}>
-                            <Text style={styles.userIdText}>ID: {userId?.slice(0, 8).toUpperCase()}...</Text>
-                        </View>
                     </View>
 
                     <Section title="Security & Privacy">
@@ -144,12 +137,6 @@ export default function SettingsScreen() {
                             subtitle="Generate a recovery key"
                             onPress={() => navigation.navigate('EmergencyKit')}
                         />
-                        <SettingRow
-                            icon="finger-print-outline"
-                            title="Biometric Login"
-                            subtitle="Enable FaceID or Fingerprint"
-                            onPress={() => Alert.alert('Coming Soon', 'Biometric authentication is being refined.')}
-                        />
                     </Section>
 
                     <Section title="Data & Sync">
@@ -157,12 +144,6 @@ export default function SettingsScreen() {
                             icon="sync-outline"
                             title="Vault Status"
                             subtitle={`${entries.length} items synced to cloud`}
-                        />
-                        <SettingRow
-                            icon="cloud-download-outline"
-                            title="Export Vault"
-                            subtitle="Download encrypted backup"
-                            onPress={() => Alert.alert('Coming Soon', 'Secure export is in development.')}
                         />
                     </Section>
 
@@ -183,15 +164,6 @@ export default function SettingsScreen() {
                         />
                     </Section>
 
-                    <View style={styles.footer}>
-                        <View style={styles.badges}>
-                            <View style={styles.footerIcon}>
-                                <Ionicons name="shield" size={16} color={Colors.primary} />
-                            </View>
-                            <Text style={styles.footerText}>Zenith Vault v1.2.0</Text>
-                        </View>
-                        <Text style={styles.copyright}>Zero-Knowledge Architecture</Text>
-                    </View>
                 </ScrollView>
             </LinearGradient>
         </View>

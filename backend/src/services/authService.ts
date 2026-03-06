@@ -282,10 +282,16 @@ export async function updateUserCredentials(
     authTag: string
     version: number
     deviceId: string
-  }
+  },
+  argon2Memory?: number,
+  argon2Iterations?: number
 ): Promise<void> {
   // Update User credentials
-  await User.findByIdAndUpdate(userId, { salt, verifier })
+  const updateData: any = { salt, verifier }
+  if (argon2Memory !== undefined) updateData.argon2Memory = argon2Memory
+  if (argon2Iterations !== undefined) updateData.argon2Iterations = argon2Iterations
+
+  await User.findByIdAndUpdate(userId, updateData)
 
   // Revoke all existing recovery keys (they point to the old password)
   await revokeAllRecoveryKeys(userId)

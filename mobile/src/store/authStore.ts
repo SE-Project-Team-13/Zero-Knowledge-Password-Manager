@@ -31,6 +31,7 @@ interface AuthState {
   userId: string | null;
   masterKey: DerivedKey | null;
   email: string | null;
+  fullName: string | null;
   isLoading: boolean;
   error: string | null;
 
@@ -53,6 +54,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   userId: null,
   masterKey: null,
   email: null,
+  fullName: null,
   isLoading: false,
   error: null,
 
@@ -101,11 +103,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         { timeout: 10000 },
       );
 
-      const { sessionToken, userId } = response.data;
+      const { sessionToken, userId, fullName } = response.data;
 
       await SecureStorageService.saveSessionId(sessionToken);
       if (userId) {
         await SecureStorageService.saveItem('user_id', userId);
+      }
+      if (fullName) {
+        await SecureStorageService.saveItem('full_name', fullName);
       }
 
       // Login only establishes a session; user must complete OTP before full auth.
@@ -114,6 +119,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isOtpPending: true,
         pendingEmail: email.trim().toLowerCase(),
         userId,
+        fullName: fullName || null,
         masterKey: derivedKey,
         isLoading: false,
       });
@@ -164,6 +170,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (userId) {
           await SecureStorageService.saveItem('user_id', userId);
       }
+      if (fullName) {
+          await SecureStorageService.saveItem('full_name', fullName);
+      }
       
       set({
         isAuthenticated: true,
@@ -171,6 +180,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         pendingEmail: null,
         userId,
         email: email.trim().toLowerCase(),
+        fullName: fullName || null,
         masterKey: derivedKey,
         isLoading: false,
       });
@@ -229,6 +239,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     await SecureStorageService.clearSession();
     await SecureStorageService.deleteItem('user_id');
+    await SecureStorageService.deleteItem('full_name');
     set({
       isAuthenticated: false,
       isOtpPending: false,
@@ -238,18 +249,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       masterKey: null,
       userId: null,
       email: null,
+      fullName: null,
     });
   },
 
   checkAuth: async () => {
     const session = await SecureStorageService.getSessionId();
     const userId = await SecureStorageService.getItem('user_id');
+    const fullName = await SecureStorageService.getItem('full_name');
     
     // If we have a session, we are "logged in" but don't have the Master Key.
     // For MVP, we force re-login to derive key. 
     // Ideally we would verify session validation with backend here.
     if (session && userId) {
-        set({ userId, isAuthenticated: false, isOtpPending: false, pendingEmail: null });
+        set({ userId, fullName, isAuthenticated: false, isOtpPending: false, pendingEmail: null });
         // Optional: validate token with backend?
         // For now, assume session valid but require password for key.
     }
