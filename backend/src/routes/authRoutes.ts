@@ -219,7 +219,7 @@ export function createAuthRouter(): Router {
         return res.status(401).json(errorResponse)
       }
 
-      const { salt, verifier, encryptedVault } = req.body
+      const { salt, verifier, argon2Memory, argon2Iterations, encryptedVault } = req.body
 
       if (!salt || !verifier) {
         const errorResponse: ErrorResponse = {
@@ -230,7 +230,7 @@ export function createAuthRouter(): Router {
         return res.status(400).json(errorResponse)
       }
 
-      await updateUserCredentials(sessionValidation.userId, salt, verifier, encryptedVault)
+      await updateUserCredentials(sessionValidation.userId, salt, verifier, encryptedVault, argon2Memory, argon2Iterations)
 
       return res.status(200).json({
         success: true,

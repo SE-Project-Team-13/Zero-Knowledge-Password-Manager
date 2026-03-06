@@ -89,6 +89,7 @@ function VaultCard({
 }) {
     const [revealed, setRevealed] = useState(false);
     const [copied, setCopied] = useState<'user' | 'pass' | null>(null);
+    const [imageError, setImageError] = useState(false);
     const { isPasswordOld, isSnoozed, snoozeEntry } = usePasswordAging();
 
     const copyToClipboard = (text: string, type: 'user' | 'pass') => {
@@ -107,12 +108,21 @@ function VaultCard({
 
     const initials = entry.url?.charAt(0).toUpperCase() || '?';
     const showWarning = isPasswordOld(entry) && !isSnoozed(entry);
+    const faviconUrl = entry.url ? `https://www.google.com/s2/favicons?domain=${entry.url}&sz=64` : null;
 
     return (
         <View style={styles.card}>
             <View style={styles.cardHeader}>
                 <View style={styles.siteAvatar}>
-                    <Text style={styles.siteInitial}>{initials}</Text>
+                    {(faviconUrl && !imageError) ? (
+                        <Image 
+                            source={{ uri: faviconUrl }} 
+                            style={{ width: 24, height: 24, borderRadius: Radius.xs }} 
+                            onError={() => setImageError(true)}
+                        />
+                    ) : (
+                        <Text style={styles.siteInitial}>{initials}</Text>
+                    )}
                 </View>
                 <View style={{ flex: 1 }}>
                     <Text style={styles.siteName}>{entry.url}</Text>
@@ -142,9 +152,9 @@ function VaultCard({
             )}
 
             <View style={styles.cardActions}>
-                <TouchableOpacity style={styles.copyBtn} onPress={() => copyToClipboard(entry.username, 'user')}>
-                    <Ionicons name={copied === 'user' ? 'checkmark' : 'person-outline'} size={14} color={Colors.primary} />
-                    <Text style={styles.copyBtnText}>{copied === 'user' ? 'Copied!' : 'User'}</Text>
+                <TouchableOpacity style={styles.copyBtn} onPress={() => copyToClipboard(entry.password, 'pass')}>
+                    <Ionicons name={copied === 'pass' ? 'checkmark' : 'copy-outline'} size={14} color={Colors.primary} />
+                    <Text style={styles.copyBtnText}>{copied === 'pass' ? 'Copied!' : 'Password'}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.copyBtn} onPress={() => setRevealed((r) => !r)}>
@@ -152,9 +162,9 @@ function VaultCard({
                     <Text style={styles.copyBtnText}>{revealed ? 'Hide' : 'Reveal'}</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.copyBtn} onPress={() => copyToClipboard(entry.password, 'pass')}>
-                    <Ionicons name={copied === 'pass' ? 'checkmark' : 'copy-outline'} size={14} color={Colors.primary} />
-                    <Text style={styles.copyBtnText}>{copied === 'pass' ? 'Copied!' : 'Pass'}</Text>
+                <TouchableOpacity style={styles.copyBtn} onPress={() => copyToClipboard(entry.username, 'user')}>
+                    <Ionicons name={copied === 'user' ? 'checkmark' : 'person-outline'} size={14} color={Colors.primary} />
+                    <Text style={styles.copyBtnText}>{copied === 'user' ? 'Copied!' : 'Username'}</Text>
                 </TouchableOpacity>
             </View>
 
