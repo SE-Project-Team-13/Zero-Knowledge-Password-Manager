@@ -43,12 +43,6 @@ import { copyWithAutoClear } from "@/lib/clipboard";
 import { useRouter } from "next/navigation";
 import { buildApiUrl } from "@/lib/api-base-url";
 import { formatTimestampIST, formatDateTimeIST } from "@/lib/formatIST";
-import {
-  createShareEnvelope,
-  decryptShareEnvelope,
-  ensureShareKeyPair,
-  verifyShareEnvelopeSignature,
-} from "@/lib/shareCrypto";
 import { maskPassword } from "@/lib/password-utils";
 // --- Helpers ---
 
@@ -75,6 +69,10 @@ export default function DashboardPage() {
     pendingSyncCount,
     syncConflict,
     resolveSyncConflict,
+    incomingShares,
+    acceptShare,
+    rejectShare,
+    sendShare,
   } = useVault();
 
   const [mounted, setMounted] = useState(false);
@@ -94,19 +92,7 @@ export default function DashboardPage() {
   const [sharingEntry, setSharingEntry] = useState<DecryptedEntry | null>(null);
   const [shareRecipientEmail, setShareRecipientEmail] = useState("");
   const [isSendingShare, setIsSendingShare] = useState(false);
-  const [incomingShares, setIncomingShares] = useState<Array<{
-    id: string;
-    encryptedSessionKey: string;
-    ciphertext: string;
-    iv: string;
-    signature: string;
-    senderSigningPublicKey: string;
-    recipientEmail: string;
-    sender: { email: string; fullName: string };
-    createdAt: string;
-  }>>([]);
   const [incomingOpen, setIncomingOpen] = useState(false);
-  const [trustWarning, setTrustWarning] = useState<string | null>(null);
   const [expandedUrls, setExpandedUrls] = useState<Record<string, boolean>>({});
 
   const toggleUrlExpansion = (url: string) => {
@@ -188,33 +174,7 @@ export default function DashboardPage() {
     }
   }, [session.isAuthenticated, session.email, isVaultUnlocked, masterPassword, unlockVault, router]);
 
-  const ensureSharingKeysAndSync = useCallback(async () => {
-    const token = localStorage.getItem("auth_token");
-    if (!token || !session.isAuthenticated) return;
-    try {
-      const { publicKey, signingPublicKey } = await ensureShareKeyPair();
-      await fetch(buildApiUrl("/share/public-key"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ publicKey, signingPublicKey }),
-      });
-      const incomingRes = await fetch(buildApiUrl("/share/incoming"), {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (incomingRes.ok) {
-        const payload = await incomingRes.json();
-        setIncomingShares(payload.shares || []);
-      }
-    } catch (error) {
-      console.warn("[Share] setup failed", error);
-    }
-  }, [session.isAuthenticated]);
-
-  useEffect(() => {
-    if (session.isAuthenticated && isVaultUnlocked) {
-      void ensureSharingKeysAndSync();
-    }
-  }, [session.isAuthenticated, isVaultUnlocked, ensureSharingKeysAndSync]);
+  // Removed ensureSharingKeysAndSync loop - now handled in VaultContext effect
 
   // Format time as MM:SS
   const formatTime = (seconds: number) => {
@@ -279,45 +239,9 @@ export default function DashboardPage() {
 
   const handleSendShare = async () => {
     if (!sharingEntry || !shareRecipientEmail.trim()) return;
-    const token = localStorage.getItem("auth_token");
-    if (!token) return;
     setIsSendingShare(true);
     try {
-      const publicKeyRes = await fetch(buildApiUrl(`/share/public-key/${encodeURIComponent(shareRecipientEmail.trim().toLowerCase())}`), {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!publicKeyRes.ok) {
-        const err = await publicKeyRes.json().catch(() => ({}));
-        throw new Error(err.error || "Recipient public key not available");
-      }
-      const recipient = await publicKeyRes.json();
-      const envelope = await createShareEnvelope(
-        {
-          url: sharingEntry.url,
-          username: sharingEntry.username,
-          password: sharingEntry.password,
-          notes: sharingEntry.notes || "",
-        },
-        recipient.publicKey,
-        shareRecipientEmail.trim().toLowerCase(),
-      );
-      const sendRes = await fetch(buildApiUrl("/share/send"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          recipientEmail: shareRecipientEmail.trim().toLowerCase(),
-          encryptedSessionKey: envelope.encryptedSessionKey,
-          ciphertext: envelope.ciphertext,
-          iv: envelope.iv,
-          signature: envelope.signature,
-          senderSigningPublicKey: envelope.senderSigningPublicKey,
-        }),
-      });
-      if (!sendRes.ok) {
-        const err = await sendRes.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to send share");
-      }
-      toast.success("Password shared securely");
+      await sendShare(sharingEntry, shareRecipientEmail);
       setSharingEntry(null);
       setShareRecipientEmail("");
     } catch (error) {
@@ -325,60 +249,6 @@ export default function DashboardPage() {
     } finally {
       setIsSendingShare(false);
     }
-  };
-
-  const handleAcceptShare = async (shareId: string) => {
-    const token = localStorage.getItem("auth_token");
-    if (!token) return;
-    const share = incomingShares.find((s) => s.id === shareId);
-    if (!share) return;
-    try {
-      const signatureOk = await verifyShareEnvelopeSignature(
-        {
-          encryptedSessionKey: share.encryptedSessionKey,
-          ciphertext: share.ciphertext,
-          iv: share.iv,
-          signature: share.signature,
-        },
-        share.senderSigningPublicKey,
-        share.recipientEmail || session.email || "",
-      );
-      if (!signatureOk) {
-        const warning = `Signature verification failed for share from ${share.sender.email}. Message may be tampered.`;
-        setTrustWarning(warning);
-        toast.error("Security warning: shared item failed signature verification");
-        return;
-      }
-      const decrypted = await decryptShareEnvelope({
-        encryptedSessionKey: share.encryptedSessionKey,
-        ciphertext: share.ciphertext,
-        iv: share.iv,
-      });
-      await addEntry({
-        username: decrypted.username || "",
-        password: decrypted.password || "",
-        url: decrypted.url || decrypted.siteUrl || decrypted.site || "Shared Credential",
-        notes: decrypted.notes || `Shared by ${share.sender.email}`,
-      });
-      await fetch(buildApiUrl(`/share/${encodeURIComponent(shareId)}/accept`), {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setIncomingShares((prev) => prev.filter((s) => s.id !== shareId));
-      toast.success("Share accepted and added to vault");
-    } catch {
-      toast.error("Failed to accept share");
-    }
-  };
-
-  const handleRejectShare = async (shareId: string) => {
-    const token = localStorage.getItem("auth_token");
-    if (!token) return;
-    await fetch(buildApiUrl(`/share/${encodeURIComponent(shareId)}/reject`), {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    setIncomingShares((prev) => prev.filter((s) => s.id !== shareId));
   };
 
   // ---  // 5) Filter & Group entries
@@ -454,6 +324,11 @@ export default function DashboardPage() {
 
   // --- Render Lock State ---
   if (!isVaultUnlocked) {
+    // If a session password exists, show nothing while auto-unlock happens in background
+    if (typeof window !== 'undefined' && sessionStorage.getItem("session_master_password")) {
+      return null;
+    }
+
     return (
       <div className="flex min-h-screen items-center justify-center p-4 relative">
         <div className="absolute top-4 right-4 z-50">
@@ -488,7 +363,7 @@ export default function DashboardPage() {
                     id="master-password-input"
                     type={showMasterPassword ? "text" : "password"}
                     className="pl-10 pr-10 bg-secondary/50 border-input focus:border-primary transition-all font-mono"
-                    placeholder="••••••••••••••••"
+                    placeholder="Enter Master Password"
                     value={masterPassword}
                     onChange={(e) => setMasterPassword(e.target.value)}
                     required
@@ -716,73 +591,88 @@ export default function DashboardPage() {
                                key={entry.id}
                                className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-xl border border-border/80 bg-card hover:border-primary transition-all hover:shadow-md gap-4"
                              >
-                               <div className="flex items-center gap-4 min-w-0 flex-1">
-                                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 font-bold text-primary">
-                                   {entry.url.substring(0, 2).toUpperCase()}
-                                 </div>
-                                 <div className="min-w-0">
-                               <h4 className="font-semibold truncate">{entry.url}</h4>
-                               {/* Show URL only once - site/siteUrl are merged into url */}
-                               <p className="text-sm font-mono mt-0.5 text-foreground">
-                                 <span className="text-muted-foreground mr-1 font-sans">Username:</span>
-                                     {entry.username}
-                                   </p>
-                                 </div>
-                               </div>
+                                <div className="flex flex-col md:flex-row items-end md:items-center gap-6 min-w-0 flex-1 w-full">
+                                  {/* Username Field */}
+                                  <div className="flex flex-col gap-1.5 min-w-0 flex-1 w-full">
+                                    <span className="text-[10px] uppercase font-bold text-muted-foreground/70 ml-1 tracking-wider">Username</span>
+                                    <div className="flex items-center gap-2">
+                                      <div className="h-9 px-3 w-full bg-secondary/30 rounded-lg flex items-center font-mono text-sm truncate border border-border/50">
+                                        {entry.username}
+                                      </div>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => copyToClipboard(entry.username)}
+                                        className="h-9 w-9 text-muted-foreground hover:text-foreground shrink-0"
+                                        title="Copy Username"
+                                      >
+                                        <Copy className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
 
-                               <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-                                 <div className="relative group/pass">
-                                   <div className="h-9 px-3 min-w-[120px] bg-secondary/50 rounded-md flex items-center font-mono text-sm">
-                                     {entry.isPasswordVisible
-                                       ? entry.password
-                                       : maskPassword(entry.password.length)}
-                                   </div>
-                                 </div>
+                                  {/* Password Field */}
+                                  <div className="flex flex-col gap-1.5 min-w-0 flex-1 w-full">
+                                    <span className="text-[10px] uppercase font-bold text-muted-foreground/70 ml-1 tracking-wider">Password</span>
+                                    <div className="flex items-center gap-2">
+                                      <div className="h-9 px-3 w-full bg-secondary/30 rounded-lg flex items-center font-mono text-sm border border-border/50">
+                                        {entry.isPasswordVisible
+                                          ? entry.password
+                                          : maskPassword(entry.password.length)}
+                                      </div>
+                                      
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => togglePasswordVisibility(entry.id)}
+                                          className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                                          title={entry.isPasswordVisible ? "Hide Password" : "Show Password"}
+                                        >
+                                          {entry.isPasswordVisible ? (
+                                            <EyeOff className="h-4 w-4" />
+                                          ) : (
+                                            <Eye className="h-4 w-4" />
+                                          )}
+                                        </Button>
 
-                                 <Button
-                                   variant="ghost"
-                                   size="icon"
-                                   onClick={() => togglePasswordVisibility(entry.id)}
-                                   className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                                 >
-                                   {entry.isPasswordVisible ? (
-                                     <EyeOff className="h-4 w-4" />
-                                   ) : (
-                                     <Eye className="h-4 w-4" />
-                                   )}
-                                 </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => copyToClipboard(entry.password)}
+                                          className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                                          title="Copy Password"
+                                        >
+                                          <Copy className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
 
-                                 <Button
-                                   variant="ghost"
-                                   size="icon"
-                                   onClick={() => copyToClipboard(entry.password)}
-                                   className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                                 >
-                                   <Copy className="h-4 w-4" />
-                                 </Button>
+                                <div className="flex items-center gap-2 shrink-0 pt-4 md:pt-0">
+                                  <div className="h-8 w-px bg-border/50 mx-2 hidden md:block" />
+                                  
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setSharingEntry(entry)}
+                                    className="h-10 w-10 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-all"
+                                    title="Share Credential"
+                                  >
+                                    <Share2 className="h-5 w-5" />
+                                  </Button>
 
-                                 <div className="h-4 w-px bg-border mx-1" />
-
-                                 <Button
-                                   variant="ghost"
-                                   size="icon"
-                                   onClick={() => setSharingEntry(entry)}
-                                   className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                                   title="Share"
-                                 >
-                                   <Share2 className="h-4 w-4" />
-                                 </Button>
-
-                                 <Button
-                                   variant="ghost"
-                                   size="icon"
-                                   onClick={() => router.push(`/password-manager?edit=${entry.id}`)}
-                                   className="h-9 w-9 text-muted-foreground hover:text-primary"
-                                   title="Edit in Password Manager"
-                                 >
-                                   <Edit className="h-4 w-4" />
-                                 </Button>
-                               </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => router.push(`/password-manager?edit=${entry.id}`)}
+                                    className="h-10 w-10 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-all"
+                                    title="Edit in Password Manager"
+                                  >
+                                    <Edit className="h-5 w-5" />
+                                  </Button>
+                                </div>
                              </div>
                            ))}
                          </div>
@@ -809,25 +699,37 @@ export default function DashboardPage() {
               <div className="rounded-lg border border-border p-3">
                 <h4 className="font-semibold mb-2">Your Local Version ({syncConflict.localEntries.length})</h4>
                 <div className="max-h-64 overflow-auto space-y-2 text-sm">
-                  {syncConflict.localEntries.slice(0, 8).map((entry) => (
-                    <div key={`local-${entry.id}`} className="rounded border border-border/60 p-2">
-                      <div className="font-medium">{entry.url}</div>
-                      <div className="text-muted-foreground">{entry.username}</div>
-                      <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
+                  {syncConflict.localEntries.length === 0 ? (
+                    <div className="p-3 bg-secondary/20 rounded border border-dashed border-border/50 text-muted-foreground italic">
+                      No user-facing credentials (system updates only)
                     </div>
-                  ))}
+                  ) : (
+                    syncConflict.localEntries.slice(0, 8).map((entry) => (
+                      <div key={`local-${entry.id}`} className="rounded border border-border/60 p-2">
+                        <div className="font-medium">{entry.url}</div>
+                        <div className="text-muted-foreground">{entry.username}</div>
+                        <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
               <div className="rounded-lg border border-border p-3">
                 <h4 className="font-semibold mb-2">Server Version ({syncConflict.serverEntries.length})</h4>
                 <div className="max-h-64 overflow-auto space-y-2 text-sm">
-                  {syncConflict.serverEntries.slice(0, 8).map((entry) => (
-                    <div key={`server-${entry.id}`} className="rounded border border-border/60 p-2">
-                      <div className="font-medium">{entry.url}</div>
-                      <div className="text-muted-foreground">{entry.username}</div>
-                      <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
+                  {syncConflict.serverEntries.length === 0 ? (
+                    <div className="p-3 bg-secondary/20 rounded border border-dashed border-border/50 text-muted-foreground italic">
+                      No user-facing credentials (system updates only)
                     </div>
-                  ))}
+                  ) : (
+                    syncConflict.serverEntries.slice(0, 8).map((entry) => (
+                      <div key={`server-${entry.id}`} className="rounded border border-border/60 p-2">
+                        <div className="font-medium">{entry.url}</div>
+                        <div className="text-muted-foreground">{entry.username}</div>
+                        <div className="text-xs text-muted-foreground">{entry.updatedAt}</div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -877,24 +779,21 @@ export default function DashboardPage() {
               <CardDescription>Accept to decrypt and add credential to your vault.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[420px] overflow-auto">
-              {trustWarning && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{trustWarning}</AlertDescription>
-                </Alert>
-              )}
               {incomingShares.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No pending shares.</p>
               ) : incomingShares.map((share) => (
                 <div key={share.id} className="border rounded-md p-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{share.sender.fullName || share.sender.email}</p>
-                    <p className="text-xs text-muted-foreground">{share.sender.email}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold truncate">{share.credentialLabel || "Shared Credential"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      From: {share.sender.fullName || share.sender.email}
+                      {share.sender.fullName ? ` (${share.sender.email})` : ""}
+                    </p>
                     <p className="text-xs text-muted-foreground">{formatDateTimeIST(share.createdAt)}</p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => handleRejectShare(share.id)}>Reject</Button>
-                    <Button size="sm" onClick={() => handleAcceptShare(share.id)}>Accept</Button>
+                  <div className="flex gap-2 shrink-0">
+                    <Button size="sm" variant="outline" onClick={() => rejectShare(share.id)}>Reject</Button>
+                    <Button size="sm" onClick={() => acceptShare(share.id)}>Accept</Button>
                   </div>
                 </div>
               ))}

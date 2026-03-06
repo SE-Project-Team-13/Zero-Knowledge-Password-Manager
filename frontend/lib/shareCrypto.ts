@@ -13,10 +13,10 @@ export interface ShareKeyPair {
   signingPrivateKey: string
 }
 
-const PRIVATE_KEY_STORAGE_KEY = "share_private_key_pkcs8"
-const PUBLIC_KEY_STORAGE_KEY = "share_public_key_spki"
-const SIGN_PRIVATE_KEY_STORAGE_KEY = "share_sign_private_key_pkcs8"
-const SIGN_PUBLIC_KEY_STORAGE_KEY = "share_sign_public_key_spki"
+const getPrivateKeyKey = (userId?: string) => userId ? `share_private_key_pkcs8_${userId}` : "share_private_key_pkcs8"
+const getPublicKeyKey = (userId?: string) => userId ? `share_public_key_spki_${userId}` : "share_public_key_spki"
+const getSignPrivateKeyKey = (userId?: string) => userId ? `share_sign_private_key_pkcs8_${userId}` : "share_sign_private_key_pkcs8"
+const getSignPublicKeyKey = (userId?: string) => userId ? `share_sign_public_key_spki_${userId}` : "share_sign_public_key_spki"
 
 function toBase64(data: ArrayBuffer | Uint8Array): string {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
@@ -32,11 +32,44 @@ function fromBase64(base64: string): ArrayBuffer {
   return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength)
 }
 
-export async function ensureShareKeyPair(): Promise<ShareKeyPair> {
-  const existingPublic = localStorage.getItem(PUBLIC_KEY_STORAGE_KEY)
-  const existingPrivate = localStorage.getItem(PRIVATE_KEY_STORAGE_KEY)
-  const existingSignPublic = localStorage.getItem(SIGN_PUBLIC_KEY_STORAGE_KEY)
-  const existingSignPrivate = localStorage.getItem(SIGN_PRIVATE_KEY_STORAGE_KEY)
+export async function ensureShareKeyPair(userId?: string): Promise<ShareKeyPair> {
+  const pkKey = getPrivateKeyKey(userId)
+  const pubKey = getPublicKeyKey(userId)
+  const sPkKey = getSignPrivateKeyKey(userId)
+  const sPubKey = getSignPublicKeyKey(userId)
+
+  let existingPublic = localStorage.getItem(pubKey)
+  let existingPrivate = localStorage.getItem(pkKey)
+  let existingSignPublic = localStorage.getItem(sPubKey)
+  let existingSignPrivate = localStorage.getItem(sPkKey)
+  
+  console.log(`[shareCrypto] Checked keys for ${userId || "legacy"}:`, {
+    pub: !!existingPublic,
+    priv: !!existingPrivate,
+    sPub: !!existingSignPublic,
+    sPriv: !!existingSignPrivate
+  })
+  
+  // Migration: If scoped keys missing but legacy exist, migrate them
+  if (userId && (!existingPublic || !existingPrivate || !existingSignPublic || !existingSignPrivate)) {
+    const legacyPublic = localStorage.getItem(getPublicKeyKey())
+    const legacyPrivate = localStorage.getItem(getPrivateKeyKey())
+    const legacySignPublic = localStorage.getItem(getSignPublicKeyKey())
+    const legacySignPrivate = localStorage.getItem(getSignPrivateKeyKey())
+
+    if (legacyPublic && legacyPrivate && legacySignPublic && legacySignPrivate) {
+      console.log(`[shareCrypto] Migrating legacy sharing keys for user: ${userId}`)
+      localStorage.setItem(pubKey, legacyPublic)
+      localStorage.setItem(pkKey, legacyPrivate)
+      localStorage.setItem(sPubKey, legacySignPublic)
+      localStorage.setItem(sPkKey, legacySignPrivate)
+      existingPublic = legacyPublic
+      existingPrivate = legacyPrivate
+      existingSignPublic = legacySignPublic
+      existingSignPrivate = legacySignPrivate
+    }
+  }
+
   if (existingPublic && existingPrivate && existingSignPublic && existingSignPrivate) {
     return {
       publicKey: existingPublic,
@@ -46,6 +79,7 @@ export async function ensureShareKeyPair(): Promise<ShareKeyPair> {
     }
   }
 
+  console.log(`[shareCrypto] Generating new sharing keys for user: ${userId || "legacy"}`)
   const pair = await crypto.subtle.generateKey(
     {
       name: "RSA-OAEP",
@@ -68,10 +102,10 @@ export async function ensureShareKeyPair(): Promise<ShareKeyPair> {
   const signingPublicKey = toBase64(await crypto.subtle.exportKey("spki", signingPair.publicKey))
   const signingPrivateKey = toBase64(await crypto.subtle.exportKey("pkcs8", signingPair.privateKey))
 
-  localStorage.setItem(PUBLIC_KEY_STORAGE_KEY, publicKey)
-  localStorage.setItem(PRIVATE_KEY_STORAGE_KEY, privateKey)
-  localStorage.setItem(SIGN_PUBLIC_KEY_STORAGE_KEY, signingPublicKey)
-  localStorage.setItem(SIGN_PRIVATE_KEY_STORAGE_KEY, signingPrivateKey)
+  localStorage.setItem(pubKey, publicKey)
+  localStorage.setItem(pkKey, privateKey)
+  localStorage.setItem(sPubKey, signingPublicKey)
+  localStorage.setItem(sPkKey, signingPrivateKey)
   return { publicKey, privateKey, signingPublicKey, signingPrivateKey }
 }
 
@@ -133,7 +167,9 @@ export async function createShareEnvelope(
   payload: unknown,
   recipientPublicKeyBase64: string,
   recipientEmail: string,
+  userId?: string,
 ): Promise<ShareEnvelope> {
+  const keys = await ensureShareKeyPair(userId)
   const recipientPublicKey = await importPublicKey(recipientPublicKeyBase64)
   const aesKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"])
   const iv = crypto.getRandomValues(new Uint8Array(12))
@@ -147,12 +183,8 @@ export async function createShareEnvelope(
     ciphertext: toBase64(ciphertext),
     iv: toBase64(iv),
   }
-  const signingPrivateKeyBase64 = localStorage.getItem(SIGN_PRIVATE_KEY_STORAGE_KEY)
-  const signingPublicKeyBase64 = localStorage.getItem(SIGN_PUBLIC_KEY_STORAGE_KEY)
-  if (!signingPrivateKeyBase64 || !signingPublicKeyBase64) {
-    throw new Error("No signing keys found for secure share")
-  }
-  const signingPrivateKey = await importSigningPrivateKey(signingPrivateKeyBase64)
+
+  const signingPrivateKey = await importSigningPrivateKey(keys.signingPrivateKey)
   const signatureBuffer = await crypto.subtle.sign(
     { name: "ECDSA", hash: "SHA-256" },
     signingPrivateKey,
@@ -166,15 +198,20 @@ export async function createShareEnvelope(
   return {
     ...envelope,
     signature: toBase64(signatureBuffer),
-    senderSigningPublicKey: signingPublicKeyBase64,
+    senderSigningPublicKey: keys.signingPublicKey,
   }
 }
 
-export async function decryptShareEnvelope(envelope: ShareEnvelope): Promise<any> {
-  const privateKeyBase64 = localStorage.getItem(PRIVATE_KEY_STORAGE_KEY)
+export async function decryptShareEnvelope(envelope: ShareEnvelope, userId?: string): Promise<any> {
+  const pkKey = getPrivateKeyKey(userId)
+  const privateKeyBase64 = localStorage.getItem(pkKey)
   if (!privateKeyBase64) {
+    console.error(`[shareCrypto] Decryption failed: No private key in localStorage (${pkKey})`)
     throw new Error("No private key found for share decryption")
   }
+  console.log("[shareCrypto] Found private key (starts with):", privateKeyBase64.substring(0, 20) + "...")
+  console.log("[shareCrypto] Encrypted session key length (base64):", envelope.encryptedSessionKey.length)
+  
   const privateKey = await importPrivateKey(privateKeyBase64)
   const rawSessionKey = await crypto.subtle.decrypt(
     { name: "RSA-OAEP" },

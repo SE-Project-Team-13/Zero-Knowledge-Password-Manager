@@ -82,6 +82,7 @@ const SharedCredentialSchema = new Schema({
     signature: { type: String, required: true },
     senderSigningPublicKey: { type: String, required: true },
     status: { type: String, enum: ["pending", "accepted", "rejected"], default: "pending", index: true },
+    credentialLabel: { type: String },
     createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
     updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
     acceptedAt: { type: String },

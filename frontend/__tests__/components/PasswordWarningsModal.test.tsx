@@ -55,7 +55,6 @@ describe('PasswordWarningsModal', () => {
     });
 
   it('renders correctly with warnings', () => {
-    console.log('Running: renders correctly with warnings');
     render(
       <PasswordWarningsModal
         isOpen={true}
@@ -65,11 +64,9 @@ describe('PasswordWarningsModal', () => {
     );
 
     expect(screen.getByText('Password Warnings')).toBeInTheDocument();
-    console.log('Result: Success - "Password Warnings" title found');
   });
 
   it('renders correctly with specific warning', () => {
-    console.log('Running: renders correctly with specific warning');
     render(
         <PasswordWarningsModal
           isOpen={true}
@@ -78,12 +75,10 @@ describe('PasswordWarningsModal', () => {
         />
       );
       expect(screen.getByText('OldSite')).toBeInTheDocument();
-      console.log('Result: Success - "OldSite" entry found');
   });
 
 
   it('calls snoozeEntry when snooze button is clicked', () => {
-    console.log('Running: calls snoozeEntry when snooze button is clicked');
     render(
       <PasswordWarningsModal
         isOpen={true}
@@ -92,15 +87,13 @@ describe('PasswordWarningsModal', () => {
       />
     );
 
-    const snoozeButtons = screen.getAllByText(/Snooze 7 days/i);
+    const snoozeButtons = screen.getAllByText(/Snooze 6 months/i);
     fireEvent.click(snoozeButtons[0]);
 
     expect(mockSnoozeEntry).toHaveBeenCalledWith('1');
-    console.log('Result: Success - snoozeEntry called with ID "1"');
   });
 
    it('renders empty state correctly', () => {
-    console.log('Running: renders empty state correctly');
     (usePasswordAging as jest.Mock).mockReturnValue({
       agingEntries: [],
       getLastUpdatedMs: mockGetLastUpdated,
@@ -116,6 +109,5 @@ describe('PasswordWarningsModal', () => {
     );
 
     expect(screen.getByText('No old passwords detected')).toBeInTheDocument();
-    console.log('Result: Success - "No old passwords detected" text found');
   });
 });

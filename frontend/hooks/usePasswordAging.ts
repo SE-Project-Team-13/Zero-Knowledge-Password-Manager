@@ -23,7 +23,7 @@ export function usePasswordAging() {
     const last = getLastUpdatedMs(entry);
     if (Number.isNaN(last)) return false;
     const ageDays = (Date.now() - last) / (1000 * 60 * 60 * 24);
-    return ageDays >= 365;
+    return ageDays >= 180;
   }, [getLastUpdatedMs]);
 
   const isSnoozed = useCallback((entry: DecryptedEntry) => {

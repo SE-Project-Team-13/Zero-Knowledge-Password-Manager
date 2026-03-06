@@ -56,7 +56,7 @@ export default function LoginPage() {
       } catch (err) {
         setEmailStatus('idle')
       }
-    }, 500)
+    }, 100)
 
     return () => clearTimeout(timer)
   }, [email])
@@ -155,7 +155,7 @@ export default function LoginPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     className="pl-10 pr-10 bg-secondary/50 border-input focus:border-primary transition-colors font-mono"
-                    placeholder="Enter your master password"
+                    placeholder="Enter Master Password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isSubmitting}
