@@ -44,6 +44,11 @@ interface VaultContextType {
     pendingSyncCount: number;
     syncConflict: SyncConflictState | null;
     resolveSyncConflict: (choice: "local" | "server") => Promise<boolean>;
+    incomingShares: any[];
+    refreshIncoming: () => Promise<void>;
+    acceptShare: (shareId: string) => Promise<void>;
+    rejectShare: (shareId: string) => Promise<void>;
+    sendShare: (entry: DecryptedEntry, recipientEmail: string) => Promise<void>;
 }
 
 const VaultContext = createContext<VaultContextType | undefined>(undefined);
@@ -123,6 +128,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
     const [pendingSyncCount, setPendingSyncCount] = useState(0);
     const [syncConflict, setSyncConflict] = useState<SyncConflictState | null>(null);
+    const [incomingShares, setIncomingShares] = useState<any[]>([]);
+    const [isRefreshingShares, setIsRefreshingShares] = useState(false);
     const syncInFlightRef = useRef(false);
     const [session] = useVaultSync();
 
@@ -971,6 +978,155 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         return () => window.removeEventListener("online", onOnline);
     }, [drainOfflineQueue]);
 
+    const registerSharingKey = React.useCallback(async () => {
+        const token = localStorage.getItem("auth_token");
+        if (!token) return;
+        try {
+            const { ensureShareKeyPair } = await import("@/lib/shareCrypto");
+            const { publicKey, signingPublicKey } = await ensureShareKeyPair();
+            await fetch(buildApiUrl("/share/public-key"), {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ publicKey, signingPublicKey })
+            });
+        } catch (error) {
+            console.error("[VaultContext] Failed to register sharing keys:", error);
+        }
+    }, []);
+
+    const refreshIncoming = React.useCallback(async () => {
+        const token = localStorage.getItem("auth_token");
+        if (!token || isRefreshingShares) return;
+        setIsRefreshingShares(true);
+        try {
+            const res = await fetch(buildApiUrl("/share/incoming"), {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setIncomingShares(data.shares || []);
+            }
+        } catch (error) {
+            console.error("[VaultContext] Failed to refresh shares:", error);
+        } finally {
+            setIsRefreshingShares(false);
+        }
+    }, [isRefreshingShares]);
+
+    const sendShare = React.useCallback(async (entry: DecryptedEntry, recipientEmail: string) => {
+        const token = localStorage.getItem("auth_token");
+        if (!token) throw new Error("Authentication required");
+        
+        // 1. Get recipient public key
+        const pkRes = await fetch(buildApiUrl(`/share/public-key/${encodeURIComponent(recipientEmail.trim().toLowerCase())}`), {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!pkRes.ok) throw new Error("Recipient sharing not enabled or user not found");
+        const { publicKey: recipientPubKey } = await pkRes.json();
+
+        // 2. Create envelope
+        const { createShareEnvelope } = await import("@/lib/shareCrypto");
+        const envelope = await createShareEnvelope(
+            {
+                url: entry.url,
+                username: entry.username,
+                password: entry.password,
+                notes: entry.notes
+            },
+            recipientPubKey,
+            recipientEmail
+        );
+
+        // 3. Send
+        const sendRes = await fetch(buildApiUrl("/share/send"), {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                recipientEmail: recipientEmail.trim().toLowerCase(),
+                ...envelope
+            })
+        });
+        if (!sendRes.ok) {
+            const err = await sendRes.json();
+            throw new Error(err.error || "Failed to send share");
+        }
+        toast.success("Credential shared securely!");
+    }, []);
+
+    const acceptShare = React.useCallback(async (shareId: string) => {
+        const token = localStorage.getItem("auth_token");
+        if (!token) return;
+        const share = incomingShares.find(s => s.id === shareId);
+        if (!share) return;
+
+        try {
+            const { verifyShareEnvelopeSignature, decryptShareEnvelope } = await import("@/lib/shareCrypto");
+            
+            // 1. Verify signature
+            const sigOk = await verifyShareEnvelopeSignature(
+                share,
+                share.senderSigningPublicKey,
+                share.recipientEmail
+            );
+            if (!sigOk) {
+                toast.error("Security alert: Share signature verification failed!");
+                return;
+            }
+
+            // 2. Decrypt
+            const decrypted = await decryptShareEnvelope(share);
+
+            // 3. Add to vault
+            await addEntry({
+                url: decrypted.url || "Shared Credential",
+                username: decrypted.username || "",
+                password: decrypted.password || "",
+                notes: decrypted.notes || `Shared by ${share.sender.email}`
+            });
+
+            // 4. Mark accepted on server
+            await fetch(buildApiUrl(`/share/${encodeURIComponent(shareId)}/accept`), {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            setIncomingShares(prev => prev.filter(s => s.id !== shareId));
+            toast.success("Shared credential added to vault");
+        } catch (error) {
+            console.error("[VaultContext] Accept share failed:", error);
+            toast.error("Failed to accept shared credential");
+        }
+    }, [incomingShares, addEntry]);
+
+    const rejectShare = React.useCallback(async (shareId: string) => {
+        const token = localStorage.getItem("auth_token");
+        if (!token) return;
+        try {
+            await fetch(buildApiUrl(`/share/${encodeURIComponent(shareId)}/reject`), {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setIncomingShares(prev => prev.filter(s => s.id !== shareId));
+            toast.success("Share request rejected");
+        } catch (error) {
+            console.error("[VaultContext] Reject share failed:", error);
+        }
+    }, []);
+
+    // Effect to register keys and check for shares
+    useEffect(() => {
+        if (isUnlocked && session.isAuthenticated) {
+            registerSharingKey();
+            refreshIncoming();
+        }
+    }, [isUnlocked, session.isAuthenticated, registerSharingKey, refreshIncoming]);
+
     return (
         <VaultContext.Provider value={{
             decryptedEntries,
@@ -991,6 +1147,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             pendingSyncCount,
             syncConflict,
             resolveSyncConflict,
+            incomingShares,
+            refreshIncoming,
+            acceptShare,
+            rejectShare,
+            sendShare,
         }}>
             {children}
         </VaultContext.Provider>

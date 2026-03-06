@@ -170,7 +170,10 @@ export default function ResetPasswordPage() {
 
             // 2. Derive new keys and verifier locally
             // This is the heavy lifting part
-            const { authKey } = await deriveKey(password, saltBuffer)
+            const { authKey } = await deriveKey(password, saltBuffer, {
+                memorySize: 128,
+                iterations: 1,
+            })
 
             // 3. Create proof/verifier using shared utility
             const verifier = await generateVerifier(authKey)

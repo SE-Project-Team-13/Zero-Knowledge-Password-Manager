@@ -125,3 +125,36 @@ function base64ToBuffer(base64: string): Uint8Array {
   }
   return buffer
 }
+
+/**
+ * Generic AES-256-GCM encryption for arbitrary data.
+ * @param data - The data to encrypt (string or Uint8Array)
+ * @param key - 32-byte key
+ * @returns { iv: hex, ciphertext: hex }
+ */
+export async function encryptData(data: string | Uint8Array, key: Uint8Array): Promise<{ iv: string, ciphertext: string }> {
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+  const plaintext = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  
+  const cipher = gcm(key, iv);
+  const encrypted = cipher.encrypt(plaintext);
+  
+  return {
+    iv: Array.from(iv).map(b => b.toString(16).padStart(2, "0")).join(""),
+    ciphertext: Array.from(encrypted).map(b => b.toString(16).padStart(2, "0")).join("")
+  };
+}
+
+/**
+ * Generic AES-256-GCM decryption for arbitrary data.
+ * @param ciphertextHex - Hex encoded ciphertext (including tag if appended)
+ * @param ivHex - Hex encoded IV
+ * @param key - 32-byte key
+ */
+export async function decryptData(ciphertextHex: string, ivHex: string, key: Uint8Array): Promise<Uint8Array> {
+  const iv = new Uint8Array(ivHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  const ciphertext = new Uint8Array(ciphertextHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  
+  const decipher = gcm(key, iv);
+  return decipher.decrypt(ciphertext);
+}

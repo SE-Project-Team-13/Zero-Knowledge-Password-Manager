@@ -30,6 +30,7 @@ interface AuthState {
   recoveredMasterPassword: string | null;
   userId: string | null;
   masterKey: DerivedKey | null;
+  email: string | null;
   isLoading: boolean;
   error: string | null;
 
@@ -51,6 +52,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   recoveredMasterPassword: null,
   userId: null,
   masterKey: null,
+  email: null,
   isLoading: false,
   error: null,
 
@@ -168,6 +170,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isOtpPending: false,
         pendingEmail: null,
         userId,
+        email: email.trim().toLowerCase(),
         masterKey: derivedKey,
         isLoading: false,
       });
@@ -186,6 +189,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({
       isAuthenticated: true,
       isOtpPending: false,
+      email: get().pendingEmail,
       pendingEmail: null,
       error: null,
     });
@@ -233,6 +237,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       recoveredMasterPassword: null,
       masterKey: null,
       userId: null,
+      email: null,
     });
   },
 

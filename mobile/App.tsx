@@ -12,12 +12,14 @@ import { BackgroundSyncService } from './src/services/backgroundSyncService';
 // Screens
 import {
   LoginScreen,
+  RegisterScreen,
   OtpScreen,
   ResetPasswordScreen,
   DashboardScreen,
   VaultListScreen,
   AddCredentialScreen,
   ChangePasswordScreen,
+  EmergencyKitScreen,
   SettingsScreen,
 } from './src/screens';
 import RecoveryLoginScreen from './src/screens/RecoveryLoginScreen';
@@ -68,6 +70,7 @@ function AppAuthenticated() {
         options={{ presentation: 'modal' }}
       />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+      <Stack.Screen name="EmergencyKit" component={EmergencyKitScreen} />
     </Stack.Navigator>
   );
 }
@@ -76,6 +79,7 @@ function AppUnauthenticated() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
       <Stack.Screen name="RecoveryLogin" component={RecoveryLoginScreen} />
       <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </Stack.Navigator>

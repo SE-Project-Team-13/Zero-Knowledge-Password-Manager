@@ -4,6 +4,7 @@ import {
     Text,
     StyleSheet,
     FlatList,
+    SectionList,
     TouchableOpacity,
     TextInput,
     ActivityIndicator,
@@ -11,16 +12,69 @@ import {
     Alert,
     Clipboard,
     Modal,
+    Platform,
+    StatusBar,
+    Image,
 } from 'react-native';
-import { useAuthStore } from '../store/authStore';
 import { useVaultStore, type VaultEntryLocal } from '../store/vaultStore';
+import { useAuthStore } from '../store/authStore';
 import { Colors, Spacing, Radius, Typography } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import { API_URL } from '../config';
 import { SecureStorageService } from '../services/secureStorage';
 import { createShareEnvelope, decryptShareEnvelope, ensureShareKeyPair, verifyShareEnvelopeSignature } from '../services/shareCrypto';
 import axios from 'axios';
+import { API_URL } from '../config';
+import { usePasswordAging } from '../hooks/usePasswordAging';
+
+function generatePassword(length = 20): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';
+    const array = new Uint8Array(length);
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        crypto.getRandomValues(array);
+    } else {
+        // Fallback for environments where crypto is not available
+        for (let i = 0; i < length; i++) {
+            array[i] = Math.floor(Math.random() * 256);
+        }
+    }
+    return Array.from(array).map(x => chars[x % chars.length]).join('');
+}
+
+function InputField({
+    label, value, onChangeText, placeholder, secureTextEntry = false, icon, rightSlot, multiline = false,
+}: {
+    label: string;
+    value: string;
+    onChangeText: (v: string) => void;
+    placeholder?: string;
+    secureTextEntry?: boolean;
+    icon?: string;
+    rightSlot?: React.ReactNode;
+    multiline?: boolean;
+}) {
+    return (
+        <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>{label}</Text>
+            <View style={styles.fieldRow}>
+                {icon && <Ionicons name={icon as any} size={16} color={Colors.textMuted} style={{ marginRight: 8 }} />}
+                <TextInput
+                    style={[styles.fieldInput, multiline && { height: 80, textAlignVertical: 'top' }]}
+                    value={value}
+                    onChangeText={onChangeText}
+                    placeholder={placeholder}
+                    placeholderTextColor={Colors.textMuted}
+                    secureTextEntry={secureTextEntry}
+                    multiline={multiline}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                />
+                {rightSlot}
+            </View>
+        </View>
+    );
+}
 
 function VaultCard({
     entry,
@@ -35,6 +89,7 @@ function VaultCard({
 }) {
     const [revealed, setRevealed] = useState(false);
     const [copied, setCopied] = useState<'user' | 'pass' | null>(null);
+    const { isPasswordOld, isSnoozed, snoozeEntry } = usePasswordAging();
 
     const copyToClipboard = (text: string, type: 'user' | 'pass') => {
         Clipboard.setString(text);
@@ -51,6 +106,7 @@ function VaultCard({
     };
 
     const initials = entry.url?.charAt(0).toUpperCase() || '?';
+    const showWarning = isPasswordOld(entry) && !isSnoozed(entry);
 
     return (
         <View style={styles.card}>
@@ -73,10 +129,22 @@ function VaultCard({
                 </TouchableOpacity>
             </View>
 
+            {showWarning && (
+                <View style={styles.warningBox}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <Ionicons name="alert-circle" size={16} color="#F59E0B" style={{ marginRight: 6 }} />
+                        <Text style={styles.warningText}>Password is over 365 days old</Text>
+                    </View>
+                    <TouchableOpacity style={styles.snoozeBtn} onPress={() => snoozeEntry(entry.id)}>
+                        <Text style={styles.snoozeBtnText}>Snooze 7d</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+
             <View style={styles.cardActions}>
                 <TouchableOpacity style={styles.copyBtn} onPress={() => copyToClipboard(entry.username, 'user')}>
                     <Ionicons name={copied === 'user' ? 'checkmark' : 'person-outline'} size={14} color={Colors.primary} />
-                    <Text style={styles.copyBtnText}>{copied === 'user' ? 'Copied!' : 'Username'}</Text>
+                    <Text style={styles.copyBtnText}>{copied === 'user' ? 'Copied!' : 'User'}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.copyBtn} onPress={() => setRevealed((r) => !r)}>
@@ -86,13 +154,13 @@ function VaultCard({
 
                 <TouchableOpacity style={styles.copyBtn} onPress={() => copyToClipboard(entry.password, 'pass')}>
                     <Ionicons name={copied === 'pass' ? 'checkmark' : 'copy-outline'} size={14} color={Colors.primary} />
-                    <Text style={styles.copyBtnText}>{copied === 'pass' ? 'Copied!' : 'Password'}</Text>
+                    <Text style={styles.copyBtnText}>{copied === 'pass' ? 'Copied!' : 'Pass'}</Text>
                 </TouchableOpacity>
             </View>
 
-            {revealed && (
+            {(revealed || (!!entry.notes && revealed)) && (
                 <View style={styles.revealedPw}>
-                    <Text style={styles.revealedPwText}>{entry.password}</Text>
+                    {revealed && <Text style={styles.revealedPwText}>{entry.password}</Text>}
                     {!!entry.notes && <Text style={styles.notesText}>{entry.notes}</Text>}
                 </View>
             )}
@@ -378,11 +446,36 @@ export default function VaultListScreen() {
                     </Text>
                 </View>
             ) : (
-                <FlatList
-                    data={filtered}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => <VaultCard entry={item} onDelete={handleDelete} onEdit={openEdit} onShare={setSharingEntry} />}
+                <SectionList
+                    sections={((): Array<{ title: string; data: VaultEntryLocal[] }> => {
+                        const groups = filtered.reduce((acc: Record<string, VaultEntryLocal[]>, entry: VaultEntryLocal) => {
+                            const url = entry.url || 'No URL';
+                            if (!acc[url]) acc[url] = [];
+                            acc[url].push(entry);
+                            return acc;
+                        }, {});
+                        
+                        return Object.keys(groups)
+                            .sort((a: string, b: string) => a.localeCompare(b))
+                            .map((url: string) => ({ title: url, data: groups[url] }));
+                    })()}
+                    keyExtractor={(item: VaultEntryLocal) => item.id}
+                    renderItem={({ item }: { item: VaultEntryLocal }) => (
+                        <VaultCard 
+                            entry={item} 
+                            onDelete={handleDelete} 
+                            onEdit={openEdit} 
+                            onShare={setSharingEntry} 
+                        />
+                    )}
+                    renderSectionHeader={({ section: { title } }: { section: { title: string } }) => (
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="link-outline" size={14} color={Colors.primary} style={{ marginRight: 6 }} />
+                            <Text style={styles.sectionTitle}>{title}</Text>
+                        </View>
+                    )}
                     contentContainerStyle={{ padding: Spacing.md, paddingBottom: 100 }}
+                    stickySectionHeadersEnabled={false}
                     refreshControl={
                         <RefreshControl
                             refreshing={isLoading}
@@ -396,44 +489,137 @@ export default function VaultListScreen() {
             <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('AddCredential')}>
                 <Ionicons name="add" size={28} color={Colors.background} />
             </TouchableOpacity>
+            
+            <Modal visible={incomingOpen} transparent animationType="slide" onRequestClose={() => setIncomingOpen(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalCard, { maxHeight: '80%' }]}>
+                        <View style={styles.modalHeader}>
+                            <View style={styles.modalTitleRow}>
+                                <Ionicons name="mail-outline" size={22} color={Colors.primary} style={{ marginRight: 8 }} />
+                                <Text style={styles.modalTitle}>Incoming Shares</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setIncomingOpen(false)} style={styles.modalCloseBtn}>
+                                <Ionicons name="close" size={24} color={Colors.textMuted} />
+                            </TouchableOpacity>
+                        </View>
+                        
+                        <FlatList
+                            data={incomingShares}
+                            keyExtractor={(item) => item.id}
+                            ListEmptyComponent={
+                                <View style={{ padding: 20, alignItems: 'center' }}>
+                                    <Text style={Typography.muted}>No new shared credentials</Text>
+                                </View>
+                            }
+                            renderItem={({ item }) => (
+                                <View style={styles.incomingShareItem}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={Typography.subheading}>{item.sender.email}</Text>
+                                        <Text style={[Typography.muted, { fontSize: 10 }]}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                        <TouchableOpacity 
+                                            style={[styles.shareActionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]} 
+                                            onPress={() => handleRejectIncoming(item.id)}
+                                        >
+                                            <Ionicons name="close" size={16} color="#EF4444" />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity 
+                                            style={[styles.shareActionBtn, { backgroundColor: Colors.primaryDim }]} 
+                                            onPress={() => handleAcceptIncoming(item.id)}
+                                        >
+                                            <Ionicons name="checkmark" size={16} color={Colors.primary} />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            )}
+                            contentContainerStyle={{ paddingBottom: 20 }}
+                        />
+                    </View>
+                </View>
+            </Modal>
 
             <Modal visible={!!editingEntry} transparent animationType="fade" onRequestClose={() => setEditingEntry(null)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalCard}>
-                        <Text style={styles.modalTitle}>Edit Credential</Text>
-
-                        <TextInput style={styles.modalInput} value={editUrl} onChangeText={setEditUrl} placeholder="URL" placeholderTextColor={Colors.textMuted} />
-                        <TextInput style={styles.modalInput} value={editUsername} onChangeText={setEditUsername} placeholder="Username" placeholderTextColor={Colors.textMuted} />
-
-                        <View style={styles.modalInputRow}>
-                            <TextInput
-                                style={[styles.modalInput, { flex: 1, marginBottom: 0 }]}
-                                value={editPassword}
-                                onChangeText={setEditPassword}
-                                placeholder="Password"
-                                placeholderTextColor={Colors.textMuted}
-                                secureTextEntry={!showEditPassword}
-                            />
-                            <TouchableOpacity onPress={() => setShowEditPassword((v) => !v)} style={styles.eyeBtn}>
-                                <Ionicons name={showEditPassword ? 'eye-off-outline' : 'eye-outline'} size={16} color={Colors.textMuted} />
+                        <View style={styles.modalHeader}>
+                            <View>
+                                <View style={styles.modalTitleRow}>
+                                    <Ionicons name="create-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
+                                    <Text style={styles.modalTitle}>Edit Credential</Text>
+                                </View>
+                                <Text style={styles.modalSubtitle}>Update your stored credential information</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setEditingEntry(null)} style={styles.modalCloseBtn}>
+                                <Ionicons name="close" size={24} color={Colors.textMuted} />
                             </TouchableOpacity>
                         </View>
 
-                        <TextInput
-                            style={[styles.modalInput, { height: 84, textAlignVertical: 'top' }]}
-                            value={editNotes}
-                            onChangeText={setEditNotes}
-                            placeholder="Notes (optional)"
-                            placeholderTextColor={Colors.textMuted}
-                            multiline
-                        />
+                        <View style={styles.modalBody}>
+                            <InputField
+                                label="URL"
+                                value={editUrl}
+                                onChangeText={setEditUrl}
+                                placeholder="https://example.com"
+                                icon="globe-outline"
+                            />
+                            
+                            <InputField
+                                label="Username / Email"
+                                value={editUsername}
+                                onChangeText={setEditUsername}
+                                placeholder="your@email.com"
+                                icon="person-outline"
+                            />
 
-                        <View style={styles.modalActions}>
+                            <View style={styles.fieldContainer}>
+                                <View style={styles.passwordLabelRow}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={styles.fieldLabel}>Password</Text>
+                                    </View>
+                                    <TouchableOpacity 
+                                        onPress={() => setEditPassword(generatePassword())} 
+                                        style={styles.generateBtn}
+                                    >
+                                        <Ionicons name="sparkles" size={10} color={Colors.primary} />
+                                        <Text style={styles.generateBtnText}>Generate</Text>
+                                    </TouchableOpacity>
+                                </View>
+                                <View style={styles.fieldRow}>
+                                    <Ionicons name="key-outline" size={16} color={Colors.textMuted} style={{ marginRight: 8 }} />
+                                    <TextInput
+                                        style={[styles.fieldInput, { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }]}
+                                        value={editPassword}
+                                        onChangeText={setEditPassword}
+                                        placeholder="Enter password"
+                                        placeholderTextColor={Colors.textMuted}
+                                        secureTextEntry={!showEditPassword}
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                    />
+                                    <TouchableOpacity onPress={() => setShowEditPassword(v => !v)} style={{ padding: 4 }}>
+                                        <Ionicons name={showEditPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={Colors.textMuted} />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+
+                            <InputField
+                                label="Notes (optional)"
+                                value={editNotes}
+                                onChangeText={setEditNotes}
+                                placeholder="Additional information"
+                                multiline
+                                icon="document-text-outline"
+                            />
+                        </View>
+
+                        <View style={styles.modalFooter}>
                             <TouchableOpacity style={styles.modalBtnSecondary} onPress={() => setEditingEntry(null)}>
                                 <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={styles.modalBtnPrimary} onPress={saveEdit}>
-                                <Text style={styles.modalBtnPrimaryText}>Save</Text>
+                                <Ionicons name="shield-checkmark" size={16} color={Colors.background} style={{ marginRight: 6 }} />
+                                <Text style={styles.modalBtnPrimaryText}>Save Changes</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -649,7 +835,126 @@ const styles = StyleSheet.create({
         padding: Spacing.md,
         gap: Spacing.sm,
     },
-    modalTitle: { ...Typography.heading, fontSize: 18, marginBottom: Spacing.xs },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: Spacing.md,
+    },
+    modalTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    modalSubtitle: {
+        ...Typography.muted,
+        fontSize: 12,
+        marginTop: 2,
+    },
+    modalCloseBtn: {
+        padding: 4,
+    },
+    modalBody: {
+        gap: Spacing.md,
+    },
+    modalFooter: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: Spacing.sm,
+        marginTop: Spacing.lg,
+        paddingTop: Spacing.md,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
+    },
+    fieldContainer: {
+        gap: 6,
+    },
+    fieldLabel: {
+        ...Typography.muted,
+        fontSize: 12,
+        fontWeight: '600',
+        color: Colors.textMuted,
+    },
+    fieldRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.surfaceElevated,
+        borderRadius: Radius.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: 10,
+    },
+    fieldInput: {
+        flex: 1,
+        ...Typography.body,
+        fontSize: 15,
+        padding: 0,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: Spacing.sm,
+        marginTop: Spacing.md,
+        marginBottom: Spacing.xs,
+        backgroundColor: 'rgba(255, 215, 0, 0.05)',
+        borderRadius: Radius.sm,
+    },
+    sectionTitle: {
+        ...Typography.subheading,
+        fontSize: 14,
+        color: Colors.primary,
+        fontWeight: '700',
+    },
+    warningBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        padding: 10,
+        borderRadius: Radius.md,
+        marginTop: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(245, 158, 11, 0.2)',
+    },
+    warningText: {
+        color: '#F59E0B',
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    snoozeBtn: {
+        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: Radius.sm,
+    },
+    snoozeBtnText: {
+        color: '#F59E0B',
+        fontSize: 10,
+        fontWeight: '700',
+    },
+    passwordLabelRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    generateBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: Colors.primaryDim,
+        borderRadius: Radius.sm,
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderWidth: 1,
+        borderColor: Colors.primaryBorder,
+    },
+    generateBtnText: {
+        color: Colors.primary,
+        fontSize: 10,
+        fontWeight: '700',
+    },
+    modalTitle: { ...Typography.heading, fontSize: 18 },
     conflictText: { ...Typography.muted, marginBottom: Spacing.sm },
     conflictColumns: { flexDirection: 'row', gap: Spacing.sm },
     conflictCol: {
@@ -714,5 +1019,22 @@ const styles = StyleSheet.create({
         color: Colors.background,
         fontSize: 13,
         fontWeight: '700',
+    },
+    incomingShareItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        backgroundColor: Colors.surfaceElevated,
+        borderRadius: Radius.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        marginBottom: 8,
+    },
+    shareActionBtn: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });

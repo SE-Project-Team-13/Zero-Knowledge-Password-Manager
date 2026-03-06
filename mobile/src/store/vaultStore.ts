@@ -15,6 +15,7 @@ export interface VaultEntryLocal extends VaultEntry {
     notes?: string;
     createdAt?: string;
     updatedAt?: string;
+    reminderSnoozeUntil?: string;
 }
 
 interface ServerVaultRecord {
@@ -52,6 +53,7 @@ interface VaultState {
     addEntry: (entry: Omit<VaultEntryLocal, 'id' | 'createdAt' | 'updatedAt'>, derivedKey: DerivedKey, userId: string) => Promise<void>;
     updateEntry: (entry: VaultEntryLocal, derivedKey: DerivedKey, userId: string) => Promise<void>;
     deleteEntry: (id: string, derivedKey: DerivedKey, userId: string) => Promise<void>;
+    snoozeEntry: (id: string, derivedKey: DerivedKey, userId: string) => Promise<void>;
     getDeviceIdForSync: () => Promise<string>;
     flushSyncQueue: (derivedKey: DerivedKey, userId: string) => Promise<void>;
     resolveSyncConflict: (choice: 'local' | 'server', derivedKey: DerivedKey, userId: string) => Promise<boolean>;
@@ -85,6 +87,7 @@ function normalizeEntry(raw: any): VaultEntryLocal {
             : raw?.lastUpdated
                 ? String(raw.lastUpdated)
                 : new Date().toISOString(),
+        reminderSnoozeUntil: raw?.reminderSnoozeUntil ? String(raw.reminderSnoozeUntil) : '',
     };
 }
 
@@ -98,7 +101,7 @@ function toStorageFormat(entry: VaultEntryLocal): Record<string, string> {
         notes: entry.notes || '',
         createdAt: entry.createdAt || new Date().toISOString(),
         updatedAt: entry.updatedAt || new Date().toISOString(),
-        reminderSnoozeUntil: '',
+        reminderSnoozeUntil: entry.reminderSnoozeUntil || '',
     };
 }
 
@@ -618,6 +621,35 @@ export const useVaultStore = create<VaultState>((set, get) => ({
             }
         } catch (e: any) {
             console.error('[Sync] Delete entry failed', e?.response?.data || e?.message || e);
+            set({ error: e.message, isSyncing: false });
+        }
+    },
+
+    snoozeEntry: async (id, derivedKey, userId) => {
+        const snoozeUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const newEntries = get().entries.map((e) => (e.id === id ? { ...e, reminderSnoozeUntil: snoozeUntil } : e));
+        set({ entries: newEntries, isSyncing: true });
+        try {
+            const encrypted = await encryptEntries(newEntries, derivedKey);
+            const nextVersion = get().version + 1;
+            const now = Date.now();
+            await persistSnapshot(userId, { entries: newEntries, version: nextVersion, lastSyncTime: now, updatedAt: now });
+            try {
+                await pushVault(userId, encrypted, nextVersion, get().lastSyncTime || undefined);
+                const pending = await drainQueue(userId);
+                set({ version: nextVersion, lastSyncTime: now, pendingSyncCount: pending, syncConflict: null, isSyncing: false });
+            } catch (syncError: any) {
+                const pending = await enqueueSync(userId, nextVersion, encrypted);
+                set({
+                    version: nextVersion,
+                    lastSyncTime: now,
+                    pendingSyncCount: pending,
+                    error: isOfflineLikeError(syncError) ? null : syncError?.message,
+                    isSyncing: false,
+                });
+            }
+        } catch (e: any) {
+            console.error('[Sync] Snooze entry failed', e?.response?.data || e?.message || e);
             set({ error: e.message, isSyncing: false });
         }
     },

@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform,
+    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, StatusBar,
 } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
@@ -10,6 +10,7 @@ import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { API_URL } from '../config';
 import { SecureStorageService } from '../services/secureStorage';
+import { LinearGradient } from 'expo-linear-gradient';
 
 function SettingRow({ icon, title, subtitle, onPress, danger = false }: {
     icon: string;
@@ -42,7 +43,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function SettingsScreen() {
-    const { logout, userId } = useAuthStore();
+    const { logout, userId, fullName, email } = useAuthStore() as any;
     const { entries, clearVault } = useVaultStore();
     const navigation = useNavigation<any>();
 
@@ -59,7 +60,6 @@ export default function SettingsScreen() {
     };
 
     const handleLogout = () => {
-        console.log('[Auth] Sign out tapped');
         (async () => {
             const confirmed = await confirmAction(
                 'Sign Out',
@@ -67,17 +67,11 @@ export default function SettingsScreen() {
             );
             if (!confirmed) return;
             try {
-                console.log('[Auth] Sign out started');
                 clearVault();
                 await logout();
-                console.log('[Auth] Sign out completed');
             } catch (e) {
                 console.error('[Auth] Sign out failed', e);
-                if (Platform.OS === 'web') {
-                    window.alert('Sign out failed. Please try again.');
-                } else {
-                    Alert.alert('Sign out failed', 'Please try again.');
-                }
+                Alert.alert('Sign out failed', 'Please try again.');
             }
         })();
     };
@@ -94,151 +88,196 @@ export default function SettingsScreen() {
                 if (!token) throw new Error('Missing session token');
 
                 await axios.delete(`${API_URL}/auth/account`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
+                    headers: { Authorization: `Bearer ${token}` },
                 });
 
                 clearVault();
                 await logout();
-                if (Platform.OS === 'web') {
-                    window.alert('Your account has been deleted.');
-                } else {
-                    Alert.alert('Account Deleted', 'Your account has been deleted.');
-                }
+                Alert.alert('Account Deleted', 'Your account has been deleted.');
             } catch (error: any) {
                 const message = error?.response?.data?.message || error?.message || 'Failed to delete account';
-                if (Platform.OS === 'web') {
-                    window.alert(message);
-                } else {
-                    Alert.alert('Delete Failed', message);
-                }
+                Alert.alert('Delete Failed', message);
             }
         })();
     };
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 80 }}>
-            {/* Header */}
-            <View style={styles.header}>
-                <View style={styles.avatarRing}>
-                    <Ionicons name="person" size={32} color={Colors.primary} />
-                </View>
-                <Text style={styles.headerTitle}>Settings</Text>
-                <Text style={styles.headerSub}>User ID: {userId?.slice(0, 8)}...</Text>
-            </View>
-
-            <Section title="Security">
-                <SettingRow
-                    icon="lock-closed-outline"
-                    title="Change Master Password"
-                    subtitle="Re-encrypt your vault with a new password"
-                    onPress={() => navigation.navigate('ChangePassword')}
-                />
-                <SettingRow
-                    icon="shield-checkmark-outline"
-                    title="Encryption"
-                    subtitle="AES-256-GCM + Argon2id KDF"
-                />
-                <SettingRow
-                    icon="key-outline"
-                    title="Zero-Knowledge"
-                    subtitle="Your master password never leaves this device"
-                />
-                <SettingRow
-                    icon="sync-outline"
-                    title="Vault Items"
-                    subtitle={`${entries.length} encrypted credential${entries.length !== 1 ? 's' : ''} synced`}
-                />
-            </Section>
-
-            <Section title="Danger Zone">
-                <SettingRow
-                    icon="trash-outline"
-                    title="Delete Account"
-                    subtitle="Permanently remove your account and vault data"
-                    onPress={handleDeleteAccount}
-                    danger
-                />
-                <SettingRow
-                    icon="log-out-outline"
-                    title="Sign Out"
-                    subtitle="Clears session and vault cache"
-                    onPress={handleLogout}
-                    danger
-                />
-            </Section>
-
-            <View style={styles.footer}>
-                <View style={styles.badges}>
-                    <View style={styles.badge}>
-                        <Ionicons name="shield-checkmark" size={12} color={Colors.success} />
-                        <Text style={styles.badgeText}>AES-256-GCM</Text>
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" />
+            <LinearGradient
+                colors={[Colors.background, '#080808', '#121212']}
+                style={styles.gradient}
+            >
+                <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+                    {/* Header */}
+                    <View style={styles.header}>
+                        <LinearGradient
+                            colors={[Colors.primaryDim, 'transparent']}
+                            style={styles.headerGradient}
+                        />
+                        <View style={styles.avatarContainer}>
+                            <View style={styles.avatarRing}>
+                                <Ionicons name="person" size={40} color={Colors.primary} />
+                            </View>
+                            <TouchableOpacity style={styles.editAvatarBtn}>
+                                <Ionicons name="camera" size={16} color={Colors.background} />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.headerTitle}>{fullName || 'Zenith User'}</Text>
+                        <Text style={styles.headerSub}>{email || 'No email provided'}</Text>
+                        
+                        <View style={styles.userIdBadge}>
+                            <Text style={styles.userIdText}>ID: {userId?.slice(0, 8).toUpperCase()}...</Text>
+                        </View>
                     </View>
-                    <View style={styles.badge}>
-                        <Ionicons name="lock-closed" size={12} color={Colors.primary} />
-                        <Text style={styles.badgeText}>Argon2id</Text>
+
+                    <Section title="Security & Privacy">
+                        <SettingRow
+                            icon="lock-closed-outline"
+                            title="Change Master Password"
+                            subtitle="Re-encrypt your entire vault"
+                            onPress={() => navigation.navigate('ChangePassword')}
+                        />
+                        <SettingRow
+                            icon="shield-checkmark-outline"
+                            title="Emergency Kit"
+                            subtitle="Generate a recovery key"
+                            onPress={() => navigation.navigate('EmergencyKit')}
+                        />
+                        <SettingRow
+                            icon="finger-print-outline"
+                            title="Biometric Login"
+                            subtitle="Enable FaceID or Fingerprint"
+                            onPress={() => Alert.alert('Coming Soon', 'Biometric authentication is being refined.')}
+                        />
+                    </Section>
+
+                    <Section title="Data & Sync">
+                        <SettingRow
+                            icon="sync-outline"
+                            title="Vault Status"
+                            subtitle={`${entries.length} items synced to cloud`}
+                        />
+                        <SettingRow
+                            icon="cloud-download-outline"
+                            title="Export Vault"
+                            subtitle="Download encrypted backup"
+                            onPress={() => Alert.alert('Coming Soon', 'Secure export is in development.')}
+                        />
+                    </Section>
+
+                    <Section title="Account Actions">
+                        <SettingRow
+                            icon="log-out-outline"
+                            title="Sign Out"
+                            subtitle="Safe exit from your session"
+                            onPress={handleLogout}
+                            danger
+                        />
+                        <SettingRow
+                            icon="trash-outline"
+                            title="Delete Account"
+                            subtitle="Permanently erase everything"
+                            onPress={handleDeleteAccount}
+                            danger
+                        />
+                    </Section>
+
+                    <View style={styles.footer}>
+                        <View style={styles.badges}>
+                            <View style={styles.footerIcon}>
+                                <Ionicons name="shield" size={16} color={Colors.primary} />
+                            </View>
+                            <Text style={styles.footerText}>Zenith Vault v1.2.0</Text>
+                        </View>
+                        <Text style={styles.copyright}>Zero-Knowledge Architecture</Text>
                     </View>
-                    <View style={styles.badge}>
-                        <Ionicons name="key" size={12} color={Colors.purple} />
-                        <Text style={styles.badgeText}>Zero-Knowledge</Text>
-                    </View>
-                </View>
-                <Text style={styles.footerText}>© 2026 Zenith Vault - Secure Password Manager</Text>
-            </View>
-        </ScrollView>
+                </ScrollView>
+            </LinearGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: Colors.background },
+    container: { flex: 1 },
+    gradient: { flex: 1 },
     header: {
-        alignItems: 'center', paddingTop: 60, paddingBottom: Spacing.xl,
-        paddingHorizontal: Spacing.md,
-        borderBottomWidth: 1, borderBottomColor: Colors.border,
+        alignItems: 'center',
+        paddingTop: Platform.OS === 'ios' ? 80 : 60,
+        paddingBottom: Spacing.xl,
+        position: 'relative',
+    },
+    headerGradient: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0, height: 200,
+    },
+    avatarContainer: {
+        position: 'relative',
+        marginBottom: 16,
     },
     avatarRing: {
-        width: 72, height: 72, borderRadius: 36,
-        backgroundColor: Colors.primaryDim,
-        borderWidth: 2, borderColor: Colors.primaryBorder,
+        width: 100, height: 100, borderRadius: 50,
+        backgroundColor: Colors.surface,
+        borderWidth: 3, borderColor: Colors.primary,
         justifyContent: 'center', alignItems: 'center',
-        marginBottom: Spacing.sm,
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.3,
+        shadowRadius: 15,
+        elevation: 12,
     },
-    headerTitle: { ...Typography.heading, fontSize: 22 },
-    headerSub: { ...Typography.muted, fontSize: 12, marginTop: 4 },
-    section: { marginTop: Spacing.lg, paddingHorizontal: Spacing.md },
+    editAvatarBtn: {
+        position: 'absolute',
+        bottom: 0, right: 0,
+        backgroundColor: Colors.primary,
+        width: 32, height: 32, borderRadius: 16,
+        justifyContent: 'center', alignItems: 'center',
+        borderWidth: 3, borderColor: Colors.background,
+    },
+    headerTitle: { ...Typography.heading, fontSize: 24 },
+    headerSub: { ...Typography.muted, fontSize: 14, marginTop: 4 },
+    userIdBadge: {
+        marginTop: 12,
+        backgroundColor: Colors.surfaceElevated,
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: Radius.full,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    userIdText: { ...Typography.mono, fontSize: 10, color: Colors.textMuted },
+    section: { marginTop: Spacing.xl, paddingHorizontal: Spacing.lg },
     sectionTitle: {
         ...Typography.muted, fontSize: 11, fontWeight: '700',
-        textTransform: 'uppercase', letterSpacing: 1,
-        marginBottom: Spacing.sm,
+        textTransform: 'uppercase', letterSpacing: 1.5,
+        marginBottom: 12, marginLeft: 4,
     },
     sectionBody: {
-        backgroundColor: Colors.surface,
-        borderRadius: Radius.lg,
+        backgroundColor: Colors.surface + '99',
+        borderRadius: Radius.xl,
         borderWidth: 1, borderColor: Colors.border,
         overflow: 'hidden',
     },
     row: {
         flexDirection: 'row', alignItems: 'center',
-        padding: Spacing.md, gap: Spacing.sm,
-        borderBottomWidth: 1, borderBottomColor: Colors.border,
+        padding: Spacing.md, gap: 14,
+        borderBottomWidth: 1, borderBottomColor: Colors.border + '33',
     },
     rowIcon: {
-        width: 36, height: 36, borderRadius: Radius.sm,
+        width: 40, height: 40, borderRadius: Radius.md,
         backgroundColor: Colors.primaryDim,
         justifyContent: 'center', alignItems: 'center',
     },
-    rowIconDanger: { backgroundColor: Colors.destructiveDim },
-    rowTitle: { ...Typography.body, fontSize: 15 },
+    rowIconDanger: { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
+    rowTitle: { ...Typography.subheading, fontSize: 15 },
     rowSub: { ...Typography.muted, fontSize: 12, marginTop: 2 },
-    footer: { alignItems: 'center', marginTop: Spacing.xxl, paddingHorizontal: Spacing.md },
-    badges: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm },
-    badge: {
-        flexDirection: 'row', alignItems: 'center', gap: 4,
-        backgroundColor: Colors.surface, borderRadius: Radius.full,
-        paddingHorizontal: 10, paddingVertical: 5,
-        borderWidth: 1, borderColor: Colors.border,
+    footer: { alignItems: 'center', marginTop: 40, paddingBottom: 40 },
+    badges: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+    footerIcon: {
+        width: 24, height: 24, borderRadius: 12,
+        backgroundColor: Colors.primaryDim,
+        justifyContent: 'center', alignItems: 'center',
     },
-    badgeText: { ...Typography.muted, fontSize: 11 },
-    footerText: { ...Typography.muted, fontSize: 12 },
+    footerText: { ...Typography.heading, fontSize: 14, color: Colors.textDim },
+    copyright: { ...Typography.muted, fontSize: 11 },
 });
