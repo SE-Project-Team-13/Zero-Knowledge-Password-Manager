@@ -148,6 +148,9 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     try {
       // 1. Get salt and fresh challenge from server (to prevent replay attacks)
       const { salt, challenge, argon2Memory, argon2Iterations } = await apiClient.getSalt(email)
+      console.log(`[useVaultSync:Auth] Received salt for ${email}:`, salt);
+      console.log(`[useVaultSync:Auth] Received challenge for ${email}:`, challenge);
+      console.log(`[useVaultSync:Auth] Received Argon2 params: memory=${argon2Memory}, iterations=${argon2Iterations}`);
 
       // Convert salt hex to buffer
       const saltBuffer = parseHexToUint8Array(salt)
@@ -165,6 +168,10 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       const clientProof = await generateClientProof(verifier, challenge)
 
       // 5. Send login request
+      console.log(`[useVaultSync:Auth] Computed clientProof for ${email}:`, clientProof);
+      console.log(`[useVaultSync:Auth] Challenge used:`, challenge);
+      console.log(`[useVaultSync:Auth] Verifier used (recomputed):`, verifier);
+
       const response = await apiClient.login(email, challenge, clientProof)
 
       apiClient.setToken(response.sessionToken)
