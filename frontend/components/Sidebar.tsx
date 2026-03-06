@@ -94,164 +94,187 @@ export function Sidebar({
 
       {/* Sidebar Container */}
       <aside
-        onMouseEnter={() => setIsCollapsed(false)}
-        onMouseLeave={() => setIsCollapsed(true)}
+        onMouseEnter={() => {
+          if (window.innerWidth >= 1024) setIsCollapsed(false);
+        }}
+        onMouseLeave={() => {
+          if (window.innerWidth >= 1024) setIsCollapsed(true);
+        }}
         className={cn(
           "fixed inset-y-0 left-0 z-40 bg-card border-r border-border transition-all duration-300 lg:translate-x-0 flex flex-col",
-          isOpen ? "translate-x-0" : "-translate-x-full",
-          isCollapsed ? "w-20" : "w-72 shadow-2xl",
+          isOpen ? "translate-x-0 w-72 shadow-2xl" : "-translate-x-full",
+          "lg:w-20 lg:is-collapsed", // Default desktop state
+          !isCollapsed && "lg:w-72 lg:shadow-2xl",
           className,
         )}
+        style={{
+          // Use inline style for width to override Tailwind classes more reliably if needed, 
+          // but here we prefer class-based transitions.
+        }}
       >
-        {/* Header */}
-        <div className={cn("p-6 flex items-center transition-all", isCollapsed ? "justify-center" : "gap-3")}>
-          <div className="shrink-0">
-            <img 
-              src="/logo.png" 
-              alt="Logo" 
-              className={cn("rounded-lg border border-primary/20 shadow-md transition-all object-cover", isCollapsed ? "h-10 w-10" : "h-12 w-12")}
-            />
-          </div>
-          {!isCollapsed && (
-            <h1 className="text-xl font-bold text-foreground tracking-tight font-heading truncate leading-none">
-              Zenith <span className="text-primary font-bold">Vault</span>
-            </h1>
-          )}
-        </div>
-
-
-
-        {/* Navigation */}
-        <nav className={cn("flex-1 px-4 space-y-1", isCollapsed && "px-2")}>
-          {navItems.map((item) => (
-            <Link
-              key={item.id}
-              href={item.href}
-              title={isCollapsed ? item.label : undefined}
-              className={cn(
-                "w-full flex items-center rounded-xl text-sm font-medium transition-all group",
-                isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
-                activeView === item.id
-                  ? "bg-primary/10 text-primary border border-primary/10"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-              )}
-            >
-              <item.icon className={cn("h-5 w-5 shrink-0 transition-transform group-hover:scale-110", activeView === item.id && "text-primary")} />
-              {!isCollapsed && <span className="truncate">{item.label}</span>}
-            </Link>
-          ))}
-
-          {onPasswordAging && (
-            <button
-              onClick={onPasswordAging}
-              title={isCollapsed ? "Password Warnings" : undefined}
-              className={cn(
-                "w-full flex items-center rounded-xl text-sm font-medium transition-all group",
-                isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
-                "text-muted-foreground hover:bg-secondary hover:text-foreground",
-              )}
-            >
-              <AlertTriangle className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110 text-amber-500" />
-              {!isCollapsed && (
-                <>
-                  <span className="truncate">Password Warnings</span>
-                  {passwordAgingCount > 0 && (
-                    <span className="ml-auto rounded-full bg-amber-500/15 text-amber-600 text-[10px] px-2 py-0.5">
-                      {passwordAgingCount}
-                    </span>
-                  )}
-                </>
-              )}
-            </button>
-          )}
-        </nav>
-
-        {/* Footer Area */}
-        <div className={cn("p-4 mt-auto border-t border-border space-y-4", isCollapsed && "p-2")}>
-
-          {/* Settings & Theme Actions */}
-          <div className={cn("space-y-1", isCollapsed && "px-0")}>
-            {onEmergencyKit && (
-              <button
-                onClick={onEmergencyKit}
-                title={isCollapsed ? "Emergency Kit" : undefined}
-                className={cn(
-                  "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-secondary hover:text-foreground",
-                  isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3"
+        {/* Helper to determine if we should show expanded content (either not collapsed OR on mobile) */}
+        {(() => {
+          const showExpanded = !isCollapsed || isOpen;
+          
+          return (
+            <>
+              {/* Header */}
+              <div className={cn("p-6 flex items-center transition-all", (!showExpanded && !isOpen) ? "justify-center" : "gap-3")}>
+                <div className="shrink-0">
+                  <img 
+                    src="/logo.png" 
+                    alt="Logo" 
+                    className={cn("rounded-lg border border-primary/20 shadow-md transition-all object-cover", (!showExpanded && !isOpen) ? "h-10 w-10" : "h-12 w-12")}
+                  />
+                </div>
+                {(showExpanded || isOpen) && (
+                  <h1 className="text-xl font-bold text-foreground tracking-tight font-heading truncate leading-none">
+                    Zenith <span className="text-primary font-bold">Vault</span>
+                  </h1>
                 )}
-              >
-                <FileKey className="h-5 w-5 shrink-0 transition-transform group-hover:-rotate-12" />
-                {!isCollapsed && <span className="truncate">Emergency Kit</span>}
-              </button>
-            )}
-
-            <Link
-              href="/settings"
-              title={isCollapsed ? "Settings" : undefined}
-              className={cn(
-                "w-full flex items-center rounded-xl text-sm font-medium transition-all group",
-                isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
-                 activeView === "settings"
-                  ? "bg-primary/10 text-primary border border-primary/10"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-              )}
-            >
-              <Settings className={cn("h-5 w-5 shrink-0 transition-transform group-hover:rotate-90", activeView === "settings" && "text-primary")} />
-              {!isCollapsed && <span className="truncate">Settings</span>}
-            </Link>
-
-            <button
-              title={mounted && isCollapsed ? (resolvedTheme === 'dark' ? "Light Mode" : "Dark Mode") : undefined}
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-              className={cn(
-                "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-secondary hover:text-foreground",
-                isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3"
-              )}
-            >
-              {mounted && resolvedTheme === 'dark' ? (
-                <Sun className="h-5 w-5 shrink-0 transition-transform group-hover:rotate-90" />
-              ) : (
-                <Moon className="h-5 w-5 shrink-0 transition-transform group-hover:-rotate-12" />
-              )}
-              {!isCollapsed && <span className="truncate">{mounted && resolvedTheme === 'dark' ? "Light Mode" : "Dark Mode"}</span>}
-            </button>
-          </div>
-
-          {/* User Profile */}
-          {userEmail && (
-            <div className={cn("flex items-center transition-all bg-secondary/30 rounded-xl", isCollapsed ? "justify-center" : "gap-3 px-3 py-2")}>
-              <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary border border-primary/20 shrink-0">
-                <User className="h-4 w-4" />
               </div>
-              {!isCollapsed && (
-                <>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">
-                      {fullName || userEmail.split("@")[0]}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground truncate opacity-70">
-                      {userEmail}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={onLogout}
-                    className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0 ml-1"
-                    title="Logout"
-                  >
-                    <LogOut className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
 
-          <div className="flex items-center justify-center gap-2 text-[10px] text-muted-foreground/60 py-1">
-            <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
-            {!isCollapsed && <span className="truncate">End-to-end Encrypted</span>}
-          </div>
-        </div>
+              {/* Navigation */}
+              <nav className={cn("flex-1 px-4 space-y-1", (!showExpanded && !isOpen) && "px-2")}>
+                {navItems.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    title={(!showExpanded && !isOpen) ? item.label : undefined}
+                    onClick={() => setIsOpen(false)}
+                    className={cn(
+                      "w-full flex items-center rounded-xl text-sm font-medium transition-all group",
+                      (!showExpanded && !isOpen) ? "justify-center p-3" : "gap-3 px-4 py-3",
+                      activeView === item.id
+                        ? "bg-primary/10 text-primary border border-primary/10"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                    )}
+                  >
+                    <item.icon className={cn("h-5 w-5 shrink-0 transition-transform group-hover:scale-110", activeView === item.id && "text-primary")} />
+                    {(showExpanded || isOpen) && <span className="truncate">{item.label}</span>}
+                  </Link>
+                ))}
+
+                {onPasswordAging && (
+                  <button
+                    onClick={() => {
+                        onPasswordAging();
+                        setIsOpen(false);
+                    }}
+                    title={(!showExpanded && !isOpen) ? "Password Warnings" : undefined}
+                    className={cn(
+                      "w-full flex items-center rounded-xl text-sm font-medium transition-all group",
+                      (!showExpanded && !isOpen) ? "justify-center p-3" : "gap-3 px-4 py-3",
+                      "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                    )}
+                  >
+                    <AlertTriangle className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110 text-amber-500" />
+                    {(showExpanded || isOpen) && (
+                      <>
+                        <span className="truncate">Password Warnings</span>
+                        {passwordAgingCount > 0 && (
+                          <span className="ml-auto rounded-full bg-amber-500/15 text-amber-600 text-[10px] px-2 py-0.5">
+                            {passwordAgingCount}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </button>
+                )}
+              </nav>
+
+              {/* Footer Area */}
+              <div className={cn("p-4 mt-auto border-t border-border space-y-4", (!showExpanded && !isOpen) && "p-2")}>
+                {/* Settings & Theme Actions */}
+                <div className={cn("space-y-1", (!showExpanded && !isOpen) && "px-0")}>
+                  {onEmergencyKit && (
+                    <button
+                      onClick={() => {
+                          onEmergencyKit();
+                          setIsOpen(false);
+                      }}
+                      title={(!showExpanded && !isOpen) ? "Emergency Kit" : undefined}
+                      className={cn(
+                        "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-secondary hover:text-foreground",
+                        (!showExpanded && !isOpen) ? "justify-center p-3" : "gap-3 px-4 py-3"
+                      )}
+                    >
+                      <FileKey className="h-5 w-5 shrink-0 transition-transform group-hover:-rotate-12" />
+                      {(showExpanded || isOpen) && <span className="truncate">Emergency Kit</span>}
+                    </button>
+                  )}
+
+                  <Link
+                    href="/settings"
+                    title={(!showExpanded && !isOpen) ? "Settings" : undefined}
+                    onClick={() => setIsOpen(false)}
+                    className={cn(
+                      "w-full flex items-center rounded-xl text-sm font-medium transition-all group",
+                      (!showExpanded && !isOpen) ? "justify-center p-3" : "gap-3 px-4 py-3",
+                       activeView === "settings"
+                        ? "bg-primary/10 text-primary border border-primary/10"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    )}
+                  >
+                    <Settings className={cn("h-5 w-5 shrink-0 transition-transform group-hover:rotate-90", activeView === "settings" && "text-primary")} />
+                    {(showExpanded || isOpen) && <span className="truncate">Settings</span>}
+                  </Link>
+
+                  <button
+                    title={mounted && (!showExpanded && !isOpen) ? (resolvedTheme === 'dark' ? "Light Mode" : "Dark Mode") : undefined}
+                    onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                    className={cn(
+                      "w-full flex items-center rounded-xl text-sm font-medium transition-all group text-muted-foreground hover:bg-secondary hover:text-foreground",
+                      (!showExpanded && !isOpen) ? "justify-center p-3" : "gap-3 px-4 py-3"
+                    )}
+                  >
+                    {mounted && resolvedTheme === 'dark' ? (
+                      <Sun className="h-5 w-5 shrink-0 transition-transform group-hover:rotate-90" />
+                    ) : (
+                      <Moon className="h-5 w-5 shrink-0 transition-transform group-hover:-rotate-12" />
+                    )}
+                    {(showExpanded || isOpen) && <span className="truncate">{mounted && resolvedTheme === 'dark' ? "Light Mode" : "Dark Mode"}</span>}
+                  </button>
+                </div>
+
+                {/* User Profile */}
+                {userEmail && (
+                  <div className={cn("flex items-center transition-all bg-secondary/30 rounded-xl", (!showExpanded && !isOpen) ? "justify-center" : "gap-3 px-3 py-2")}>
+                    <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary border border-primary/20 shrink-0">
+                      <User className="h-4 w-4" />
+                    </div>
+                    {(showExpanded || isOpen) && (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-foreground truncate">
+                            {fullName || userEmail.split("@")[0]}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground truncate opacity-70">
+                            {userEmail}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={onLogout}
+                          className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0 ml-1"
+                          title="Logout"
+                        >
+                          <LogOut className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-center gap-2 text-[10px] text-muted-foreground/60 py-1">
+                  <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
+                  {(showExpanded || isOpen) && <span className="truncate">End-to-end Encrypted</span>}
+                </div>
+              </div>
+            </>
+          );
+        })()}
       </aside>
     </>
   );

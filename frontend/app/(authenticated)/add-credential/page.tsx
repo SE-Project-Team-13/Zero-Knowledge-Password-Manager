@@ -96,7 +96,7 @@ export default function AddCredentialPage() {
     };
 
     return (
-        <div className="flex-1 p-4 lg:p-8 pt-20 lg:pt-20 space-y-8 max-w-5xl mx-auto w-full">
+        <div className="flex-1 p-4 lg:p-8 pt-24 lg:pt-20 space-y-8 max-w-5xl mx-auto w-full">
             <div className="flex items-center gap-3 mb-6">
                 <div className="bg-primary/10 p-3 rounded-xl border border-primary/20">
                     <Plus className="h-6 w-6 text-primary" />
