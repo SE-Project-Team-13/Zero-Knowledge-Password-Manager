@@ -180,11 +180,11 @@ export function createRecoveryRouter(): Router {
                 })
             }
 
-            // Get user details first to check 2FA status
+            // Get user details first
             const user = await User.findById(result.userId)
             
-            // Generate a session token for the user, implicitly verifying OTP if 2FA is disabled
-            const sessionToken = await generateSessionToken(result.userId!, 24 * 60, !user?.is2faEnabled)
+            // Generate a session token for the user. They must pass OTP next because 2FA is mandatory.
+            const sessionToken = await generateSessionToken(result.userId!, 24 * 60, false)
 
             return res.status(200).json({
                 success: true,

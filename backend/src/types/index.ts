@@ -13,7 +13,6 @@ export interface User {
   updatedAt: Date
   isBreached?: boolean
   lastBreachCheck?: Date
-  is2faEnabled: boolean
 }
 
 export interface Device {

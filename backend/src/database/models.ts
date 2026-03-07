@@ -17,7 +17,6 @@ export interface IUser extends Document {
   shareSigningPublicKey?: string
   argon2Memory?: number
   argon2Iterations?: number
-  is2faEnabled: boolean
 }
 
 const UserSchema = new Schema<IUser>({
@@ -33,7 +32,6 @@ const UserSchema = new Schema<IUser>({
   shareSigningPublicKey: { type: String },
   argon2Memory: { type: Number, default: 8192 },
   argon2Iterations: { type: Number, default: 1 },
-  is2faEnabled: { type: Boolean, default: false },
 })
 
 /**

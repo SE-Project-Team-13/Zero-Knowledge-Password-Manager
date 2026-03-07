@@ -65,7 +65,6 @@ export async function registerUser(email: string, fullName: string, salt: string
     verifier: user.verifier,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
-    is2faEnabled: user.is2faEnabled,
   }
 }
 
@@ -90,24 +89,20 @@ export async function authenticateUser(
     return { success: false, error: "User not found" }
   }
 
-  // 1. Verify Challenge Freshness (Replay Protection)
-  const storedChallenge = await LoginChallenge.findOne({ email: normalizedEmail })
+  // 1. Atomically find and consume the challenge (Replay Protection)
+  const storedChallenge = await LoginChallenge.findOneAndDelete({ 
+    email: normalizedEmail,
+    challenge: clientChallenge 
+  });
+
   if (!storedChallenge) {
-    return { success: false, error: "Authentication challenge expired or not found. Please request a new salt/challenge." }
+    return { success: false, error: "Authentication challenge invalid, expired, or already used." };
   }
 
-  // Check TTL (Date comparison)
+  // Check TTL
   if (storedChallenge.expiresAt < new Date()) {
-    await LoginChallenge.deleteOne({ _id: storedChallenge._id })
-    return { success: false, error: "Authentication challenge expired. Please try again." }
+    return { success: false, error: "Authentication challenge expired. Please try again." };
   }
-
-  if (storedChallenge.challenge !== clientChallenge) {
-    return { success: false, error: "Invalid authentication challenge." }
-  }
-
-  // 2. Clear challenge once used (single-use)
-  await LoginChallenge.deleteOne({ _id: storedChallenge._id })
 
   // 3. Verify Proof
   try {
@@ -134,7 +129,6 @@ export async function authenticateUser(
        updatedAt: user.updatedAt,
        isBreached: user.isBreached,
        lastBreachCheck: user.lastBreachCheck,
-       is2faEnabled: user.is2faEnabled,
      },
    }
 }
@@ -195,15 +189,15 @@ export async function authenticateUser(
  */
  export async function validateSessionToken(
   token: string,
-): Promise<{ valid: boolean; userId?: string; error?: string; isOtpVerified?: boolean; is2faEnabled?: boolean }> {
+): Promise<{ valid: boolean; userId?: string; error?: string; isOtpVerified?: boolean }> {
   const hashedToken = hashToken(token)
   const session = await Session.findOne({ token: hashedToken, expiresAt: { $gt: new Date() } }).populate("userId")
 
-  if (!session) {
+  if (!session || !session.userId) {
     if (!isProduction || isDebug) {
-      console.warn("[VaultSync:Auth] Session not found or expired for token:", token.substring(0, 20) + "...")
+      console.warn("[VaultSync:Auth] Session not found, expired, or user deleted.");
     }
-    return { valid: false, error: "Invalid or expired token" }
+    return { valid: false, error: "Invalid token or user no longer exists" };
   }
 
   if (!isProduction || isDebug) {
@@ -213,9 +207,8 @@ export async function authenticateUser(
   const user = session.userId as any;
   return { 
     valid: true, 
-    userId: session.userId._id.toString(), 
+    userId: user._id.toString(), 
     isOtpVerified: session.isOtpVerified,
-    is2faEnabled: user?.is2faEnabled || false
   }
 }
 
@@ -398,5 +391,11 @@ export async function deleteUserAccount(userId: string): Promise<void> {
   const email = user.email.toLowerCase()
   await SimpleVault.deleteMany({ $or: [{ userId: userId }, { userId: email }] })
   await OTP.deleteMany({ email })
+
+  // 7. MUST Delete Shared Credentials or the dashboard will crash trying to fetch them later
+  const { SharedCredential } = await import("../database/models.js");
+  await SharedCredential.deleteMany({
+    $or: [{ senderUserId: userId }, { recipientUserId: userId }]
+  });
 }
 
