@@ -18,15 +18,17 @@ export interface UseVaultSyncState {
   fullName: string | null
   isBreached?: boolean
   lastBreachCheck?: string
+  is2faEnabled: boolean
 }
 
 export interface UseVaultSyncActions {
   register: (email: string, fullName: string, masterPassword: string) => Promise<void>
-  login: (email: string, masterPassword: string) => Promise<void>
+  login: (email: string, masterPassword: string) => Promise<{ is2faEnabled: boolean }>
   logout: () => void
   encryptAndSync: (entries: VaultEntry[]) => Promise<void>
   pullAndDecrypt: () => Promise<VaultEntry[]>
   resolveBreach: () => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
 export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
@@ -51,6 +53,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     fullName: null,
     isBreached: false,
     lastBreachCheck: undefined,
+    is2faEnabled: false,
   })
 
   const deviceIdRef = useRef<string>("")
@@ -73,6 +76,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       const storedFullName = localStorage.getItem("user_fullname")
       const storedToken = localStorage.getItem("auth_token")
       const storedIsBreached = localStorage.getItem("user_is_breached") === "true"
+      const storedIs2faEnabled = localStorage.getItem("user_is_2fa_enabled") === "true"
 
       if (storedSalt && storedUserId && storedToken && storedEmail) {
         // Restore session token to API client
@@ -86,7 +90,23 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
           fullName: storedFullName,
           isAuthenticated: true,
           isBreached: storedIsBreached,
+          is2faEnabled: storedIs2faEnabled,
         }))
+
+        // Silently refresh profile to ensure settings (like 2FA) are up to date
+        // Skip if 2FA is enabled but not verified yet to avoid 403 errors on the OTP screen
+        const isOtpVerified = sessionStorage.getItem("otp_verified") === "true";
+        if (!storedIs2faEnabled || isOtpVerified) {
+          apiClient.getMe(storedToken).then(profile => {
+            localStorage.setItem("user_is_2fa_enabled", "true")
+            setState(prev => ({
+              ...prev,
+              is2faEnabled: true,
+              isBreached: profile.isBreached,
+              lastBreachCheck: profile.lastBreachCheck
+            }))
+          }).catch(err => console.warn("[useVaultSync] Background profile refresh failed:", err))
+        }
       }
     }
   }, [])
@@ -123,6 +143,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       localStorage.setItem("user_id", response.userId)
       localStorage.setItem("user_email", email)
       localStorage.setItem("user_fullname", fullName)
+      localStorage.setItem("user_is_2fa_enabled", "true") // Enforce 2FA
       // Save argon2 params used at registration so VaultContext can derive
       // the correct vault key on subsequent unlocks.
       localStorage.setItem("argon2_memory", String(argon2Memory))
@@ -135,6 +156,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
         isAuthenticated: true,
         isLoading: false,
         salt: salt,
+        is2faEnabled: true,
       }))
     } catch (err) {
       const message = err instanceof Error ? err.message : "Registration failed"
@@ -184,11 +206,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       // the 128 KB used at registration → permanent GHASH decryption failure.
       localStorage.setItem("argon2_memory", String(argon2Memory || 128))
       localStorage.setItem("argon2_iterations", String(argon2Iterations || 1))
-      if (response.isBreached) {
-        localStorage.setItem("user_is_breached", "true")
-      } else {
-        localStorage.removeItem("user_is_breached")
-      }
+      localStorage.setItem("user_is_2fa_enabled", "true")
       setState((prev) => ({
         ...prev,
         userId: response.userId,
@@ -199,7 +217,9 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
         salt: salt,
         isBreached: response.isBreached,
         lastBreachCheck: response.lastBreachCheck,
+        is2faEnabled: true,
       }))
+      return { is2faEnabled: true }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed"
       setState((prev) => ({ ...prev, error: message, isLoading: false }))
@@ -216,6 +236,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
     sessionStorage.removeItem("otp_verified")
     sessionStorage.removeItem("session_master_password")
     localStorage.removeItem("user_is_breached")
+    localStorage.removeItem("user_is_2fa_enabled")
     setState({
       userId: null,
       email: null,
@@ -229,6 +250,7 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       fullName: null,
       isBreached: false,
       lastBreachCheck: undefined,
+      is2faEnabled: false,
     })
   }, [])
 
@@ -305,6 +327,20 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
         localStorage.removeItem("user_is_breached")
         setState((prev) => ({ ...prev, isBreached: false }))
       },
+      refreshProfile: async () => {
+        try {
+          const profile = await apiClient.getMe()
+          localStorage.setItem("user_is_2fa_enabled", "true")
+          setState(prev => ({
+            ...prev,
+            is2faEnabled: true,
+            isBreached: profile.isBreached,
+            lastBreachCheck: profile.lastBreachCheck
+          }))
+        } catch (err) {
+          console.error("[useVaultSync] Manual profile refresh failed:", err)
+        }
+      }
     },
   ]
 }

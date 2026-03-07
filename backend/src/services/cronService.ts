@@ -29,7 +29,7 @@ export async function runBreachDetectionJob(breachChecker = checkEmailBreach) {
                     { _id: user._id },
                     {
                         isBreached: true,
-                        lastBreachCheck: new Date().toISOString().replace("T", " ").substring(0, 19)
+                        lastBreachCheck: new Date()
                     },
                     { runValidators: false }
                 );
@@ -39,7 +39,7 @@ export async function runBreachDetectionJob(breachChecker = checkEmailBreach) {
                 // Update check timestamp
                 await User.updateOne(
                     { _id: user._id },
-                    { lastBreachCheck: new Date().toISOString().replace("T", " ").substring(0, 19) },
+                    { lastBreachCheck: new Date() },
                     { runValidators: false }
                 );
             }
@@ -60,22 +60,21 @@ export async function runCleanupJob() {
     try {
         // Dynamic import to avoid circular dependencies if any (though models usually safe)
         const { Session, OTP, LoginChallenge } = await import("../database/models.js");
-        const now = new Date().toISOString().replace("T", " ").substring(0, 19);
 
         // Cleanup expired sessions
-        const sessionResult = await Session.deleteMany({ expiresAt: { $lt: now } });
+        const sessionResult = await Session.deleteMany({ expiresAt: { $lt: new Date() } });
         if (sessionResult.deletedCount > 0) {
             console.log(`[VaultSync:Cron] Cleaned up ${sessionResult.deletedCount} expired sessions.`);
         }
 
         // Cleanup expired OTPs
-        const otpResult = await OTP.deleteMany({ expiresAt: { $lt: now } });
+        const otpResult = await OTP.deleteMany({ expiresAt: { $lt: new Date() } });
         if (otpResult.deletedCount > 0) {
             console.log(`[VaultSync:Cron] Cleaned up ${otpResult.deletedCount} expired OTPs.`);
         }
 
         // Cleanup expired login challenges
-        const challengeResult = await LoginChallenge.deleteMany({ expiresAt: { $lt: now } });
+        const challengeResult = await LoginChallenge.deleteMany({ expiresAt: { $lt: new Date() } });
         if (challengeResult.deletedCount > 0) {
             console.log(`[VaultSync:Cron] Cleaned up ${challengeResult.deletedCount} expired login challenges.`);
         }
@@ -89,6 +88,11 @@ export async function runCleanupJob() {
  * @param cronProvider - Optional cron provider for testing.
  */
 export function initScheduledJobs(cronProvider: CronProvider | typeof cron = cron) {
+    // Skip real cron jobs during tests to prevent open handles, but allow injected mock ones
+    if (process.env.NODE_ENV === "test" && cronProvider === cron) {
+        console.log("[VaultSync:Cron] Skipping real scheduled jobs in test environment to prevent open handles.");
+        return;
+    }
     console.log("[VaultSync:Cron] Initializing scheduled jobs...");
 
     // Breach Detection Job

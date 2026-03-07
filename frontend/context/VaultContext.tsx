@@ -32,6 +32,7 @@ export interface DecryptedEntry {
     lastUpdated: string;
     reminderSnoozeUntil?: string;
     isPasswordVisible: boolean;
+    isDeleted?: boolean;
 }
 
 interface VaultContextType {
@@ -72,6 +73,7 @@ interface StorageVaultEntry {
     createdAt: string;
     updatedAt: string;
     reminderSnoozeUntil: string;
+    isDeleted?: boolean;
 }
 
 interface SyncBlobPayload {
@@ -124,6 +126,7 @@ function toStorageFormat(entry: DecryptedEntry): StorageVaultEntry {
         createdAt: entry.createdAt,
         updatedAt: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
         reminderSnoozeUntil: entry.reminderSnoozeUntil || "",
+        ...(entry.isDeleted ? { isDeleted: true } : {}),
     };
 }
 
@@ -152,16 +155,19 @@ function mergeEntries(local: DecryptedEntry[], server: DecryptedEntry[]): Decryp
     return Array.from(mergedMap.values());
 }
 
-const restoreSharingKeys = (entries: any[]) => {
-    const sharingKeysEntry = entries.find(e => e.siteName === "SYSTEM_SHARING_KEYS");
+const restoreSharingKeys = (entries: any[], passedUserId?: string) => {
+    const sharingKeysEntry = entries.find(e => e.siteName === "SYSTEM_SHARING_KEYS" || e.site === "SYSTEM_SHARING_KEYS" || e.url === "SYSTEM_SHARING_KEYS" || e.siteUrl === "SYSTEM_SHARING_KEYS");
     if (sharingKeysEntry) {
         console.log("[Sync] Found persisted sharing keys in blob, restoring to localStorage...");
-        const userId = (localStorage.getItem("user_id") || "").trim();
-        if (sharingKeysEntry.publicKey) localStorage.setItem(getPublicKeyKey(userId), sharingKeysEntry.publicKey);
-        if (sharingKeysEntry.privateKey) localStorage.setItem(getPrivateKeyKey(userId), sharingKeysEntry.privateKey);
-        if (sharingKeysEntry.signingPublicKey) localStorage.setItem(getSignPublicKeyKey(userId), sharingKeysEntry.signingPublicKey);
-        if (sharingKeysEntry.signingPrivateKey) localStorage.setItem(getSignPrivateKeyKey(userId), sharingKeysEntry.signingPrivateKey);
+        const userId = (passedUserId || localStorage.getItem("user_id") || "").trim();
+        let restored = false;
+        if (sharingKeysEntry.publicKey) { localStorage.setItem(getPublicKeyKey(userId), sharingKeysEntry.publicKey); restored = true; }
+        if (sharingKeysEntry.privateKey) { localStorage.setItem(getPrivateKeyKey(userId), sharingKeysEntry.privateKey); restored = true; }
+        if (sharingKeysEntry.signingPublicKey) { localStorage.setItem(getSignPublicKeyKey(userId), sharingKeysEntry.signingPublicKey); restored = true; }
+        if (sharingKeysEntry.signingPrivateKey) { localStorage.setItem(getSignPrivateKeyKey(userId), sharingKeysEntry.signingPrivateKey); restored = true; }
+        return restored;
     }
+    return false;
 };
 
 export function VaultProvider({ children }: { children: ReactNode }) {
@@ -204,7 +210,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const enqueueOfflineSync = React.useCallback((item: Omit<OfflineQueueItem, "id" | "createdAt">) => {
         const queue = readOfflineQueue(item.userId);
         queue.push({
-            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            id: crypto.randomUUID(),
             createdAt: Date.now(),
             ...item,
         });
@@ -292,7 +298,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 return siteName !== "VAULT_ROOT" && siteName !== "SYSTEM" && siteName !== "SYSTEM_SHARING_KEYS";
             })
             .map((entry) => ({
-                id: String(entry.id || Math.random().toString(36).substring(7)),
+                id: String(entry.id || crypto.randomUUID()),
                 url: String(entry.siteUrl || entry.url || entry.siteName || entry.site || "Unknown"), // fallback chain
                 username: String(entry.username || ""),
                 password: String(entry.password || ""),
@@ -302,11 +308,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 lastUpdated: String(entry.updatedAt || entry.lastUpdated || new Date().toISOString()),
                 reminderSnoozeUntil: String(entry.reminderSnoozeUntil || ""),
                 isPasswordVisible: false,
+                isDeleted: Boolean(entry.isDeleted || false),
             }));
     }, []);
 
     const restoreSharingKeys = React.useCallback((entries: Array<Record<string, any>>, userId?: string): boolean => {
-        const sharingKeysEntry = entries.find(e => e.siteName === "SYSTEM_SHARING_KEYS");
+        const sharingKeysEntry = entries.find(e => e.siteName === "SYSTEM_SHARING_KEYS" || e.site === "SYSTEM_SHARING_KEYS" || e.url === "SYSTEM_SHARING_KEYS" || e.siteUrl === "SYSTEM_SHARING_KEYS");
         if (sharingKeysEntry) {
             console.log("[VaultContext] Found persisted sharing keys, restoring to localStorage...");
             const pk = getPrivateKeyKey(userId);
@@ -387,7 +394,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             // These MUST match the params used when the vault was first encrypted.
             // Using different params (e.g. default 8192 instead of 128) produces
             // a completely different AES key → GHASH (auth tag) failure on decrypt.
-            const argon2Memory = Number(localStorage.getItem("argon2_memory") || "128");
+            const argon2Memory = Number(localStorage.getItem("argon2_memory") || "8192");
             const argon2Iterations = Number(localStorage.getItem("argon2_iterations") || "1");
 
             // Start parallel execution: Key Derivation (CPU) + Vault Fetch (Network)
@@ -571,15 +578,24 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
                     const rawEntries = Array.isArray(decryptedEntry) ? decryptedEntry : [];
                     // Restore sharing keys if present in the decrypted vault
-                    const keysFound = restoreSharingKeys(rawEntries, session.userId || undefined);
+                    // Use localStorage as fallback if session state is not fully populated yet
+                    const activeUserId = session.userId || localStorage.getItem("user_id") || undefined;
+                    const keysFound = restoreSharingKeys(rawEntries, activeUserId);
                     setHasSharingKeysInVault(keysFound);
 
-                    // Immediately re-register restored keys with the server
-                    // This ensures the server's public key matches our private key
-                    if (keysFound) {
-                        try {
-                            const { ensureShareKeyPair } = await import("@/lib/shareCrypto");
-                            const myKeys = await ensureShareKeyPair(session.userId || undefined);
+                    // Immediately re-register restored keys with the server, or generate them if missing
+                    try {
+                        const { ensureShareKeyPair } = await import("@/lib/shareCrypto");
+                        
+                        let myKeys;
+                        if (keysFound) {
+                            myKeys = await ensureShareKeyPair(activeUserId, false);
+                        } else {
+                            console.log("[VaultContext] Sharing keys not found in vault blob. Regenerating them to heal the account...");
+                            myKeys = await ensureShareKeyPair(activeUserId, true);
+                        }
+
+                        if (myKeys) {
                             const regToken = localStorage.getItem("auth_token");
                             if (regToken) {
                                 await fetch(buildApiUrl("/share/public-key"), {
@@ -593,11 +609,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                                         signingPublicKey: myKeys.signingPublicKey
                                     })
                                 });
-                                console.log("[VaultContext] Re-registered sharing keys with server after vault restore");
+                                console.log(`[VaultContext] ${keysFound ? 'Re-registered' : 'Registered new'} sharing keys with server after vault restore`);
                             }
-                        } catch (regErr) {
-                            console.warn("[VaultContext] Failed to re-register sharing keys:", regErr);
                         }
+                    } catch (regErr) {
+                        console.warn("[VaultContext] Failed to handle sharing keys during restore:", regErr);
                     }
 
                     const entriesWithVisibility = parseDecryptedEntries(decryptedEntry);
@@ -651,7 +667,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            const entryId = Math.random().toString(36).substring(7);
+            const entryId = crypto.randomUUID();
             const newCredential = {
                 id: entryId,
                 siteName: entryCtx.url,
@@ -731,6 +747,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
             const blob = payload.blob;
             const cryptoEngine = await import("@password-manager/crypto-engine");
+            const argon2Memory = Number(localStorage.getItem("argon2_memory") || "8192");
+            const argon2Iterations = Number(localStorage.getItem("argon2_iterations") || "1");
             const decryptResult = await cryptoEngine.decryptVault(sessionPassword, {
                 ciphertext: blob.ciphertext,
                 iv: blob.iv,
@@ -738,7 +756,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 tag: blob.authTag || blob.tag,
                 algorithm: "AES-256-GCM" as const,
                 derivationAlgorithm: "Argon2id" as const,
-            });
+            }, { memorySize: argon2Memory, iterations: argon2Iterations });
             if (!decryptResult.success || !decryptResult.data) {
                 setSyncError("Failed to decrypt synced data");
                 return false;
@@ -801,11 +819,27 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            const transportEntries = decryptedEntries
-                .filter((e) => e.id !== id)
-                .map((e) => toStorageFormat(e));
+            const transportEntries = decryptedEntries.map((e) =>
+                e.id === id
+                    ? toStorageFormat({
+                          ...e,
+                          isDeleted: true,
+                          updatedAt: new Date().toISOString(),
+                      })
+                    : toStorageFormat(e)
+            );
 
-            setDecryptedEntries((prev) => prev.filter((e) => e.id !== id));
+            // Re-encrypt and save
+            await saveVault(transportEntries, derivedKeys);
+
+            // Keep it in state for consistency, UI will filter it out
+            setDecryptedEntries((prev) =>
+                prev.map((e) =>
+                    e.id === id
+                        ? { ...e, isDeleted: true, updatedAt: new Date().toISOString() }
+                        : e
+                )
+            );
 
             await saveVault(transportEntries, derivedKeys);
             toast.success("Credential deleted!");
@@ -889,7 +923,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             const sPriv = localStorage.getItem(getSignPrivateKeyKey(userId));
 
             if (pub && priv && sPub && sPriv) {
-                const filtered = transportEntries.filter(e => e.siteName !== "SYSTEM_SHARING_KEYS");
+                const filtered = transportEntries.filter(e => e.siteName !== "SYSTEM_SHARING_KEYS" && e.siteUrl !== "system-sharing-keys");
                 filtered.push({
                     id: "system-sharing-keys",
                     siteName: "SYSTEM_SHARING_KEYS",
@@ -918,7 +952,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     authTag: encrypted.tag,
                     version: Date.now(),
                     timestamp: Date.now(),
-                    nonce: Math.random().toString(36).substring(7),
+                    nonce: crypto.randomUUID(),
                 };
             } else {
                 const vaultEntry = {
@@ -934,7 +968,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     authTag: encrypted.tag,
                     version: Date.now(),
                     timestamp: Date.now(),
-                    nonce: Math.random().toString(36).substring(7),
+                    nonce: crypto.randomUUID(),
                 };
             }
         } else {
@@ -1042,7 +1076,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
         if (pub && priv && sPub && sPriv) {
             // Remove existing if any
-            const filtered = updatedEntries.filter(e => e.siteName !== "SYSTEM_SHARING_KEYS");
+            const filtered = updatedEntries.filter(e => e.siteName !== "SYSTEM_SHARING_KEYS" && e.siteUrl !== "system-sharing-keys");
             filtered.push({
                 id: "system-sharing-keys",
                 siteName: "SYSTEM_SHARING_KEYS",
@@ -1082,7 +1116,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             authTag: encryptedVault.tag,
             version: nowTs,
             timestamp: nowTs,
-            nonce: Math.random().toString(36).substring(7),
+            nonce: crypto.randomUUID(),
         };
         localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(blobPayload));
         const baseTimestamp = Number(localStorage.getItem(getSyncTsKey(userId)) || "0") || 0;
@@ -1258,14 +1292,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         try {
             const { ensureShareKeyPair } = await import("@/lib/shareCrypto");
             const userId = session.userId || localStorage.getItem("user_id");
-            const { publicKey, signingPublicKey } = await ensureShareKeyPair(userId || undefined);
+            const myKeys = await ensureShareKeyPair(userId || undefined, false);
+            if (!myKeys) {
+                console.log("[VaultContext] Sharing keys not found during register phase. Skipping server sync until vault is decrypted and keys are restored.");
+                return;
+            }
+            const { publicKey, signingPublicKey } = myKeys;
             
-            // Check both React state AND localStorage to avoid stale closure race
-            const keysAlreadyInVault = hasSharingKeysInVault || (() => {
-                const pk = userId ? `share_private_key_pkcs8_${userId}` : "share_private_key_pkcs8";
-                const sPub = userId ? `share_sign_public_key_spki_${userId}` : "share_sign_public_key_spki";
-                return !!(localStorage.getItem(pk) && localStorage.getItem(sPub));
-            })();
+            // Use pure React state flag: if they were not in the decrypted vault, they must be persisted.
+            // DO NOT check localStorage here, because ensureShareKeyPair drops them into localStorage
+            // immediately *before* they've been securely saved to the cloud vault payload.
+            const keysAlreadyInVault = hasSharingKeysInVault;
 
             if (!keysAlreadyInVault && isUnlocked && derivedKeys) {
                 console.log("[VaultContext] Sharing keys not found in vault, triggering persistence save...");
@@ -1323,7 +1360,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
         // 1. Get our current keys and ALWAYS re-register them with the server
         //    This is the self-healing step that ensures server + localStorage are in sync
-        const myKeys = await ensureShareKeyPair(userId || undefined);
+        const myKeys = await ensureShareKeyPair(userId || undefined, true);
+        if (!myKeys) throw new Error("Sharing keys could not be generated");
+        
         console.log("[VaultContext] Syncing signing key with server before share...");
         const regRes = await fetch(buildApiUrl("/share/public-key"), {
             method: "POST",
@@ -1433,7 +1472,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     encryptedSessionKey: share.encryptedSessionKey,
                     ciphertext: share.ciphertext,
                     iv: share.iv,
-                }, userId || undefined);
+                }, userId || undefined, share.recipientEmail || session.email || "");
             } catch (decryptErr) {
                 console.error("[VaultContext] RSA Decryption failed (OperationError usually means key mismatch):", decryptErr);
                 console.log("[VaultContext] Share data ID:", shareId);

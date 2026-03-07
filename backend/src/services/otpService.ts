@@ -10,12 +10,28 @@ const otpAttempts = new Map<string, { count: number; lastAttempt: number }>();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
 
+// FIX: Prevent memory leak by periodically pruning expired rate-limit entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, data] of otpAttempts.entries()) {
+    if (now - data.lastAttempt > LOCKOUT_TIME) {
+      otpAttempts.delete(email);
+    }
+  }
+}, LOCKOUT_TIME);
+
 // Log active email mode at startup
 const isMockEmailMode = process.env.MOCK_EMAIL === "true";
 if (isMockEmailMode) {
-  console.warn(
-    "[VaultSync:OTP] ⚠️  MOCK EMAIL MODE IS ACTIVE — OTPs will be logged to console, NOT emailed.",
-  );
+  if (isProduction) {
+    console.error(
+      "[VaultSync:OTP] 🚨 MOCK EMAIL MODE IS ACTIVE IN PRODUCTION! OTPs will NOT be logged or emailed, users will be locked out.",
+    );
+  } else {
+    console.warn(
+      "[VaultSync:OTP] ⚠️  MOCK EMAIL MODE IS ACTIVE — OTPs will be logged to console, NOT emailed.",
+    );
+  }
 } else {
   const hasGmailCredentials =
     !!process.env.GMAIL_CLIENT_ID &&
@@ -64,10 +80,7 @@ export async function sendOTP(
     await otpModel.deleteMany({ email: normalizedEmail });
 
     const code = generateOTPCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
-      .toISOString()
-      .replace("T", " ")
-      .substring(0, 19);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await otpModel.create({
       email: normalizedEmail,
@@ -131,11 +144,15 @@ export async function sendOTP(
       }
     } else {
       // In mock mode, log the OTP code to the console
-      console.log("--------------------------------------------------");
-      console.log(`[VaultSync:OTP] 🔐 MOCK MODE ACCESS CODE (MOCK_EMAIL=true)`);
-      console.log(`[VaultSync:OTP] EMAIL: ${normalizedEmail}`);
-      console.log(`[VaultSync:OTP] CODE:  ${code}`);
-      console.log("--------------------------------------------------");
+      if (process.env.NODE_ENV === "production") {
+        console.warn("[VaultSync:OTP] WARNING: MOCK_EMAIL is true in production environment! Generating OTP without sending or logging it.");
+      } else {
+        console.log("--------------------------------------------------");
+        console.log(`[VaultSync:OTP] 🔐 MOCK MODE ACCESS CODE (MOCK_EMAIL=true)`);
+        console.log(`[VaultSync:OTP] EMAIL: ${normalizedEmail}`);
+        console.log(`[VaultSync:OTP] CODE:  ${code}`);
+        console.log("--------------------------------------------------");
+      }
     }
 
     return { success: true, message: "OTP sent successfully" };
@@ -173,12 +190,11 @@ export async function verifyOTP(
       };
     }
 
-    const now = new Date().toISOString().replace("T", " ").substring(0, 19);
     const otp = await otpModel.findOne({
       email: normalizedEmail,
       code,
       verified: false,
-      expiresAt: { $gt: now },
+      expiresAt: { $gt: new Date() },
     });
 
     if (!otp) {
@@ -211,8 +227,7 @@ export async function verifyOTP(
  */
 export async function cleanupExpiredOTPs(otpModel = OTP): Promise<void> {
   try {
-    const now = new Date().toISOString().replace("T", " ").substring(0, 19);
-    const result = await otpModel.deleteMany({ expiresAt: { $lt: now } });
+    const result = await otpModel.deleteMany({ expiresAt: { $lt: new Date() } });
     if (result.deletedCount > 0) {
       console.log(
         `[VaultSync:OTP] Cleaned up ${result.deletedCount} expired OTPs`,

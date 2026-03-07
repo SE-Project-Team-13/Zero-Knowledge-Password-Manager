@@ -75,8 +75,8 @@ async function getAuthHeaders() {
 }
 
 function normalizeEntry(raw: any): VaultEntryLocal | null {
-    const siteName = String(raw?.siteName || raw?.site || "");
-    if (siteName === "VAULT_ROOT" || siteName === "SYSTEM" || siteName === "SYSTEM_SHARING_KEYS") {
+    const siteName = String(raw?.siteName || raw?.site || raw?.url || raw?.siteUrl || "");
+    if (siteName.toUpperCase() === "VAULT_ROOT" || siteName.toUpperCase() === "SYSTEM" || siteName.toUpperCase() === "SYSTEM_SHARING_KEYS" || siteName.replace(/-/g, '_').toUpperCase() === "SYSTEM_SHARING_KEYS") {
         return null;
     }
 
@@ -202,7 +202,7 @@ async function decryptEntries(record: ServerVaultRecord, derivedKey: DerivedKey)
     if (!Array.isArray(rawEntries)) rawEntries = [rawEntries];
 
     // Extract sharing keys fromraw entries if present (Parity with web)
-    const sharingKeysEntry = rawEntries.find(e => e.siteName === "SYSTEM_SHARING_KEYS");
+    const sharingKeysEntry = rawEntries.find(e => e.siteName === "SYSTEM_SHARING_KEYS" || e.site === "SYSTEM_SHARING_KEYS" || e.url === "SYSTEM_SHARING_KEYS" || e.siteUrl === "SYSTEM_SHARING_KEYS" || e.siteUrl === "system-sharing-keys");
     if (sharingKeysEntry) {
         console.log('[Sync] Found persisted sharing keys in blob, restoring...');
         if (sharingKeysEntry.publicKey) await SecureStorageService.saveItem("share_public_key_spki", sharingKeysEntry.publicKey);

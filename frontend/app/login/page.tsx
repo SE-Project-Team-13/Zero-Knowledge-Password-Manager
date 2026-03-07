@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import Image from "next/image"
 import {
   Shield,
   Key,
@@ -71,10 +72,15 @@ export default function LoginPage() {
 
     setIsSubmitting(true)
     try {
-      await actions.login(email, password)
+      const result = await actions.login(email, password)
       sessionStorage.setItem("session_master_password", password)
       toast.success("Login successful!")
-      router.push("/otp")
+      
+      if (result.is2faEnabled) {
+        router.push("/otp")
+      } else {
+        router.push("/dashboard")
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Wrong password"
       toast.error(message)
@@ -95,9 +101,11 @@ export default function LoginPage() {
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <div className="mx-auto mb-4">
-            <img 
+            <Image 
               src="/logo.png" 
               alt="Zenith Vault Logo" 
+              width={96}
+              height={96}
               className="h-24 w-24 mx-auto object-contain"
             />
           </div>
@@ -196,7 +204,7 @@ export default function LoginPage() {
               </Button>
 
               <div className="text-center text-sm text-muted-foreground">
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <button
                   type="button"
                   onClick={() => router.push("/register")}

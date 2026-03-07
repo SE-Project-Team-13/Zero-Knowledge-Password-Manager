@@ -35,6 +35,7 @@ import { ShareCredentialModal } from "@/components/ShareCredentialModal";
 import { Share2, Check, X, Bell } from "lucide-react";
 import { copyWithAutoClear } from "@/lib/clipboard";
 import { maskPassword } from "@/lib/password-utils";
+import Image from "next/image";
 
 function PasswordManagerContent() {
     const [session] = useVaultSync();
@@ -120,9 +121,10 @@ function PasswordManagerContent() {
     // Filter, Group and Sort Entries
     const filteredEntries = decryptedEntries.filter(
         (entry) =>
-            entry.url?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            !entry.isDeleted &&
+            (entry.url?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             entry.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (entry.notes && entry.notes.toLowerCase().includes(searchQuery.toLowerCase()))
+            (entry.notes && entry.notes.toLowerCase().includes(searchQuery.toLowerCase())))
     );
 
     // Group entries by URL and sort by URL
@@ -280,13 +282,19 @@ function PasswordManagerContent() {
                                         <div className="flex items-center gap-4 z-10 flex-1">
                                             <div className="bg-primary/10 p-2.5 rounded-xl border border-primary/10 shrink-0 flex items-center justify-center h-10 w-10">
                                                 {isRealUrl ? (
-                                                    <img 
+                                                    <Image 
                                                         src={faviconUrl} 
                                                         alt="" 
+                                                        width={24}
+                                                        height={24}
+                                                        unoptimized
                                                         className="h-6 w-6 rounded-sm object-contain"
                                                         onError={(e) => {
-                                                            (e.target as HTMLImageElement).style.display = 'none';
-                                                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                                                            const target = e.target as HTMLImageElement;
+                                                            target.style.display = 'none';
+                                                            if (target.nextElementSibling) {
+                                                                target.nextElementSibling.classList.remove('hidden');
+                                                            }
                                                         }}
                                                     />
                                                 ) : null}

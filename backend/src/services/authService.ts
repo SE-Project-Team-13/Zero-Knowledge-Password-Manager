@@ -89,25 +89,23 @@ export async function authenticateUser(
     return { success: false, error: "User not found" }
   }
 
-  // 1. Verify Challenge Freshness (Replay Protection)
-  const storedChallenge = await LoginChallenge.findOne({ email: normalizedEmail })
+  // 1. Find the challenge
+  const storedChallenge = await LoginChallenge.findOne({ 
+    email: normalizedEmail,
+    challenge: clientChallenge 
+  });
+
   if (!storedChallenge) {
-    return { success: false, error: "Authentication challenge expired or not found. Please request a new salt/challenge." }
+    return { success: false, error: "Authentication challenge invalid, expired, or already used." };
   }
 
-  // Check TTL (ISO comparison)
-  const now = new Date().toISOString().replace("T", " ").substring(0, 19)
-  if (storedChallenge.expiresAt < now) {
-    await LoginChallenge.deleteOne({ _id: storedChallenge._id })
-    return { success: false, error: "Authentication challenge expired. Please try again." }
+  // Check TTL
+  if (storedChallenge.expiresAt < new Date()) {
+    return { success: false, error: "Authentication challenge expired. Please try again." };
   }
 
-  if (storedChallenge.challenge !== clientChallenge) {
-    return { success: false, error: "Invalid authentication challenge." }
-  }
-
-  // 2. Clear challenge once used (single-use)
-  await LoginChallenge.deleteOne({ _id: storedChallenge._id })
+  // 1b. Atomically consume the challenge (Replay Protection)
+  await LoginChallenge.deleteOne({ _id: storedChallenge._id });
 
   // 3. Verify Proof
   try {
@@ -131,11 +129,11 @@ export async function authenticateUser(
       salt: user.salt,
       verifier: user.verifier,
       createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      isBreached: user.isBreached,
-      lastBreachCheck: user.lastBreachCheck,
-    },
-  }
+       updatedAt: user.updatedAt,
+       isBreached: user.isBreached,
+       lastBreachCheck: user.lastBreachCheck,
+     },
+   }
 }
 
 /**
@@ -145,12 +143,12 @@ export async function authenticateUser(
  * @param ttlMinutes - Challenge validity duration (e.g., 5 mins).
  * @returns Hex-encoded challenge.
  */
-export async function generateLoginChallenge(
+ export async function generateLoginChallenge(
   email: string,
   ttlMinutes: number = 5
 ): Promise<string> {
   const challenge = crypto.randomBytes(16).toString("hex")
-  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000)
 
   await LoginChallenge.findOneAndUpdate(
     { email: email.trim().toLowerCase() },
@@ -168,13 +166,13 @@ export async function generateLoginChallenge(
  * @param isOtpVerified - Initial OTP verification status (default: false).
  * @returns The generated session token.
  */
-export async function generateSessionToken(
+ export async function generateSessionToken(
   userId: string,
   expirationMinutes: number = 24 * 60,
   isOtpVerified: boolean = false,
 ): Promise<string> {
   const token = crypto.randomBytes(32).toString("hex")
-  const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000).toISOString().replace("T", " ").substring(0, 19)
+  const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000)
 
   const session = new Session({
     userId,
@@ -192,25 +190,29 @@ export async function generateSessionToken(
  * @param token - The session token to check.
  * @returns Validation status and userId if valid.
  */
-export async function validateSessionToken(
+ export async function validateSessionToken(
   token: string,
 ): Promise<{ valid: boolean; userId?: string; error?: string; isOtpVerified?: boolean }> {
-  // ISO string comparison works lexicographically
-  const now = new Date().toISOString().replace("T", " ").substring(0, 19)
   const hashedToken = hashToken(token)
-  const session = await Session.findOne({ token: hashedToken, expiresAt: { $gt: now } })
+  const session = await Session.findOne({ token: hashedToken, expiresAt: { $gt: new Date() } }).populate("userId")
 
-  if (!session) {
+  if (!session || !session.userId) {
     if (!isProduction || isDebug) {
-      console.warn("[VaultSync:Auth] Session not found or expired for token:", token.substring(0, 20) + "...")
+      console.warn("[VaultSync:Auth] Session not found, expired, or user deleted.");
     }
-    return { valid: false, error: "Invalid or expired token" }
+    return { valid: false, error: "Invalid token or user no longer exists" };
   }
 
   if (!isProduction || isDebug) {
     console.log("[VaultSync:Auth] Session validated successfully. isOtpVerified:", session.isOtpVerified)
   }
-  return { valid: true, userId: session.userId.toString(), isOtpVerified: session.isOtpVerified }
+  
+  const user = session.userId as any;
+  return { 
+    valid: true, 
+    userId: user._id.toString(), 
+    isOtpVerified: session.isOtpVerified,
+  }
 }
 
 /**
@@ -275,7 +277,7 @@ export async function updateUserCredentials(
   userId: string,
   salt: string,
   verifier: string,
-  encryptedVault?: {
+   encryptedVault?: {
     ciphertext: string
     iv: string
     salt: string
@@ -284,7 +286,8 @@ export async function updateUserCredentials(
     deviceId: string
   },
   argon2Memory?: number,
-  argon2Iterations?: number
+  argon2Iterations?: number,
+  confirmVaultDeletion?: boolean
 ): Promise<void> {
   // Update User credentials
   const updateData: any = { salt, verifier }
@@ -309,9 +312,9 @@ export async function updateUserCredentials(
         salt: encryptedVault.salt,
         authTag: encryptedVault.authTag,
         version: encryptedVault.version,
-        timestamp: Date.now(),
+         timestamp: Date.now(),
         nonce: crypto.randomBytes(12).toString("hex"), // New nonce
-        updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
+        updatedAt: new Date()
       },
       { upsert: true }
     )
@@ -329,18 +332,24 @@ export async function updateUserCredentials(
             ciphertext: encryptedVault.ciphertext,
             iv: encryptedVault.iv,
             salt: encryptedVault.salt,
-            tag: encryptedVault.authTag, // Compatibility layer uses 'tag'
+             tag: encryptedVault.authTag, // Compatibility layer uses 'tag'
             version: encryptedVault.version
           },
-          updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
+          updatedAt: new Date()
         },
         { upsert: true }
       );
     }
-  } else {
+   } else {
     // RECOVERY FLOW WITHOUT OLD PASSWORD:
     // If no new vault is provided, it means we couldn't re-encrypt.
     // We must clear the old vault data so the user doesn't get decryption errors.
+    
+    if (!confirmVaultDeletion) {
+      console.warn(`[AuthService] updateUserCredentials: Vault deletion aborted for user ${userId} because confirmVaultDeletion was false/missing.`);
+      return;
+    }
+
     console.log(`[AuthService] Clearing unreadable vault data for user ${userId} after password reset.`);
     
     // Clear Sync Vaults
@@ -355,6 +364,12 @@ export async function updateUserCredentials(
       const normalizedEmail = user.email.trim().toLowerCase();
       await SimpleVault.deleteMany({ $or: [{ userId: userId }, { userId: normalizedEmail }] });
     }
+
+    // FIX: Clear Unreadable Shared Credentials
+    const { SharedCredential } = await import("../database/models.js");
+    await SharedCredential.deleteMany({
+      $or: [{ senderUserId: userId }, { recipientUserId: userId }]
+    });
   }
 }
 
@@ -385,5 +400,11 @@ export async function deleteUserAccount(userId: string): Promise<void> {
   const email = user.email.toLowerCase()
   await SimpleVault.deleteMany({ $or: [{ userId: userId }, { userId: email }] })
   await OTP.deleteMany({ email })
+
+  // 7. MUST Delete Shared Credentials or the dashboard will crash trying to fetch them later
+  const { SharedCredential } = await import("../database/models.js");
+  await SharedCredential.deleteMany({
+    $or: [{ senderUserId: userId }, { recipientUserId: userId }]
+  });
 }
 

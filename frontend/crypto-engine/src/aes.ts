@@ -13,6 +13,17 @@
 
 import type { DerivedKey, EncryptedVault, VaultEntry } from "./types"
 import { gcm } from "@noble/ciphers/aes.js";
+
+// Detection for React Native Quick Crypto
+let quickCrypto: any = null;
+if (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') {
+  try {
+    // @ts-ignore
+    quickCrypto = require('react-native-quick-crypto').default;
+  } catch (e) {
+    console.warn('[CryptoEngine] React Native Quick Crypto lookup failed', e);
+  }
+}
 const IV_LENGTH = 12 // 96 bits - recommended for GCM
 // TAG_LENGTH is 128 bits (16 bytes) - automatically handled by GCM mode
 
@@ -30,21 +41,33 @@ const IV_LENGTH = 12 // 96 bits - recommended for GCM
  * - Authentication tag is automatically included by GCM mode
  */
 export async function encrypt(entry: VaultEntry, derivedKey: DerivedKey): Promise<EncryptedVault> {
-  // Generate a random 96-bit IV for this encryption
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH))
+  // Generate a random 96-bit IV
+  const iv = quickCrypto 
+    ? new Uint8Array(quickCrypto.randomBytes(IV_LENGTH))
+    : crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
   // Serialize the vault entry to JSON
   const plaintext = JSON.stringify(entry)
   const plaintextBytes = new TextEncoder().encode(plaintext)
 
-  // Encrypt using AES-256-GCM via @noble/ciphers
-  const cipher = gcm(derivedKey.encryptionKey, iv);
-  const encryptedBuffer = cipher.encrypt(plaintextBytes);
+  let ciphertextBody: Uint8Array;
+  let tag: Uint8Array;
 
-  // Split ciphertext and tag (@noble/ciphers appended tag at the end)
-  const TAG_LENGTH_BYTES = 16
-  const ciphertextBody = encryptedBuffer.slice(0, encryptedBuffer.byteLength - TAG_LENGTH_BYTES)
-  const tag = encryptedBuffer.slice(encryptedBuffer.byteLength - TAG_LENGTH_BYTES)
+  if (quickCrypto) {
+    const cipher = quickCrypto.createCipheriv('aes-256-gcm', derivedKey.encryptionKey, iv);
+    const encrypted = Buffer.concat([cipher.update(plaintextBytes), cipher.final()]);
+    ciphertextBody = new Uint8Array(encrypted);
+    tag = new Uint8Array(cipher.getAuthTag());
+  } else {
+    // Encrypt using AES-256-GCM via @noble/ciphers
+    const cipher = gcm(derivedKey.encryptionKey, iv);
+    const encryptedBuffer = cipher.encrypt(plaintextBytes);
+
+    // Split ciphertext and tag (@noble/ciphers appended tag at the end)
+    const TAG_LENGTH_BYTES = 16
+    ciphertextBody = new Uint8Array(encryptedBuffer.slice(0, encryptedBuffer.byteLength - TAG_LENGTH_BYTES))
+    tag = new Uint8Array(encryptedBuffer.slice(encryptedBuffer.byteLength - TAG_LENGTH_BYTES))
+  }
 
   // Return serializable encrypted vault object
   return {
@@ -86,9 +109,17 @@ export async function decrypt(encrypted: EncryptedVault, derivedKey: DerivedKey)
   }
 
   try {
-    // Decrypt using AES-256-GCM via @noble/ciphers
-    const decipher = gcm(derivedKey.encryptionKey, iv);
-    const plaintext = decipher.decrypt(combinedBuffer);
+    let plaintext: Uint8Array;
+
+    if (quickCrypto && combinedBuffer.length > 0) {
+      const decipher = quickCrypto.createDecipheriv('aes-256-gcm', derivedKey.encryptionKey, iv);
+      decipher.setAuthTag(tag);
+      plaintext = new Uint8Array(Buffer.concat([decipher.update(ciphertextBody), decipher.final()]));
+    } else {
+      // Decrypt using AES-256-GCM via @noble/ciphers
+      const decipher = gcm(derivedKey.encryptionKey, iv);
+      plaintext = decipher.decrypt(combinedBuffer);
+    }
 
     // Parse the decrypted JSON
     const plaintextString = new TextDecoder().decode(plaintext)
@@ -106,11 +137,12 @@ export async function decrypt(encrypted: EncryptedVault, derivedKey: DerivedKey)
  * Used for serializing binary data to JSON.
  */
 function bufferToBase64(buffer: Uint8Array): string {
-  let binary = ""
-  for (let i = 0; i < buffer.byteLength; i++) {
-    binary += String.fromCharCode(buffer[i])
+  const chunk = 8192;
+  let binary = '';
+  for (let i = 0; i < buffer.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(buffer.subarray(i, i + chunk)));
   }
-  return btoa(binary)
+  return btoa(binary);
 }
 
 /**

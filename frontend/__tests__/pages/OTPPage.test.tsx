@@ -40,7 +40,7 @@ describe("OTPPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (useRouter as jest.Mock).mockReturnValue({ push: pushMock });
-    (useVaultSync as jest.Mock).mockReturnValue([{ isAuthenticated: true, email: "test@example.com", isLoading: false }, { logout: logoutMock }]);
+    (useVaultSync as jest.Mock).mockReturnValue([{ isAuthenticated: true, email: "test@example.com", isLoading: false }, { logout: logoutMock, refreshProfile: jest.fn().mockResolvedValue({}) }]);
     (useVault as jest.Mock).mockReturnValue({ unlockVault: unlockVaultMock, isUnlocked: false });
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
@@ -60,11 +60,15 @@ describe("OTPPage", () => {
     });
   });
 
-  it("renders the identity verification screen", () => {
+  it("renders the identity verification screen", async () => {
     render(<OTPPage />);
     expect(screen.getByText("Verify Identity")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("000000")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Verify & Unlock/i })).toBeInTheDocument();
+    
+    await waitFor(() => {
+      expect(screen.queryByText(/Sending OTP/i)).not.toBeInTheDocument();
+    });
   });
 
   it("sends OTP on mount if not already sent", async () => {
@@ -75,6 +79,10 @@ describe("OTPPage", () => {
         expect.objectContaining({ method: "POST" })
       );
     });
+    
+    await waitFor(() => {
+      expect(screen.queryByText(/Sending OTP/i)).not.toBeInTheDocument();
+    });
   });
 
   it("verifies OTP and redirects to dashboard", async () => {
@@ -82,7 +90,7 @@ describe("OTPPage", () => {
     render(<OTPPage />);
     
     // Wait for initial OTP send
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText(/Sending OTP/i)).not.toBeInTheDocument());
 
     fireEvent.change(screen.getByPlaceholderText("000000"), { target: { value: "123456" } });
     fireEvent.click(screen.getByRole("button", { name: /Verify & Unlock/i }));
@@ -103,8 +111,13 @@ describe("OTPPage", () => {
     });
   });
 
-  it("logs out and redirects to login when logout button is clicked", () => {
+  it("logs out and redirects to login when logout button is clicked", async () => {
     render(<OTPPage />);
+    
+    await waitFor(() => {
+      expect(screen.queryByText(/Sending OTP/i)).not.toBeInTheDocument();
+    });
+
     fireEvent.click(screen.getByRole("button", { name: /Logout and clear session/i }));
     expect(logoutMock).toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith("/login");

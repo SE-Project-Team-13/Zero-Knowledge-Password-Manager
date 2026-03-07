@@ -5,8 +5,9 @@
 [![Security](https://img.shields.io/badge/Security-AES--256--GCM-blueviolet?style=for-the-badge&logo=shield-security)](https://en.wikipedia.org/wiki/Galois/Counter_Mode)
 [![Backend](https://img.shields.io/badge/Backend-Node.js%20%7C%20MongoDB-green?style=for-the-badge&logo=node.js)](https://nodejs.org)
 [![Frontend](https://img.shields.io/badge/Frontend-Next.js%20%7C%20Tailwind-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
+[![Mobile](https://img.shields.io/badge/Mobile-Expo%20%7C%20React%20Native-blue?style=for-the-badge&logo=expo)](https://expo.dev)
 
-This repository contains the source code for **Zenith Vault**, a secure password management system that ensures your data remains private even if the server is compromised.
+This repository contains the source code for **Zenith Vault**, a secure password management system that ensures your data remains private even if the server is compromised. It follows a strict **Zero-Knowledge** philosophy: your master password never leaves your device.
 
 ---
 
@@ -37,9 +38,11 @@ This repository contains the source code for **Zenith Vault**, a secure password
   - [Managing Passwords](#managing-passwords)
   - [Emergency Kit](#emergency-kit)
   - [Browser Extension](#browser-extension)
+  - [Mobile Application](#mobile-application-usage)
   - [Breach Detection](#breach-detection)
 - [Architecture Deep Dive](#architecture-deep-dive)
-  - [Zero-Knowledge Encryption](#zero-knowledge-encryption)
+  - [Zero-Knowledge Proof (ZKP) Authentication](#zero-knowledge-proof-zkp-authentication)
+  - [Client-Side Encryption (AES-256-GCM)](#client-side-encryption-aes-256-gcm)
   - [Breach Detection (k-Anonymity)](#breach-detection-k-anonymity-1)
   - [Blind Sync Protocol](#blind-sync-protocol)
 - [Security Best Practices](#security-best-practices)
@@ -49,27 +52,31 @@ This repository contains the source code for **Zenith Vault**, a secure password
 
 ## Introduction
 
-**Zenith Vault** handles your secrets without ever knowing them. Your master password derives an encryption key locally on your device using **Argon2id**. This key is used to encrypt your vault data with **AES-256-GCM** before it ever leaves your browser. The server only sees encrypted blobs.
+**Zenith Vault** handles your secrets without ever knowing them. Your master password is used to derive encryption keys and authentication proofs locally on your device using **Argon2id**.
+
+The system employs **Zero-Knowledge Proofs (ZKP)** for authentication, meaning the server verifies you know your password without you ever having to send it (or even a hash of it) over the network. Your vault data is encrypted with **AES-256-GCM** before uploading, ensuring total privacy.
 
 ## Features
 
 - **True Zero-Knowledge Architecture**: Server cannot decrypt your data - all encryption happens client-side.
+- **ZKP Authentication**: Log in securely without transmitting passwords or password hashes.
 - **Privacy-Preserving Breach Detection**: Checks your credentials against breach databases without exposing your accounts (using k-Anonymity).
 - **Emergency Recovery Kit**: Generate a recovery PDF to regain access if you lose your master password.
-- **Multi-Platform Support**: Web Dashboard + Browser Extension for seamless password management.
-- **Secure Authentication**: Email-based OTP verification for account security.
+- **Multi-Platform Support**: Web Dashboard, Browser Extension, and **Mobile App (Expo/React Native)**.
+- **Secure Authentication**: Multi-factor security with Email-based OTP verification.
 - **Auto-Lock & Session Management**: Automatic vault locking for enhanced security.
 
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js**: v18.0.0 or higher (v20+ recommended).
+- **Node.js**: v20.0.0 or higher recommended.
   - _Verify:_ `node -v`
-- **npm**: v9.0.0 or higher.
+- **npm**: v10.0.0 or higher.
   - _Verify:_ `npm -v`
 - **MongoDB**: A running instance (local or Atlas).
-  - _Verify:_ `mongod --version` or check Atlas dashboard.
+  - _Verify:_ `mongosh --eval "db.version()"`
+- **Expo CLI**: For mobile development (`npm install -g expo-cli`).
 - **Build Tools** (Required for `node-gyp` compilation):
   - **Windows**: Visual Studio Build Tools (C++) and Python 3.11+.
   - **macOS**: Xcode Command Line Tools (`xcode-select --install`).
@@ -77,44 +84,44 @@ Before you begin, ensure you have the following installed:
 
 ## Dependencies & Technologies
 
-This project relies on the following core libraries and technologies:
+This project is a monorepo leveraging npm workspaces:
 
 ### Frontend (`/frontend`)
 
-- **Next.js**: The React framework for production with server-side rendering.
-- **React**: Modern React with hooks and component architecture.
-- **Tailwind CSS**: Utility-first CSS framework for styling.
-- **@noble/hashes**: High-security cryptographic primitives (Argon2, SHA-256).
-- **Zod**: TypeScript-first schema validation.
-- **React Hook Form**: Performant, flexible forms validation.
-- **Shadcn/UI & Radix UI**: Accessible component primitives.
-- **Lucide React**: Beautiful & consistent icons.
-- **Sonner**: Toast notification library.
-- **jsPDF**: Client-side PDF generation for Emergency Kits.
+- **Next.js**: Modern React framework.
+- **Tailwind CSS & Shadcn/UI**: Modern styling and accessible components.
+- **Lucide React & Sonner**: Icons and toast notifications.
+- **jsPDF**: For generating the Emergency Kit.
 
 ### Backend (`/backend`)
 
-- **Node.js & Express**: High-performance web server framework.
-- **Mongoose**: MongoDB object modeling for asynchronous environment.
-- **Node-Cron**: Task scheduler for periodic breach detection jobs.
-- **Nodemailer**: Module for sending emails (OTP & Alerts).
-- **UUID**: For generating unique identifiers.
-- **Dotenv**: Zero-dependency module for loading environment variables.
+- **Node.js & Express**: High-performance API server.
+- **Mongoose**: MongoDB object modeling.
+- **Nodemailer / Gmail API**: For secure OTP and alert delivery.
+- **Node-Cron**: For scheduled security tasks (Breach Detection).
+
+### Mobile (`/mobile`)
+
+- **React Native & Expo**: Cross-platform mobile development.
+- **Zustand**: Lightweight state management.
+- **Expo Secure Store**: Hardware-backed secure storage for session keys.
 
 ### Crypto Engine (`/frontend/crypto-engine`)
 
-- **Web Crypto API**: Utilizing native browser capabilities for AES-GCM and random value generation.
+- **Web Crypto API**: Native browser/mobile cryptographic primitives.
+- **Argon2 / Noble Hashes**: High-security key derivation and hashing.
 
 ## Project Structure
 
 ```
 zenith-vault/
 ├── frontend/              # Next.js web application
-│   ├── crypto-engine/    # Core cryptographic library
+│   ├── crypto-engine/    # Shared cryptographic library
 │   └── extension/        # Browser extension
 ├── backend/              # Express.js API server
+├── mobile/               # Expo/React Native mobile client
 ├── UML diagrams/         # System architecture diagrams
-└── package.json          # Workspace configuration
+└── package.json          # Root workspace configuration
 ```
 
 ## Installation
@@ -123,51 +130,40 @@ To install the project locally, run the following commands:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/SE-Project-Team-13/zenith-vault.git
+git clone https://github.com/SE-Project-Team-13/Zero-Knowledge-Password-Manager.git
 
 # 2. Navigate to the directory
-cd zenith-vault
+cd Zero-Knowledge-Password-Manager
 
-# 3. Install dependencies (Workspaces)
+# 3. Install dependencies for all workspaces
 npm install
 
-# 4. Build the core crypto library
+# 4. Build the core crypto library (required by all clients)
 npm run crypto:build
 ```
 
 ## Configuration
 
-You need to configure both the backend and frontend environment variables.
-
-### Backend Environment
-
-Create `backend/.env` with the following:
+### Backend Environment (`backend/.env`)
 
 ```properties
 PORT=3001
 MONGODB_URI=mongodb://localhost:27017/vault
-# Email Config (Required for OTP)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-# JWT Secret
-JWT_SECRET=your-super-secret-key-at-least-32-chars
+# Gmail Config (for OTP)
+GMAIL_USER_EMAIL=...
+GMAIL_CLIENT_ID=...
+GMAIL_CLIENT_SECRET=...
+GMAIL_REFRESH_TOKEN=...
 ```
 
-> **Note:** If you don't have SMTP credentials, the system will log OTP codes to the terminal console (`npm run dev:backend`).
+_Note: In development, OTPs are logged to the terminal if Gmail is not configured._
 
-### Frontend Environment
+### Frontend/Mobile Environment
 
-Create `frontend/.env` (optional, defaults allow local dev):
-
-```properties
-NEXT_PUBLIC_API_URL=http://localhost:3001
-```
+- **Frontend**: `frontend/.env.local` (sets `NEXT_PUBLIC_API_URL`)
+- **Mobile**: `mobile/.env` (sets `EXPO_PUBLIC_API_URL`)
 
 ## Running the Project
-
-The project consists of a Backend API and a Frontend Dashboard. You must run both.
 
 ### Development Mode
 
@@ -177,300 +173,85 @@ The project consists of a Backend API and a Frontend Dashboard. You must run bot
 npm run dev:backend
 ```
 
-_Output should show: `[VaultSync] Blind sync backend listening on port 3001`_
-
-**Terminal 2: Frontend**
+**Terminal 2: Frontend (Web)**
 
 ```bash
-npm run dev
+npm run dev:frontend
 ```
 
-_Output should show: `Ready in ...` and access via `http://localhost:3000`_
-
-### Production Build
-
-To build for production:
+**Terminal 3: Mobile (Expo)**
 
 ```bash
-# Build Frontend
-npm run build -w frontend
-
-# Build Backend
-npm run build -w backend
-
-# Start Production
-npm start
+cd mobile
+npx expo start
 ```
 
 ## Verifying Installation
 
-After installation, verify that everything is set up correctly:
-
-### 1. Check Node.js and npm Versions
-
-```bash
-node -v  # Should be v18.0.0 or higher
-npm -v   # Should be v9.0.0 or higher
-```
-
-### 2. Verify MongoDB Connection
-
-```bash
-# If using local MongoDB
-mongosh --eval "db.version()"
-
-# Or check if MongoDB is running
-# Windows: Check Services for "MongoDB"
-# macOS/Linux: sudo systemctl status mongod
-```
-
-### 3. Verify Dependencies Installation
-
-```bash
-# Check if all workspaces installed correctly
-npm list --depth=0
-```
-
-Expected output should show:
-
-- `@password-manager/backend`
-- `@password-manager/crypto-engine`
-- `password-manager` (frontend)
-
-### 4. Verify Crypto Engine Build
-
-```bash
-# Check if crypto engine compiled successfully
-ls frontend/crypto-engine/dist/
-```
-
-You should see: `index.js`, `index.d.ts`, `aes.js`, `argon2.js`, `vault.js`, and corresponding `.d.ts` files.
-
-### 5. Test Backend Server
-
-```bash
-npm run dev:backend
-```
-
-**Expected output:**
-
-```
-[VaultSync] Blind sync backend listening on port 3001
-[VaultSync] MongoDB connected successfully
-[BreachDetection] Scheduled job initialized
-```
-
-If you see these messages, the backend is running correctly. Press `Ctrl+C` to stop.
-
-### 6. Test Frontend Server
-
-```bash
-npm run dev
-```
-
-**Expected output:**
-
-```
-▲ Next.js 16.0.10
-- Local:        http://localhost:3000
-✓ Ready in 2.5s
-```
-
-Open `http://localhost:3000` in your browser. You should see the login/registration page.
+1. **Backend**: Check for `[VaultSync] Blind sync backend listening on port 3001`.
+2. **Web**: Access `http://localhost:3000`.
+3. **Mobile**: Scan the QR code from Metro Bundler using the **Expo Go** app.
+4. **Crypto**: Verify `frontend/crypto-engine/dist` contains compiled assets.
 
 ## Running Tests
 
-The project includes comprehensive unit tests for both backend and frontend components.
-
-### Backend Tests
-
-Run all backend tests:
-
 ```bash
-cd backend
-npm test
-```
+# Run all tests in the monorepo
+npm test --workspaces
 
-**Test Coverage Includes:**
-
-- Authentication service tests
-- Crypto proof validation
-- Session management
-- Account management
-- Breach detection service
-- Recovery key generation
-
-**Expected output:**
-
-```
-PASS  __tests__/services/auth/registration.test.ts
-PASS  __tests__/services/auth/sessions.test.ts
-PASS  __tests__/services/auth/cryptoProofs.test.ts
-...
-Test Suites: X passed, X total
-Tests:       X passed, X total
-```
-
-### Frontend Tests
-
-Run crypto engine tests:
-
-```bash
-cd frontend/crypto-engine
-npm test
-```
-
-**Test Coverage Includes:**
-
-- AES-256-GCM encryption/decryption
-- Argon2id key derivation
-- Vault encryption/decryption
-- Data integrity validation
-
-**Expected output:**
-
-```
-✓ AES encryption produces different ciphertext for same plaintext
-✓ Argon2id key derivation is deterministic
-✓ Vault encryption includes metadata
-...
-```
-
-Run frontend component tests:
-
-```bash
-cd frontend
-npm test
-```
-
-**Test Coverage Includes:**
-
-- PDF service (Emergency Kit generation)
-- Clipboard utilities
-- Recovery key validation
-
-### Running Specific Tests
-
-```bash
-# Backend: Run specific test file
-npm test -- authService.test.ts
-
-# Frontend: Run specific test suite
-npm test -- aes.test.ts
-```
-
-### Test in Watch Mode
-
-```bash
-# Backend
-npm test -- --watch
-
-# Frontend crypto-engine
-npm test -- --watch
+# Run specific workspace tests
+npm test -w backend
+npm test -w frontend/crypto-engine
 ```
 
 ## Usage Guide
 
-Once the servers are running, follow these steps to use the application:
-
 ### Registering & Vault Creation
 
-1.  Navigate to `http://localhost:3000`.
-2.  Click **"Get Started"** or **"Register"**.
-3.  Enter your Email and a Strong Master Password.
-4.  **Important:** Your Master Password is _never_ sent to the server. It generates your encryption keys locally.
-5.  Verification: Check your terminal (or email) for the OTP code.
-
-### Managing Passwords
-
-- **Add Item**: Click the "+" button in the dashboard to add a new login.
-- **View Password**: Click the eye icon to decrypt and view a password.
-- **Copy**: Use the copy icon to copy username/password to clipboard.
-- **Edit/Delete**: Use the context menu on any item card.
+- When you register, a random salt and verifier are created locally. The server stores these but never sees your password.
+- Your Master Password generates a **Master Key** that never leaves your device.
 
 ### Emergency Kit
 
-1.  Go to **Settings** -> **Danger Zone**.
-2.  Click **"Generate Emergency Kit"**.
-3.  A PDF will be generated containing your **Recovery Key** and instructions.
-4.  **Save this PDF securely!** It is the _only_ way to recover your account if you forget your Master Password.
+- Found in **Settings -> Danger Zone**.
+- This PDF contains your **Recovery Key**. **Without it or your master password, your data is permanently inaccessible.**
 
-### Browser Extension
+### Mobile Application Usage
 
-The browser extension allows you to autofill passwords directly from your browser:
-
-1.  **Build the Extension**:
-    ```bash
-    npm run extension:build
-    ```
-2.  **Load in Browser** (Chrome/Edge):
-    - Navigate to `chrome://extensions/`
-    - Enable "Developer mode"
-    - Click "Load unpacked"
-    - Select the `frontend/extension/dist` folder
-3.  **Login**: Use the same credentials as your web dashboard.
-4.  **Autofill**: The extension will detect login forms and offer to fill credentials.
-
-### Breach Detection
-
-The system automatically checks your email against a mock breach database.
-
-- **Manual Check**: The scheduled job runs every minute (in dev).
-- **Simulate Breach**: Use the email `breached@example.com` during registration to see the Red Alert Banner on the dashboard.
+- Sync your vault across devices.
+- Secure biometric integration (FaceID/Fingerprint) is handled on-device.
+- Ensure the Mobile app is pointed to your backend IP address in the `.env` file.
 
 ## Architecture Deep Dive
 
-### Zero-Knowledge Encryption
+### Zero-Knowledge Proof (ZKP) Authentication
 
-1.  **User Input**: User types `Master Password`.
-2.  **Key Derivation**: `Argon2id` hashes the password with a random salt (100MB memory cost, 4 iterations). Result: `Derived Key`.
-3.  **Encryption**: `AES-256-GCM` uses `Derived Key` to encrypt vault data. Result: `Ciphertext`.
-4.  **Storage**: `Ciphertext` is sent to MongoDB. The server **never** sees the `Master Password` or `Derived Key`.
+Zenith Vault uses a customized challenge-response protocol. During login:
+
+1. The client requests a random challenge from the server.
+2. The client uses its local **Master Key** to sign/process this challenge.
+3. The server verifies the response matches the stored verifier without ever knowing the key.
+
+### Client-Side Encryption (AES-256-GCM)
+
+All vault items are encrypted using Authenticated Encryption (AES-GCM). This ensures:
+
+- **Confidentiality**: No one can read the data.
+- **Integrity**: The client can detect if the server or a third party has tampered with the encrypted blobs.
 
 ### Breach Detection (k-Anonymity)
 
-1.  **Hashing**: The system hashes the user's email/username (SHA-1/SHA-256).
-2.  **Prefixing**: Only the **first 5 characters** of the hash are sent to the Breach API.
-3.  **Matching**: The API returns all breaches matching that prefix.
-4.  **Local Filtering**: The client checks the full hash against the returned list locally.
-    - _Result:_ The API server never knows exactly which account you are checking along the k-anonymity set.
+Uses the "Range Search" technique:
 
-### Blind Sync Protocol
-
-The server acts as a "dumb store". It handles versioning and conflict resolution based on `vaultVersion` numbers, but it cannot merge the _content_ because it is encrypted. Conflict resolution pushes the newer version or asks client to resolve.
-
----
-
-## Security Best Practices
-
-### For Development
-
-- Never commit `.env` files to version control
-- Use strong, unique JWT secrets (minimum 32 characters)
-- Keep your MongoDB instance secured with authentication
-
-### For Production
-
-- Use HTTPS for all communications
-- Enable MongoDB authentication and use connection strings with credentials
-- Set up proper CORS policies
-- Use environment-specific configuration files
-- Regularly update dependencies for security patches
-- Consider using a managed MongoDB service (MongoDB Atlas) with IP whitelisting
-
-### For Users
-
-- Choose a strong master password (12+ characters, mixed case, numbers, symbols)
-- Store your Emergency Kit PDF in a secure location (encrypted USB, password manager, safe)
-- Never share your master password or recovery key
-- Enable 2FA on your email account used for registration
+- Client hashes email -> SHA256.
+- Client sends only the **first 5 characters** of the hash to the breach API.
+- API returns all possible matches for that prefix.
+- Client filters for the full hash locally. **The API provider never knows your actual email.**
 
 ---
 
 ## Support & Documentation
 
-For additional help:
-
-- **Issues**: Report bugs or request features on [GitHub Issues](https://github.com/SE-Project-Team-13/zenith-vault/issues)
-- **Architecture Diagrams**: See the `UML diagrams/` folder for visual documentation
-- **API Documentation**: Backend API endpoints are documented in `backend/README.md`
+- **API Reference**: See `backend/src/routes/` for endpoint definitions.
+- **UML**: Architectural diagrams available in `/UML diagrams`.
+- **Issues**: [GitHub Issues](https://github.com/SE-Project-Team-13/Zero-Knowledge-Password-Manager/issues)

@@ -5,7 +5,7 @@
 
 import { Router, type Request, type Response } from "express"
 import * as crypto from "crypto"
-import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount, generateLoginChallenge, invalidateSessionToken } from "../services/authService.js"
+import { registerUser, authenticateUser, generateSessionToken, getUserSalt, validateSessionToken, updateUserCredentials, checkUserExists, deleteUserAccount, generateLoginChallenge, invalidateSessionToken, markSessionOtpVerified } from "../services/authService.js"
 import { User } from "../database/models.js"
 import type { RegisterRequest, LoginRequest, LoginResponse, ErrorResponse } from "../types/index.js"
 import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
@@ -53,7 +53,7 @@ export function createAuthRouter(): Router {
         const user = await registerUser(email, fullName, salt, verifier, argon2Memory, argon2Iterations)
         // Newly registered users are implicitly verified for their first session
         // so they can generate their recovery key immediately.
-        const sessionToken = await generateSessionToken(user.id, 24 * 60, true)
+        const sessionToken = await generateSessionToken(user.id, 24 * 60, false)
 
         return res.status(201).json({
           userId: user.id,
@@ -110,7 +110,7 @@ export function createAuthRouter(): Router {
       }
 
       const user = authResult.user!
-      const sessionToken = await generateSessionToken(user.id)
+      const sessionToken = await generateSessionToken(user.id, 24 * 60, false) // Always require OTP
       const serverProof = crypto
         .createHash("sha256")
         .update(user.verifier + challenge)
@@ -124,6 +124,7 @@ export function createAuthRouter(): Router {
         serverProof,
         isBreached: user.isBreached,
         lastBreachCheck: user.lastBreachCheck,
+        is2faEnabled: true, // Enforced 2FA globally
       }
 
       return res.status(200).json(response)
@@ -134,6 +135,31 @@ export function createAuthRouter(): Router {
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred during login",
       } as ErrorResponse)
+    }
+  })
+
+  /**
+   * GET /auth/me
+   * Get the current authenticated user's profile.
+   */
+  router.get("/me", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const user = await User.findById(req.userId)
+      if (!user) {
+        return res.status(404).json({ error: "User not found" })
+      }
+
+      return res.status(200).json({
+        userId: user._id.toString(),
+        email: user.email,
+        fullName: user.fullName,
+        isBreached: user.isBreached,
+        lastBreachCheck: user.lastBreachCheck,
+        is2faEnabled: true,
+      })
+    } catch (error) {
+      console.error("[Auth] Me error:", error)
+      return res.status(500).json({ error: "Internal server error" })
     }
   })
 
@@ -219,7 +245,7 @@ export function createAuthRouter(): Router {
         return res.status(401).json(errorResponse)
       }
 
-      const { salt, verifier, argon2Memory, argon2Iterations, encryptedVault } = req.body
+      const { salt, verifier, argon2Memory, argon2Iterations, encryptedVault, confirmVaultDeletion } = req.body
 
       if (!salt || !verifier) {
         const errorResponse: ErrorResponse = {
@@ -230,7 +256,7 @@ export function createAuthRouter(): Router {
         return res.status(400).json(errorResponse)
       }
 
-      await updateUserCredentials(sessionValidation.userId, salt, verifier, encryptedVault, argon2Memory, argon2Iterations)
+      await updateUserCredentials(sessionValidation.userId, salt, verifier, encryptedVault, argon2Memory, argon2Iterations, confirmVaultDeletion)
 
       return res.status(200).json({
         success: true,

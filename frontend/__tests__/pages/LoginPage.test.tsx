@@ -58,6 +58,7 @@ describe("LoginPage", () => {
     fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: "test@example.com" } });
     fireEvent.change(screen.getByLabelText(/Master Password/i), { target: { value: "password123" } });
     
+    loginMock.mockResolvedValueOnce({ is2faEnabled: true });
     fireEvent.click(screen.getByRole("button", { name: /Sign In/i }));
 
     await waitFor(() => {

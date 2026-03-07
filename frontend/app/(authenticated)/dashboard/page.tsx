@@ -44,6 +44,7 @@ import { useRouter } from "next/navigation";
 import { buildApiUrl } from "@/lib/api-base-url";
 import { formatTimestampIST, formatDateTimeIST } from "@/lib/formatIST";
 import { maskPassword } from "@/lib/password-utils";
+import Image from "next/image";
 // --- Helpers ---
 
 import { useCallback } from "react";
@@ -158,7 +159,7 @@ export default function DashboardPage() {
     }
 
     // 4. User is authenticated. Check OTP status.
-    const isVerified = sessionStorage.getItem("otp_verified") === "true"
+    const isVerified = !session.is2faEnabled || sessionStorage.getItem("otp_verified") === "true"
     if (isVerified) {
       // Check if we have master password in session
       const sessionPassword = sessionStorage.getItem("session_master_password")
@@ -172,7 +173,7 @@ export default function DashboardPage() {
       // Not verified - redirect to OTP
       router.push("/otp")
     }
-  }, [session.isAuthenticated, session.email, isVaultUnlocked, masterPassword, unlockVault, router]);
+  }, [session.isAuthenticated, session.email, session.is2faEnabled, isVaultUnlocked, masterPassword, unlockVault, router]);
 
   // Removed ensureSharingKeysAndSync loop - now handled in VaultContext effect
 
@@ -256,10 +257,11 @@ export default function DashboardPage() {
 
   // ---  // 5) Filter & Group entries
   const filteredEntries = useMemo(() => {
-    if (!searchQuery.trim()) return decryptedEntries;
+    const activeEntries = decryptedEntries.filter(e => !e.isDeleted);
+    if (!searchQuery.trim()) return activeEntries;
     
     const searchLower = searchQuery.toLowerCase();
-    return decryptedEntries.filter((entry) => {
+    return activeEntries.filter((entry) => {
       const urlMatch = entry.url?.toLowerCase().includes(searchLower) ?? false;
       const usernameMatch = entry.username?.toLowerCase().includes(searchLower) ?? false;
       const notesMatch = entry.notes?.toLowerCase().includes(searchLower) ?? false;
@@ -547,7 +549,19 @@ export default function DashboardPage() {
                   const isExpanded = expandedUrls[url] || false;
                   const hasMultiple = entries.length > 1;
                   const isRealUrl = url !== "No URL";
-                  const faviconUrl = isRealUrl ? `https://www.google.com/s2/favicons?domain=${url}&sz=64` : "";
+                  
+                  // Extract hostname for more reliable favicon fetching
+                  let hostname = url;
+                  if (isRealUrl) {
+                    try {
+                      const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+                      hostname = urlObj.hostname;
+                    } catch (e) {
+                      hostname = url;
+                    }
+                  }
+                  
+                  const faviconUrl = isRealUrl ? `https://www.google.com/s2/favicons?domain=${hostname}&sz=64` : "";
 
                   return (
                     <div key={url} className="space-y-2">
@@ -559,13 +573,20 @@ export default function DashboardPage() {
                          <div className="flex items-center gap-3 min-w-0 flex-1">
                            <div className="bg-primary/10 p-2 rounded-lg shrink-0 flex items-center justify-center h-8 w-8">
                              {isRealUrl ? (
-                               <img 
+                               <Image 
                                  src={faviconUrl} 
                                  alt="" 
-                                 className="h-5 w-5 rounded-sm object-contain"
+                                 width={20}
+                                 height={20}
+                                 unoptimized
+                                 className="rounded-sm object-contain"
+                                 style={{ width: 'auto', height: 'auto' }}
                                  onError={(e) => {
-                                   (e.target as HTMLImageElement).style.display = 'none';
-                                   (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                                   const target = e.currentTarget;
+                                   target.classList.add('hidden');
+                                   if (target.nextElementSibling) {
+                                     target.nextElementSibling.classList.remove('hidden');
+                                   }
                                  }}
                                />
                              ) : null}
@@ -696,7 +717,7 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle>Secure Share</CardTitle>
               <CardDescription>
-                Share "{sharingEntry.url}" with a colleague using end-to-end encryption.
+                Share &quot;{sharingEntry.url}&quot; with a colleague using end-to-end encryption.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

@@ -9,6 +9,7 @@ import { fileURLToPath } from "url"
 import { connectToDatabase, closeDatabase } from "./database/index.js"
 import helmet from "helmet"
 import { rateLimit } from "express-rate-limit"
+import mongoSanitize from "express-mongo-sanitize"
 import { validateSessionToken } from "./services/authService.js"
 import { User, SimpleVault } from "./database/models.js"
 import { createAuthRouter } from "./routes/authRoutes.js"
@@ -97,18 +98,24 @@ async function start() {
         const url = new URL(origin)
         const host = url.hostname
         if (url.protocol !== "http:" && url.protocol !== "https:") return false
-        return host === "localhost" || host === "127.0.0.1"
+        
+        // Localhost and 127.0.0.1
+        if (host === "localhost" || host === "127.0.0.1") return true
+        
+        // Private network IP ranges
+        return host.startsWith("10.") || 
+               host.startsWith("192.168.") || 
+               (host.startsWith("172.") && Number(host.split(".")[1]) >= 16 && Number(host.split(".")[1]) <= 31)
       } catch {
         return false
       }
     }
 
-    const isRenderOrigin = (origin: string): boolean => /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin)
 
 
     app.use((req, res, next) => {
       const origin = req.headers.origin
-      if (origin && (ALLOWED_ORIGINS.includes(origin) || isAllowedDevOrigin(origin) || isRenderOrigin(origin))) {
+      if (origin && (ALLOWED_ORIGINS.includes(origin) || isAllowedDevOrigin(origin))) {
         res.header("Access-Control-Allow-Origin", origin)
         res.header("Vary", "Origin")
       } else if (!origin && !isProduction) {
@@ -149,6 +156,20 @@ async function start() {
     app.use("/otp/send", authLimiter)
 
     app.use(express.json())
+
+    // Prevent NoSQL Injection attacks by sanitizing all incoming payloads
+    app.use(mongoSanitize())
+
+    if (isProduction) {
+      // Enforce HTTPS in production environments
+      app.use((req, res, next) => {
+        if (req.headers["x-forwarded-proto"] && req.headers["x-forwarded-proto"] !== "https") {
+          const host = req.headers.host || req.hostname
+          return res.redirect(`https://${host}${req.url}`)
+        }
+        next()
+      })
+    }
 
     // Simple request logging
     app.use((req, res, next) => {
@@ -228,7 +249,7 @@ async function start() {
           {
             data: vaultData,
             labels: labels || [],
-            updatedAt: new Date().toISOString().replace("T", " ").substring(0, 19)
+            updatedAt: new Date()
           },
           { upsert: true, new: true }
         )
@@ -265,7 +286,7 @@ async function start() {
     })
 
     app.get("/health", (req, res) => {
-      res.json({ status: "ok", db: "mongodb", timestamp: new Date().toISOString() })
+      res.json({ status: "ok", db: "mongodb", timestamp: new Date() })
     })
 
     app.use((req, res) => {

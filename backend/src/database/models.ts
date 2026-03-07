@@ -9,10 +9,10 @@ export interface IUser extends Document {
   fullName: string
   salt: string
   verifier: string
-  createdAt: string
-  updatedAt: string
+  createdAt: Date
+  updatedAt: Date
   isBreached?: boolean
-  lastBreachCheck?: string
+  lastBreachCheck?: Date
   sharePublicKey?: string
   shareSigningPublicKey?: string
   argon2Memory?: number
@@ -24,10 +24,10 @@ const UserSchema = new Schema<IUser>({
   fullName: { type: String, required: true },
   salt: { type: String, required: true },
   verifier: { type: String, required: true },
-  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
-  updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
   isBreached: { type: Boolean, default: false },
-  lastBreachCheck: { type: String },
+  lastBreachCheck: { type: Date },
   sharePublicKey: { type: String },
   shareSigningPublicKey: { type: String },
   argon2Memory: { type: Number, default: 8192 },
@@ -41,18 +41,21 @@ const UserSchema = new Schema<IUser>({
 export interface ISession extends Document {
   userId: mongoose.Types.ObjectId
   token: string
-  expiresAt: string
+  expiresAt: Date
   isOtpVerified: boolean
-  createdAt: string
+  createdAt: Date
 }
 
 const SessionSchema = new Schema<ISession>({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
   token: { type: String, required: true, unique: true },
-  expiresAt: { type: String, required: true },
+  expiresAt: { type: Date, required: true },
   isOtpVerified: { type: Boolean, default: false },
-  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  createdAt: { type: Date, default: Date.now },
 })
+
+// TTL index for sessions
+SessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
 /**
  * Vault Blob Schema: Stores the encrypted vault payload for a specific device.
@@ -68,8 +71,8 @@ export interface IVaultBlob extends Document {
   version: number
   timestamp: number
   nonce: string
-  createdAt: string
-  updatedAt: string
+  createdAt: Date
+  updatedAt: Date
 }
 
 const VaultBlobSchema = new Schema<IVaultBlob>({
@@ -82,8 +85,8 @@ const VaultBlobSchema = new Schema<IVaultBlob>({
   version: { type: Number, required: true },
   timestamp: { type: Number, required: true },
   nonce: { type: String, required: true, unique: true },
-  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
-  updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
 })
 
 /**
@@ -96,8 +99,8 @@ export interface ISyncMetadata extends Document {
   lastUpdated: number
   vaultVersion: number
   nonce: string
-  createdAt: string
-  updatedAt: string
+  createdAt: Date
+  updatedAt: Date
 }
 
 const SyncMetadataSchema = new Schema<ISyncMetadata>({
@@ -106,8 +109,8 @@ const SyncMetadataSchema = new Schema<ISyncMetadata>({
   lastUpdated: { type: Number, required: true },
   vaultVersion: { type: Number, required: true },
   nonce: { type: String, required: true },
-  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
-  updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
 })
 // Compound index ensures only one sync record exists per user/device pair.
 SyncMetadataSchema.index({ userId: 1, deviceId: 1 }, { unique: true })
@@ -120,14 +123,14 @@ export interface ISimpleVault extends Document {
   userId: string
   data: any
   labels: string[]
-  updatedAt: string
+  updatedAt: Date
 }
 
 const SimpleVaultSchema = new Schema<ISimpleVault>({
   userId: { type: String, required: true, unique: true },
   data: { type: Schema.Types.Mixed, required: true },
   labels: { type: [String], default: [] }, // Plaintext labels for identification
-  updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  updatedAt: { type: Date, default: Date.now },
 })
 
 /**
@@ -137,21 +140,21 @@ const SimpleVaultSchema = new Schema<ISimpleVault>({
 export interface IOTP extends Document {
   email: string
   code: string
-  expiresAt: string
+  expiresAt: Date
   verified: boolean
-  createdAt: string
+  createdAt: Date
 }
 
 const OTPSchema = new Schema<IOTP>({
   email: { type: String, required: true },
   code: { type: String, required: true },
-  expiresAt: { type: String, required: true },
+  expiresAt: { type: Date, required: true },
   verified: { type: Boolean, default: false },
-  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
+  createdAt: { type: Date, default: Date.now },
 })
 
-// Index for automatic deletion of expired OTPs (TTL Index) - Removed because string expiration doesn't work with MongoDB TTL
-// OTPSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+// Index for automatic deletion of expired OTPs (TTL Index) 
+OTPSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
 /**
  * RecoveryKey Schema: Stores hashed recovery keys for emergency access.
@@ -162,8 +165,8 @@ export interface IRecoveryKey extends Document {
   userId: mongoose.Types.ObjectId
   keyHash: string
   encryptedVaultKey: string // Encrypted master password/key
-  createdAt: string
-  usedAt?: string
+  createdAt: Date
+  usedAt?: Date
   isRevoked: boolean
 }
 
@@ -171,8 +174,8 @@ const RecoveryKeySchema = new Schema<IRecoveryKey>({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
   keyHash: { type: String, required: true },
   encryptedVaultKey: { type: String, required: true },
-  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
-  usedAt: { type: String },
+  createdAt: { type: Date, default: Date.now },
+  usedAt: { type: Date },
   isRevoked: { type: Boolean, default: false },
 })
 
@@ -187,14 +190,17 @@ RecoveryKeySchema.index({ userId: 1 })
 export interface ILoginChallenge extends Document {
   email: string
   challenge: string
-  expiresAt: string
+  expiresAt: Date
 }
 
 const LoginChallengeSchema = new Schema<ILoginChallenge>({
   email: { type: String, required: true, unique: true },
   challenge: { type: String, required: true },
-  expiresAt: { type: String, required: true },
+  expiresAt: { type: Date, required: true },
 })
+
+// TTL index for challenges
+LoginChallengeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
 /**
  * SharedCredential Schema:
@@ -211,9 +217,9 @@ export interface ISharedCredential extends Document {
   senderSigningPublicKey: string
   status: "pending" | "accepted" | "rejected"
   credentialLabel?: string
-  createdAt: string
-  updatedAt: string
-  acceptedAt?: string
+  createdAt: Date
+  updatedAt: Date
+  acceptedAt?: Date
 }
 
 const SharedCredentialSchema = new Schema<ISharedCredential>({
@@ -227,9 +233,9 @@ const SharedCredentialSchema = new Schema<ISharedCredential>({
   senderSigningPublicKey: { type: String, required: true },
   status: { type: String, enum: ["pending", "accepted", "rejected"], default: "pending", index: true },
   credentialLabel: { type: String },
-  createdAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
-  updatedAt: { type: String, default: () => new Date().toISOString().replace("T", " ").substring(0, 19) },
-  acceptedAt: { type: String },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+  acceptedAt: { type: Date },
 })
 SharedCredentialSchema.index({ recipientUserId: 1, status: 1, createdAt: -1 })
 

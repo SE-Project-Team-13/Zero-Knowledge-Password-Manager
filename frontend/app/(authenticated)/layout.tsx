@@ -121,7 +121,7 @@ export default function AuthenticatedLayout({
   return (
     <div className="min-h-screen bg-background flex font-sans">
       {/* Only show Sidebar if OTP is verified */}
-      {isOtpVerified && (
+      {(isOtpVerified) && (
         <Sidebar
           activeView={getActiveView()}
           isCollapsed={isCollapsed}
@@ -144,7 +144,7 @@ export default function AuthenticatedLayout({
       <main 
         className={cn(
           "flex-1 transition-all duration-300 flex flex-col min-w-0",
-          isOtpVerified && !isCollapsed ? "lg:ml-72" : isOtpVerified && isCollapsed ? "lg:ml-20" : "ml-0"
+          (isOtpVerified) && !isCollapsed ? "lg:ml-72" : (isOtpVerified) && isCollapsed ? "lg:ml-20" : "ml-0"
         )}
       >
         {/* Mobile toggle is handled inside Sidebar component which uses fixed positioning */}

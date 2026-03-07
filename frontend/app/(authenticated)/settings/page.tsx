@@ -11,8 +11,8 @@ import { useRouter } from "next/navigation";
 import { buildApiUrl } from "@/lib/api-base-url";
 
 export default function SettingsPage() {
-    const [session] = useVaultSync();
-    const router = useRouter(); // Keeping router for manual redirects if needed, though Layout handles initial auth
+    const [session, { logout, refreshProfile }] = useVaultSync();
+    const router = useRouter(); 
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
