@@ -23,9 +23,15 @@ setInterval(() => {
 // Log active email mode at startup
 const isMockEmailMode = process.env.MOCK_EMAIL === "true";
 if (isMockEmailMode) {
-  console.warn(
-    "[VaultSync:OTP] ⚠️  MOCK EMAIL MODE IS ACTIVE — OTPs will be logged to console, NOT emailed.",
-  );
+  if (isProduction) {
+    console.error(
+      "[VaultSync:OTP] 🚨 MOCK EMAIL MODE IS ACTIVE IN PRODUCTION! OTPs will NOT be logged or emailed, users will be locked out.",
+    );
+  } else {
+    console.warn(
+      "[VaultSync:OTP] ⚠️  MOCK EMAIL MODE IS ACTIVE — OTPs will be logged to console, NOT emailed.",
+    );
+  }
 } else {
   const hasGmailCredentials =
     !!process.env.GMAIL_CLIENT_ID &&
@@ -138,11 +144,15 @@ export async function sendOTP(
       }
     } else {
       // In mock mode, log the OTP code to the console
-      console.log("--------------------------------------------------");
-      console.log(`[VaultSync:OTP] 🔐 MOCK MODE ACCESS CODE (MOCK_EMAIL=true)`);
-      console.log(`[VaultSync:OTP] EMAIL: ${normalizedEmail}`);
-      console.log(`[VaultSync:OTP] CODE:  ${code}`);
-      console.log("--------------------------------------------------");
+      if (process.env.NODE_ENV === "production") {
+        console.warn("[VaultSync:OTP] WARNING: MOCK_EMAIL is true in production environment! Generating OTP without sending or logging it.");
+      } else {
+        console.log("--------------------------------------------------");
+        console.log(`[VaultSync:OTP] 🔐 MOCK MODE ACCESS CODE (MOCK_EMAIL=true)`);
+        console.log(`[VaultSync:OTP] EMAIL: ${normalizedEmail}`);
+        console.log(`[VaultSync:OTP] CODE:  ${code}`);
+        console.log("--------------------------------------------------");
+      }
     }
 
     return { success: true, message: "OTP sent successfully" };

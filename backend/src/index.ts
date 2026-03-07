@@ -9,6 +9,7 @@ import { fileURLToPath } from "url"
 import { connectToDatabase, closeDatabase } from "./database/index.js"
 import helmet from "helmet"
 import { rateLimit } from "express-rate-limit"
+import mongoSanitize from "express-mongo-sanitize"
 import { validateSessionToken } from "./services/authService.js"
 import { User, SimpleVault } from "./database/models.js"
 import { createAuthRouter } from "./routes/authRoutes.js"
@@ -155,6 +156,20 @@ async function start() {
     app.use("/otp/send", authLimiter)
 
     app.use(express.json())
+
+    // Prevent NoSQL Injection attacks by sanitizing all incoming payloads
+    app.use(mongoSanitize())
+
+    if (isProduction) {
+      // Enforce HTTPS in production environments
+      app.use((req, res, next) => {
+        if (req.headers["x-forwarded-proto"] && req.headers["x-forwarded-proto"] !== "https") {
+          const host = req.headers.host || req.hostname
+          return res.redirect(`https://${host}${req.url}`)
+        }
+        next()
+      })
+    }
 
     // Simple request logging
     app.use((req, res, next) => {

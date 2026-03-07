@@ -123,10 +123,10 @@ To install the project locally, run the following commands:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/SE-Project-Team-13/zenith-vault.git
+git clone https://github.com/SE-Project-Team-13/Zero-Knowledge-Password-Manager.git
 
 # 2. Navigate to the directory
-cd zenith-vault
+cd Zero-Knowledge-Password-Manager
 
 # 3. Install dependencies (Workspaces)
 npm install
@@ -151,11 +151,9 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
-# JWT Secret
-JWT_SECRET=your-super-secret-key-at-least-32-chars
 ```
 
-> **Note:** If you don't have SMTP credentials, the system will log OTP codes to the terminal console (`npm run dev:backend`).
+> **Note:** If you don't have SMTP credentials and are running locally, the system will log OTP codes to the terminal console (`npm run dev:backend`). This fallback is disabled in production.
 
 ### Frontend Environment
 
@@ -271,7 +269,7 @@ npm run dev
 **Expected output:**
 
 ```
-▲ Next.js 16.0.10
+▲ Next.js 15.5.12
 - Local:        http://localhost:3000
 ✓ Ready in 2.5s
 ```
@@ -415,7 +413,7 @@ The browser extension allows you to autofill passwords directly from your browse
 
 The system automatically checks your email against a mock breach database.
 
-- **Manual Check**: The scheduled job runs every minute (in dev).
+- **Automated Check**: A scheduled cron job runs weekly to check all users against the breach database.
 - **Simulate Breach**: Use the email `breached@example.com` during registration to see the Red Alert Banner on the dashboard.
 
 ## Architecture Deep Dive
@@ -423,13 +421,13 @@ The system automatically checks your email against a mock breach database.
 ### Zero-Knowledge Encryption
 
 1.  **User Input**: User types `Master Password`.
-2.  **Key Derivation**: `Argon2id` hashes the password with a random salt (100MB memory cost, 4 iterations). Result: `Derived Key`.
+2.  **Key Derivation**: `Argon2id` hashes the password with a random salt (8MB memory cost, 1 iteration for web compatibility). Result: `Derived Key`.
 3.  **Encryption**: `AES-256-GCM` uses `Derived Key` to encrypt vault data. Result: `Ciphertext`.
 4.  **Storage**: `Ciphertext` is sent to MongoDB. The server **never** sees the `Master Password` or `Derived Key`.
 
 ### Breach Detection (k-Anonymity)
 
-1.  **Hashing**: The system hashes the user's email/username (SHA-1/SHA-256).
+1.  **Hashing**: The system hashes the user's email/username (SHA-256).
 2.  **Prefixing**: Only the **first 5 characters** of the hash are sent to the Breach API.
 3.  **Matching**: The API returns all breaches matching that prefix.
 4.  **Local Filtering**: The client checks the full hash against the returned list locally.
