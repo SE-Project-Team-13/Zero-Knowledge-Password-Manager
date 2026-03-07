@@ -89,8 +89,8 @@ export async function authenticateUser(
     return { success: false, error: "User not found" }
   }
 
-  // 1. Atomically find and consume the challenge (Replay Protection)
-  const storedChallenge = await LoginChallenge.findOneAndDelete({ 
+  // 1. Find the challenge
+  const storedChallenge = await LoginChallenge.findOne({ 
     email: normalizedEmail,
     challenge: clientChallenge 
   });
@@ -103,6 +103,9 @@ export async function authenticateUser(
   if (storedChallenge.expiresAt < new Date()) {
     return { success: false, error: "Authentication challenge expired. Please try again." };
   }
+
+  // 1b. Atomically consume the challenge (Replay Protection)
+  await LoginChallenge.deleteOne({ _id: storedChallenge._id });
 
   // 3. Verify Proof
   try {

@@ -256,10 +256,11 @@ export default function DashboardPage() {
 
   // ---  // 5) Filter & Group entries
   const filteredEntries = useMemo(() => {
-    if (!searchQuery.trim()) return decryptedEntries;
+    const activeEntries = decryptedEntries.filter(e => !e.isDeleted);
+    if (!searchQuery.trim()) return activeEntries;
     
     const searchLower = searchQuery.toLowerCase();
-    return decryptedEntries.filter((entry) => {
+    return activeEntries.filter((entry) => {
       const urlMatch = entry.url?.toLowerCase().includes(searchLower) ?? false;
       const usernameMatch = entry.username?.toLowerCase().includes(searchLower) ?? false;
       const notesMatch = entry.notes?.toLowerCase().includes(searchLower) ?? false;

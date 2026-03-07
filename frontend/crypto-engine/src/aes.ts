@@ -137,11 +137,12 @@ export async function decrypt(encrypted: EncryptedVault, derivedKey: DerivedKey)
  * Used for serializing binary data to JSON.
  */
 function bufferToBase64(buffer: Uint8Array): string {
-  let binary = ""
-  for (let i = 0; i < buffer.byteLength; i++) {
-    binary += String.fromCharCode(buffer[i])
+  const chunk = 8192;
+  let binary = '';
+  for (let i = 0; i < buffer.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(buffer.subarray(i, i + chunk)));
   }
-  return btoa(binary)
+  return btoa(binary);
 }
 
 /**

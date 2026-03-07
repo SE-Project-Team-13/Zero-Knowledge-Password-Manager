@@ -63,10 +63,10 @@ export async function encryptVault(
  * - The key is only in memory during this function call
  * - Wrong password results in authentication tag failure
  */
-export async function decryptVault(masterPassword: string, encrypted: EncryptedVault): Promise<DecryptResult> {
+export async function decryptVault(masterPassword: string, encrypted: EncryptedVault, options?: Argon2idOptions): Promise<DecryptResult> {
   try {
     // Derive key using the salt from the encrypted vault
-    const derivedKey = await deriveKey(masterPassword, base64ToBuffer(encrypted.salt))
+    const derivedKey = await deriveKey(masterPassword, base64ToBuffer(encrypted.salt), options)
 
     // Attempt decryption
     const entry = await decrypt(encrypted, derivedKey)

@@ -120,9 +120,10 @@ function PasswordManagerContent() {
     // Filter, Group and Sort Entries
     const filteredEntries = decryptedEntries.filter(
         (entry) =>
-            entry.url?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            !entry.isDeleted &&
+            (entry.url?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             entry.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (entry.notes && entry.notes.toLowerCase().includes(searchQuery.toLowerCase()))
+            (entry.notes && entry.notes.toLowerCase().includes(searchQuery.toLowerCase())))
     );
 
     // Group entries by URL and sort by URL

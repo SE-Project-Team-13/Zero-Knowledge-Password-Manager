@@ -32,6 +32,7 @@ export interface DecryptedEntry {
     lastUpdated: string;
     reminderSnoozeUntil?: string;
     isPasswordVisible: boolean;
+    isDeleted?: boolean;
 }
 
 interface VaultContextType {
@@ -72,6 +73,7 @@ interface StorageVaultEntry {
     createdAt: string;
     updatedAt: string;
     reminderSnoozeUntil: string;
+    isDeleted?: boolean;
 }
 
 interface SyncBlobPayload {
@@ -124,6 +126,7 @@ function toStorageFormat(entry: DecryptedEntry): StorageVaultEntry {
         createdAt: entry.createdAt,
         updatedAt: entry.updatedAt || entry.lastUpdated || new Date().toISOString(),
         reminderSnoozeUntil: entry.reminderSnoozeUntil || "",
+        ...(entry.isDeleted ? { isDeleted: true } : {}),
     };
 }
 
@@ -207,7 +210,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const enqueueOfflineSync = React.useCallback((item: Omit<OfflineQueueItem, "id" | "createdAt">) => {
         const queue = readOfflineQueue(item.userId);
         queue.push({
-            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            id: crypto.randomUUID(),
             createdAt: Date.now(),
             ...item,
         });
@@ -295,7 +298,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 return siteName !== "VAULT_ROOT" && siteName !== "SYSTEM" && siteName !== "SYSTEM_SHARING_KEYS";
             })
             .map((entry) => ({
-                id: String(entry.id || Math.random().toString(36).substring(7)),
+                id: String(entry.id || crypto.randomUUID()),
                 url: String(entry.siteUrl || entry.url || entry.siteName || entry.site || "Unknown"), // fallback chain
                 username: String(entry.username || ""),
                 password: String(entry.password || ""),
@@ -305,6 +308,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 lastUpdated: String(entry.updatedAt || entry.lastUpdated || new Date().toISOString()),
                 reminderSnoozeUntil: String(entry.reminderSnoozeUntil || ""),
                 isPasswordVisible: false,
+                isDeleted: Boolean(entry.isDeleted || false),
             }));
     }, []);
 
@@ -390,7 +394,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             // These MUST match the params used when the vault was first encrypted.
             // Using different params (e.g. default 8192 instead of 128) produces
             // a completely different AES key → GHASH (auth tag) failure on decrypt.
-            const argon2Memory = Number(localStorage.getItem("argon2_memory") || "128");
+            const argon2Memory = Number(localStorage.getItem("argon2_memory") || "8192");
             const argon2Iterations = Number(localStorage.getItem("argon2_iterations") || "1");
 
             // Start parallel execution: Key Derivation (CPU) + Vault Fetch (Network)
@@ -663,7 +667,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            const entryId = Math.random().toString(36).substring(7);
+            const entryId = crypto.randomUUID();
             const newCredential = {
                 id: entryId,
                 siteName: entryCtx.url,
@@ -743,6 +747,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
             const blob = payload.blob;
             const cryptoEngine = await import("@password-manager/crypto-engine");
+            const argon2Memory = Number(localStorage.getItem("argon2_memory") || "8192");
+            const argon2Iterations = Number(localStorage.getItem("argon2_iterations") || "1");
             const decryptResult = await cryptoEngine.decryptVault(sessionPassword, {
                 ciphertext: blob.ciphertext,
                 iv: blob.iv,
@@ -750,7 +756,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 tag: blob.authTag || blob.tag,
                 algorithm: "AES-256-GCM" as const,
                 derivationAlgorithm: "Argon2id" as const,
-            });
+            }, { memorySize: argon2Memory, iterations: argon2Iterations });
             if (!decryptResult.success || !decryptResult.data) {
                 setSyncError("Failed to decrypt synced data");
                 return false;
@@ -813,11 +819,27 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            const transportEntries = decryptedEntries
-                .filter((e) => e.id !== id)
-                .map((e) => toStorageFormat(e));
+            const transportEntries = decryptedEntries.map((e) =>
+                e.id === id
+                    ? toStorageFormat({
+                          ...e,
+                          isDeleted: true,
+                          updatedAt: new Date().toISOString(),
+                      })
+                    : toStorageFormat(e)
+            );
 
-            setDecryptedEntries((prev) => prev.filter((e) => e.id !== id));
+            // Re-encrypt and save
+            await saveVault(transportEntries, derivedKeys);
+
+            // Keep it in state for consistency, UI will filter it out
+            setDecryptedEntries((prev) =>
+                prev.map((e) =>
+                    e.id === id
+                        ? { ...e, isDeleted: true, updatedAt: new Date().toISOString() }
+                        : e
+                )
+            );
 
             await saveVault(transportEntries, derivedKeys);
             toast.success("Credential deleted!");
@@ -930,7 +952,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     authTag: encrypted.tag,
                     version: Date.now(),
                     timestamp: Date.now(),
-                    nonce: Math.random().toString(36).substring(7),
+                    nonce: crypto.randomUUID(),
                 };
             } else {
                 const vaultEntry = {
@@ -946,7 +968,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                     authTag: encrypted.tag,
                     version: Date.now(),
                     timestamp: Date.now(),
-                    nonce: Math.random().toString(36).substring(7),
+                    nonce: crypto.randomUUID(),
                 };
             }
         } else {
@@ -1094,7 +1116,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             authTag: encryptedVault.tag,
             version: nowTs,
             timestamp: nowTs,
-            nonce: Math.random().toString(36).substring(7),
+            nonce: crypto.randomUUID(),
         };
         localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(blobPayload));
         const baseTimestamp = Number(localStorage.getItem(getSyncTsKey(userId)) || "0") || 0;
