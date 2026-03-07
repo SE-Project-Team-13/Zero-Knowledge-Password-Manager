@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import Image from "next/image";
 
 interface SidebarProps {
   className?: string;
@@ -120,9 +121,11 @@ export function Sidebar({
               {/* Header */}
               <div className={cn("p-6 flex items-center transition-all", (!showExpanded && !isOpen) ? "justify-center" : "gap-3")}>
                 <div className="shrink-0">
-                  <img 
+                  <Image 
                     src="/logo.png" 
                     alt="Logo" 
+                    width={48}
+                    height={48}
                     className={cn("rounded-lg border border-primary/20 shadow-md transition-all object-cover", (!showExpanded && !isOpen) ? "h-10 w-10" : "h-12 w-12")}
                   />
                 </div>

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import Image from "next/image"
 import {
   Shield,
   Key,
@@ -128,9 +129,11 @@ export default function RegisterPage() {
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <div className="mx-auto mb-4">
-            <img 
+            <Image 
               src="/logo.png" 
               alt="Zenith Vault Logo" 
+              width={96}
+              height={96}
               className="h-24 w-24 mx-auto object-contain"
             />
           </div>

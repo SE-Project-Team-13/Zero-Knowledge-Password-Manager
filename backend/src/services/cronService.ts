@@ -88,6 +88,11 @@ export async function runCleanupJob() {
  * @param cronProvider - Optional cron provider for testing.
  */
 export function initScheduledJobs(cronProvider: CronProvider | typeof cron = cron) {
+    // Skip real cron jobs during tests to prevent open handles, but allow injected mock ones
+    if (process.env.NODE_ENV === "test" && cronProvider === cron) {
+        console.log("[VaultSync:Cron] Skipping real scheduled jobs in test environment to prevent open handles.");
+        return;
+    }
     console.log("[VaultSync:Cron] Initializing scheduled jobs...");
 
     // Breach Detection Job

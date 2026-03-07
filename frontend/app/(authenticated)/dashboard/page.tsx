@@ -44,6 +44,7 @@ import { useRouter } from "next/navigation";
 import { buildApiUrl } from "@/lib/api-base-url";
 import { formatTimestampIST, formatDateTimeIST } from "@/lib/formatIST";
 import { maskPassword } from "@/lib/password-utils";
+import Image from "next/image";
 // --- Helpers ---
 
 import { useCallback } from "react";
@@ -560,13 +561,19 @@ export default function DashboardPage() {
                          <div className="flex items-center gap-3 min-w-0 flex-1">
                            <div className="bg-primary/10 p-2 rounded-lg shrink-0 flex items-center justify-center h-8 w-8">
                              {isRealUrl ? (
-                               <img 
+                               <Image 
                                  src={faviconUrl} 
                                  alt="" 
+                                 width={20}
+                                 height={20}
+                                 unoptimized
                                  className="h-5 w-5 rounded-sm object-contain"
                                  onError={(e) => {
-                                   (e.target as HTMLImageElement).style.display = 'none';
-                                   (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                                   const target = e.target as HTMLImageElement;
+                                   target.style.display = 'none';
+                                   if (target.nextElementSibling) {
+                                     target.nextElementSibling.classList.remove('hidden');
+                                   }
                                  }}
                                />
                              ) : null}
@@ -697,7 +704,7 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle>Secure Share</CardTitle>
               <CardDescription>
-                Share "{sharingEntry.url}" with a colleague using end-to-end encryption.
+                Share &quot;{sharingEntry.url}&quot; with a colleague using end-to-end encryption.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
