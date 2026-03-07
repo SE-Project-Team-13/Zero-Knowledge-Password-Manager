@@ -27,38 +27,17 @@ interface PasswordEntry {
 
 // Screens
 const unlockScreen = document.getElementById("unlock-screen") as HTMLElement;
-const registerScreen = document.getElementById(
-  "register-screen",
-) as HTMLElement;
 const vaultScreen = document.getElementById("vault-screen") as HTMLElement;
 
 // Unlock form
 const unlockForm = document.getElementById("unlock-form") as HTMLFormElement;
-const userIdInput = document.getElementById("user-id") as HTMLInputElement;
 const masterPasswordInput = document.getElementById(
   "master-password",
 ) as HTMLInputElement;
 const unlockBtn = document.getElementById("unlock-btn") as HTMLButtonElement;
 const unlockLoading = document.getElementById("unlock-loading") as HTMLElement;
 const unlockError = document.getElementById("unlock-error") as HTMLElement;
-const goToRegisterBtn = document.getElementById(
-  "go-to-register",
-) as HTMLElement;
-
-// Register form
-const registerForm = document.getElementById(
-  "register-form",
-) as HTMLFormElement;
-const regEmailInput = document.getElementById("reg-email") as HTMLInputElement;
-const regPasswordInput = document.getElementById(
-  "reg-password",
-) as HTMLInputElement;
-const regPasswordConfirmInput = document.getElementById(
-  "reg-password-confirm",
-) as HTMLInputElement;
-const registerBtn = document.getElementById(
-  "register-btn",
-) as HTMLButtonElement;
+const browserAuthStatus = document.getElementById("browser-auth-status") as HTMLElement;
 
 // Vault Elements
 const confirmModal = document.getElementById("confirm-modal") as HTMLElement;
@@ -68,11 +47,6 @@ const modalCancelBtn = document.getElementById(
 const modalConfirmBtn = document.getElementById(
   "modal-confirm-btn",
 ) as HTMLElement;
-const registerLoading = document.getElementById(
-  "register-loading",
-) as HTMLElement;
-const registerError = document.getElementById("register-error") as HTMLElement;
-const goToLoginBtn = document.getElementById("go-to-login") as HTMLElement;
 
 // Vault screen
 const lockBtn = document.getElementById("lock-btn") as HTMLButtonElement;
@@ -107,6 +81,22 @@ async function init() {
   // Clear any previously saved User ID for privacy
   chrome.storage.local.remove(["userId"]).catch(() => {});
 
+  // Try to get user profile first
+  const profileResponse: any = await sendMessage({ type: "GET_USER_PROFILE" });
+  if (profileResponse?.success && profileResponse.profile?.email) {
+    currentUserId = profileResponse.profile.email;
+    if (browserAuthStatus) {
+      browserAuthStatus.innerHTML = `<p style="color: #10b981;">Logged in as: <strong>${currentUserId}</strong></p>`;
+    }
+  } else {
+    // Show error, disable form
+    if (browserAuthStatus) {
+      browserAuthStatus.innerHTML = `<p style="color: #ef4444;">Please sign into your browser profile to use the extension.</p>`;
+    }
+    if (unlockBtn) unlockBtn.disabled = true;
+    if (masterPasswordInput) masterPasswordInput.disabled = true;
+  }
+
   // Check if vault is already unlocked
   const status = await sendMessage({ type: "GET_STATUS" });
 
@@ -129,17 +119,12 @@ async function init() {
 
 function showScreen(screenName: string) {
   if (unlockScreen) unlockScreen.classList.add("hidden");
-  if (registerScreen) registerScreen.classList.add("hidden");
   if (vaultScreen) vaultScreen.classList.add("hidden");
 
   switch (screenName) {
     case "unlock":
       if (unlockScreen) unlockScreen.classList.remove("hidden");
-      if (userIdInput) userIdInput.focus();
-      break;
-    case "register":
-      if (registerScreen) registerScreen.classList.remove("hidden");
-      if (regEmailInput) regEmailInput.focus();
+      if (masterPasswordInput && !masterPasswordInput.disabled) masterPasswordInput.focus();
       break;
     case "vault":
       if (vaultScreen) vaultScreen.classList.remove("hidden");
@@ -158,11 +143,15 @@ if (unlockForm) {
   unlockForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const userId = userIdInput.value.trim();
     const masterPassword = masterPasswordInput.value;
 
-    if (!userId || !masterPassword) {
-      showError(unlockError, "Please enter both User ID and Master Password");
+    if (!currentUserId) {
+      showError(unlockError, "No browser identity detected.");
+      return;
+    }
+
+    if (!masterPassword) {
+      showError(unlockError, "Please enter your Master Password");
       return;
     }
 
@@ -176,15 +165,12 @@ if (unlockForm) {
       const response = await sendMessage({
         type: "UNLOCK_VAULT",
         masterPassword,
-        userId,
+        userId: currentUserId,
       });
 
       if (response && response.success) {
         // SECURITY: Clear master password immediately
         if (masterPasswordInput) masterPasswordInput.value = "";
-
-        // Set current user ID session
-        currentUserId = userId;
 
         // Load and display vault
         await loadVault();
@@ -205,86 +191,7 @@ if (unlockForm) {
   });
 }
 
-// Navigation
-if (goToRegisterBtn) {
-  goToRegisterBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    showScreen("register");
-  });
-}
 
-if (goToLoginBtn) {
-  goToLoginBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    showScreen("unlock");
-  });
-}
-
-// ============================================================================
-// Register User
-// ============================================================================
-
-if (registerForm) {
-  registerForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    const email = regEmailInput.value.trim();
-    const password = regPasswordInput.value;
-    const confirm = regPasswordConfirmInput.value;
-
-    if (!email || !password || !confirm) {
-      showError(registerError, "Please fill in all fields");
-      return;
-    }
-
-    if (password !== confirm) {
-      showError(registerError, "Passwords do not match");
-      return;
-    }
-
-    if (password.length < 8) {
-      showError(registerError, "Password must be at least 8 characters");
-      return;
-    }
-
-    // Show loading state
-    if (registerBtn) registerBtn.disabled = true;
-    if (registerLoading) registerLoading.classList.remove("hidden");
-    if (registerError) registerError.classList.add("hidden");
-
-    try {
-      const response = await sendMessage({
-        type: "REGISTER_USER",
-        email,
-        masterPassword: password,
-      });
-
-      if (response && response.success) {
-        // Registration successful
-        currentUserId = email;
-
-        // Clear inputs
-        if (regPasswordInput) regPasswordInput.value = "";
-        if (regPasswordConfirmInput) regPasswordConfirmInput.value = "";
-
-        // Show vault
-        await loadVault();
-        showScreen("vault");
-      } else {
-        showError(
-          registerError,
-          (response && response.error) || "Failed to register",
-        );
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to register";
-      showError(registerError, message);
-    } finally {
-      if (registerBtn) registerBtn.disabled = false;
-      if (registerLoading) registerLoading.classList.add("hidden");
-    }
-  });
-}
 
 // ============================================================================
 // Load Vault
@@ -324,6 +231,10 @@ function renderVault(entries: PasswordEntry[]) {
   if (emptyState) emptyState.classList.add("hidden");
 
   entries.forEach((entry) => {
+    // Hide internal system configuration entries from the vault view
+    if (entry.siteName === "SYSTEM_SHARING_KEYS" || entry.siteUrl === "system-sharing-keys") {
+      return;
+    }
     const item = createVaultItem(entry);
     vaultList.appendChild(item);
   });
@@ -340,104 +251,88 @@ function createVaultItem(entry: PasswordEntry) {
   title.className = "vault-item-title";
   title.textContent = entry.siteName;
 
+  const credentialsContainer = document.createElement("div");
+  credentialsContainer.className = "vault-item-credentials";
+
   const user = document.createElement("div");
-  user.className = "vault-item-url";
-  user.textContent = entry.username;
+  user.className = "vault-item-username";
+  user.textContent = entry.username || "No username";
+
+  const passwordContainer = document.createElement("div");
+  passwordContainer.className = "vault-item-password-container";
+
+  const passwordText = document.createElement("span");
+  passwordText.className = "vault-item-password";
+  passwordText.textContent = "•".repeat(entry.password.length || 8);
+
+  const eyeIcon = document.createElement("button");
+  eyeIcon.className = "vault-item-eye-btn";
+  eyeIcon.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+      <circle cx="12" cy="12" r="3"></circle>
+    </svg>
+  `;
+
+  let isPasswordVisible = false;
+  eyeIcon.addEventListener("click", (e) => {
+    e.stopPropagation();
+    isPasswordVisible = !isPasswordVisible;
+    passwordText.textContent = isPasswordVisible ? entry.password : "•".repeat(entry.password.length || 8);
+    // If visible, switch to a slightly smaller letter spacing by toggling a class
+    if (isPasswordVisible) {
+      passwordText.classList.add("visible");
+    } else {
+      passwordText.classList.remove("visible");
+    }
+
+    eyeIcon.innerHTML = isPasswordVisible ? `
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+        <line x1="1" y1="1" x2="23" y2="23"></line>
+      </svg>
+    ` : `
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </svg>
+    `;
+    eyeIcon.style.color = isPasswordVisible ? "var(--primary)" : "var(--text-muted)";
+  });
+
+  passwordContainer.appendChild(passwordText);
+  passwordContainer.appendChild(eyeIcon);
+
+  credentialsContainer.appendChild(user);
+  credentialsContainer.appendChild(passwordContainer);
 
   content.appendChild(title);
-  content.appendChild(user);
+  content.appendChild(credentialsContainer);
 
   const actions = document.createElement("div");
   actions.className = "vault-item-actions";
 
-  const deleteBtnElement = document.createElement("button");
-  deleteBtnElement.className = "action-btn delete-btn delete";
-  deleteBtnElement.textContent = "Delete";
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "action-btn copy-btn";
+  copyBtn.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+    COPY
+  `;
 
-  const copyBtnElement = document.createElement("button");
-  copyBtnElement.className = "copy-btn";
-  copyBtnElement.textContent = "Copy";
-
-  actions.appendChild(deleteBtnElement);
-  actions.appendChild(copyBtnElement);
+  actions.appendChild(copyBtn);
 
   div.appendChild(content);
   div.appendChild(actions);
 
-  // Add copy functionality
-  const copyBtn = copyBtnElement;
-  if (copyBtn) {
-    copyBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      copyToClipboard(entry.password, copyBtn);
-    });
-  }
-
-  // Add delete functionality
-  const deleteBtn = deleteBtnElement;
-  if (deleteBtn) {
-    deleteBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await handleDelete(entry.id);
-    });
-  }
+  copyBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    copyToClipboard(entry.password, copyBtn);
+  });
 
   return div;
-}
-
-function showConfirmationModal(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (!confirmModal) {
-      resolve(
-        confirm(
-          "Are you sure you want to delete this password? (Modal not found)",
-        ),
-      );
-      return;
-    }
-
-    confirmModal.classList.add("active");
-
-    const handleConfirm = () => {
-      cleanup();
-      resolve(true);
-    };
-
-    const handleCancel = () => {
-      cleanup();
-      resolve(false);
-    };
-
-    const cleanup = () => {
-      confirmModal.classList.remove("active");
-      modalConfirmBtn?.removeEventListener("click", handleConfirm);
-      modalCancelBtn?.removeEventListener("click", handleCancel);
-    };
-
-    modalConfirmBtn?.addEventListener("click", handleConfirm);
-    modalCancelBtn?.addEventListener("click", handleCancel);
-  });
-}
-
-async function handleDelete(entryId: string) {
-  const confirmed = await showConfirmationModal();
-  if (!confirmed) return;
-
-  try {
-    const response = await sendMessage({
-      type: "DELETE_PASSWORD",
-      entryId,
-    });
-
-    if (response && response.success) {
-      await loadVault();
-    } else {
-      alert((response && response.error) || "Failed to delete password");
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to delete password";
-    alert(message);
-  }
 }
 
 // ============================================================================

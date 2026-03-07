@@ -26,6 +26,7 @@ const buildConfig = {
   sourcemap: true,
   minify: !isWatch,
   logLevel: 'info',
+  external: ['react-native', 'react-native-argon2', 'react-native-quick-crypto']
 }
 
 // ============================================================================

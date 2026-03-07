@@ -5,7 +5,9 @@
   "description": "Secure Zero-Knowledge Password Manager with client-side encryption",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "identity",
+    "identity.email"
   ],
   "host_permissions": [
     "http://localhost:3001/*",
