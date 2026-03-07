@@ -10,6 +10,16 @@ const otpAttempts = new Map<string, { count: number; lastAttempt: number }>();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
 
+// FIX: Prevent memory leak by periodically pruning expired rate-limit entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, data] of otpAttempts.entries()) {
+    if (now - data.lastAttempt > LOCKOUT_TIME) {
+      otpAttempts.delete(email);
+    }
+  }
+}, LOCKOUT_TIME);
+
 // Log active email mode at startup
 const isMockEmailMode = process.env.MOCK_EMAIL === "true";
 if (isMockEmailMode) {

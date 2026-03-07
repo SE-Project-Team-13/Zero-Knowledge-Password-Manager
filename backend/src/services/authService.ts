@@ -361,6 +361,12 @@ export async function updateUserCredentials(
       const normalizedEmail = user.email.trim().toLowerCase();
       await SimpleVault.deleteMany({ $or: [{ userId: userId }, { userId: normalizedEmail }] });
     }
+
+    // FIX: Clear Unreadable Shared Credentials
+    const { SharedCredential } = await import("../database/models.js");
+    await SharedCredential.deleteMany({
+      $or: [{ senderUserId: userId }, { recipientUserId: userId }]
+    });
   }
 }
 
