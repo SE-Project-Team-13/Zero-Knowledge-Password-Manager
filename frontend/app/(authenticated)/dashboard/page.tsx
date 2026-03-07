@@ -549,7 +549,19 @@ export default function DashboardPage() {
                   const isExpanded = expandedUrls[url] || false;
                   const hasMultiple = entries.length > 1;
                   const isRealUrl = url !== "No URL";
-                  const faviconUrl = isRealUrl ? `https://www.google.com/s2/favicons?domain=${url}&sz=64` : "";
+                  
+                  // Extract hostname for more reliable favicon fetching
+                  let hostname = url;
+                  if (isRealUrl) {
+                    try {
+                      const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+                      hostname = urlObj.hostname;
+                    } catch (e) {
+                      hostname = url;
+                    }
+                  }
+                  
+                  const faviconUrl = isRealUrl ? `https://www.google.com/s2/favicons?domain=${hostname}&sz=64` : "";
 
                   return (
                     <div key={url} className="space-y-2">
@@ -567,10 +579,11 @@ export default function DashboardPage() {
                                  width={20}
                                  height={20}
                                  unoptimized
-                                 className="h-5 w-5 rounded-sm object-contain"
+                                 className="rounded-sm object-contain"
+                                 style={{ width: 'auto', height: 'auto' }}
                                  onError={(e) => {
-                                   const target = e.target as HTMLImageElement;
-                                   target.style.display = 'none';
+                                   const target = e.currentTarget;
+                                   target.classList.add('hidden');
                                    if (target.nextElementSibling) {
                                      target.nextElementSibling.classList.remove('hidden');
                                    }
