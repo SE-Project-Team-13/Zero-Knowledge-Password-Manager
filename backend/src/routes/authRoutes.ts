@@ -110,7 +110,7 @@ export function createAuthRouter(): Router {
       }
 
       const user = authResult.user!
-      const sessionToken = await generateSessionToken(user.id, 24 * 60, !user.is2faEnabled)
+      const sessionToken = await generateSessionToken(user.id, 24 * 60, false) // Always require OTP
       const serverProof = crypto
         .createHash("sha256")
         .update(user.verifier + challenge)
@@ -124,7 +124,7 @@ export function createAuthRouter(): Router {
         serverProof,
         isBreached: user.isBreached,
         lastBreachCheck: user.lastBreachCheck,
-        is2faEnabled: user.is2faEnabled,
+        is2faEnabled: true, // Enforced 2FA globally
       }
 
       return res.status(200).json(response)
@@ -155,7 +155,7 @@ export function createAuthRouter(): Router {
         fullName: user.fullName,
         isBreached: user.isBreached,
         lastBreachCheck: user.lastBreachCheck,
-        is2faEnabled: user.is2faEnabled,
+        is2faEnabled: true,
       })
     } catch (error) {
       console.error("[Auth] Me error:", error)
@@ -336,39 +336,6 @@ export function createAuthRouter(): Router {
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred during logout",
       } as ErrorResponse)
-    }
-  })
-
-  /**
-   * POST /auth/2fa/toggle
-   * Toggles 2FA for the authenticated user.
-   */
-  router.post("/2fa/toggle", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const userId = req.userId
-      if (!userId) return res.status(401).json({ error: "Unauthorized" })
-
-      const { enabled } = req.body
-      if (typeof enabled !== "boolean") {
-        return res.status(400).json({ error: "Missing 'enabled' boolean in request body" })
-      }
-
-      await User.findByIdAndUpdate(userId, { is2faEnabled: enabled })
-      console.log(`[AuthService] 2FA toggled to ${enabled} for user ${userId}`)
-
-      // If they just enabled 2FA, their current session should be implicitly 
-      // verified so they aren't instantly locked out of the dashboard.
-      if (enabled) {
-        const token = extractBearerToken(req.headers.authorization)
-        if (token) {
-           await markSessionOtpVerified(token)
-        }
-      }
-
-      return res.status(200).json({ success: true, is2faEnabled: enabled })
-    } catch (error) {
-      console.error("2FA toggle error:", error)
-      return res.status(500).json({ error: "Internal server error" })
     }
   })
 

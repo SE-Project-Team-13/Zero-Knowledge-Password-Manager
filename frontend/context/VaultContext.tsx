@@ -153,7 +153,7 @@ function mergeEntries(local: DecryptedEntry[], server: DecryptedEntry[]): Decryp
 }
 
 const restoreSharingKeys = (entries: any[], passedUserId?: string) => {
-    const sharingKeysEntry = entries.find(e => e.site === "SYSTEM_SHARING_KEYS" || e.siteName === "SYSTEM_SHARING_KEYS");
+    const sharingKeysEntry = entries.find(e => e.siteName === "SYSTEM_SHARING_KEYS" || e.site === "SYSTEM_SHARING_KEYS" || e.url === "SYSTEM_SHARING_KEYS" || e.siteUrl === "SYSTEM_SHARING_KEYS");
     if (sharingKeysEntry) {
         console.log("[Sync] Found persisted sharing keys in blob, restoring to localStorage...");
         const userId = (passedUserId || localStorage.getItem("user_id") || "").trim();
@@ -309,7 +309,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const restoreSharingKeys = React.useCallback((entries: Array<Record<string, any>>, userId?: string): boolean => {
-        const sharingKeysEntry = entries.find(e => e.siteName === "SYSTEM_SHARING_KEYS");
+        const sharingKeysEntry = entries.find(e => e.siteName === "SYSTEM_SHARING_KEYS" || e.site === "SYSTEM_SHARING_KEYS" || e.url === "SYSTEM_SHARING_KEYS" || e.siteUrl === "SYSTEM_SHARING_KEYS");
         if (sharingKeysEntry) {
             console.log("[VaultContext] Found persisted sharing keys, restoring to localStorage...");
             const pk = getPrivateKeyKey(userId);
@@ -574,7 +574,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
                     const rawEntries = Array.isArray(decryptedEntry) ? decryptedEntry : [];
                     // Restore sharing keys if present in the decrypted vault
-                    const keysFound = restoreSharingKeys(rawEntries, session.userId || undefined);
+                    // Use localStorage as fallback if session state is not fully populated yet
+                    const activeUserId = session.userId || localStorage.getItem("user_id") || undefined;
+                    const keysFound = restoreSharingKeys(rawEntries, activeUserId);
                     setHasSharingKeysInVault(keysFound);
 
                     // Immediately re-register restored keys with the server, or generate them if missing
@@ -583,10 +585,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                         
                         let myKeys;
                         if (keysFound) {
-                            myKeys = await ensureShareKeyPair(session.userId || undefined, false);
+                            myKeys = await ensureShareKeyPair(activeUserId, false);
                         } else {
                             console.log("[VaultContext] Sharing keys not found in vault blob. Regenerating them to heal the account...");
-                            myKeys = await ensureShareKeyPair(session.userId || undefined, true);
+                            myKeys = await ensureShareKeyPair(activeUserId, true);
                         }
 
                         if (myKeys) {
@@ -899,7 +901,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             const sPriv = localStorage.getItem(getSignPrivateKeyKey(userId));
 
             if (pub && priv && sPub && sPriv) {
-                const filtered = transportEntries.filter(e => e.siteName !== "SYSTEM_SHARING_KEYS");
+                const filtered = transportEntries.filter(e => e.siteName !== "SYSTEM_SHARING_KEYS" && e.siteUrl !== "system-sharing-keys");
                 filtered.push({
                     id: "system-sharing-keys",
                     siteName: "SYSTEM_SHARING_KEYS",
@@ -1052,7 +1054,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
         if (pub && priv && sPub && sPriv) {
             // Remove existing if any
-            const filtered = updatedEntries.filter(e => e.siteName !== "SYSTEM_SHARING_KEYS");
+            const filtered = updatedEntries.filter(e => e.siteName !== "SYSTEM_SHARING_KEYS" && e.siteUrl !== "system-sharing-keys");
             filtered.push({
                 id: "system-sharing-keys",
                 siteName: "SYSTEM_SHARING_KEYS",
