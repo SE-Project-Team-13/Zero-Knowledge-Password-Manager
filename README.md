@@ -1,4 +1,8 @@
-﻿# Zenith Vault
+﻿<div align="center">
+  <img src="./frontend/public/logo.png" alt="Zenith Vault Logo" width="120" />
+</div>
+
+# Zenith Vault
 
 > **A state-of-the-art, high-security password management system built with a true zero-knowledge architecture.**
 
@@ -14,6 +18,7 @@ This repository contains the source code for **Zenith Vault**, a secure password
 ## 🔗 Quick Links
 
 - **[Installation](#installation)**
+- **[Contributing & Development Guide](#contributing--development-guide)**
 - **[Verifying Installation](#verifying-installation)**
 - **[Running Tests](#running-tests)**
 - **[Usage Guide](#usage-guide)**
@@ -31,6 +36,7 @@ This repository contains the source code for **Zenith Vault**, a secure password
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Running the Project](#running-the-project)
+- [Contributing & Development Guide](#contributing--development-guide)
 - [Verifying Installation](#verifying-installation)
 - [Running Tests](#running-tests)
 - [Usage Guide](#usage-guide)
@@ -63,8 +69,9 @@ The system employs **Zero-Knowledge Proofs (ZKP)** for authentication, meaning t
 - **Privacy-Preserving Breach Detection**: Checks your credentials against breach databases without exposing your accounts (using k-Anonymity).
 - **Emergency Recovery Kit**: Generate a recovery PDF to regain access if you lose your master password.
 - **Multi-Platform Support**: Web Dashboard, Browser Extension, and **Mobile App (Expo/React Native)**.
-- **Secure Authentication**: Multi-factor security with Email-based OTP verification.
-- **Auto-Lock & Session Management**: Automatic vault locking for enhanced security.
+- **Strict 2FA Enforcement**: Mandatory Multi-factor security with Email-based OTP verification for all user logins.
+- **Backend Security Hardening**: Strict HTTPS enforcement, NoSQL injection prevention with `express-mongo-sanitize`, and extended HTTP security framing using `helmet`.
+- **Auto-Lock & Strict Session Management**: Automatic vault locking alongside exact stateless session token validation.
 
 ## Prerequisites
 
@@ -98,6 +105,7 @@ This project is a monorepo leveraging npm workspaces:
 - **Node.js & Express**: High-performance API server.
 - **Mongoose**: MongoDB object modeling.
 - **Nodemailer / Gmail API**: For secure OTP and alert delivery.
+- **Helmet & Mongo-Sanitize**: Enforcing modern web security controls.
 - **Node-Cron**: For scheduled security tasks (Breach Detection).
 
 ### Mobile (`/mobile`)
@@ -142,6 +150,8 @@ npm install
 npm run crypto:build
 ```
 
+---
+
 ## Configuration
 
 ### Backend Environment (`backend/.env`)
@@ -185,6 +195,47 @@ npm run dev:frontend
 cd mobile
 npx expo start
 ```
+
+---
+
+## Contributing & Development Guide
+
+We use a modern **monorepo** structure built with npm workspaces. All major moving parts live in their respective subdirectories, sharing access to the compiled `/frontend/crypto-engine`.
+
+When modifying the project or fixing bugs, adhere to the following workflow:
+
+1. **Verify Your Node Environment**:
+   Ensure you're using Node v20+. Use `nvm` (Node Version Manager) if necessary.
+
+2. **Branching**:
+   Create a dedicated feature or bugfix branch:
+
+   ```bash
+   git checkout -b feature/your-awesome-feature
+   ```
+
+3. **Developing Shared Crypto code**:
+   If you modify anything inside `frontend/crypto-engine/`, **you must rebuild it** before those changes reflect in the `frontend` or `mobile` apps:
+
+   ```bash
+   npm run crypto:build
+   ```
+
+4. **Code Quality**:
+   Before committing, run the following workspace scripts from the root directory to ensure your code matches the repository guidelines:
+
+   ```bash
+   # Run all formatters and linters
+   npm run lint
+
+   # Execute the entire test suite across frontend, backend, and crypto packages
+   npm test --workspaces
+   ```
+
+5. **Pull Requests**:
+   Submit a PR against the `main` branch. Ensure your PR description outlines the problem you are solving and links to any open GitHub Issues.
+
+---
 
 ## Verifying Installation
 
@@ -247,6 +298,22 @@ Uses the "Range Search" technique:
 - Client sends only the **first 5 characters** of the hash to the breach API.
 - API returns all possible matches for that prefix.
 - Client filters for the full hash locally. **The API provider never knows your actual email.**
+
+### Blind Sync Protocol
+
+The server acts solely as a synchronization hub, enabling seamless multi-device support without exposing underlying data.
+
+- **Stateless Validation**: Each sync request is rigorously verified via stateless user sessions to prevent unauthorized modifications.
+- **Encrypted Data Blobs**: The server receives and stores securely encrypted text blobs, maintaining zero insight into their internal structure or contents.
+
+---
+
+## Security Best Practices
+
+- **Strict HTTPS Enforcement**: Unencrypted HTTP traffic is outright blocked or redirected in the production environment.
+- **Rate-Limiting Subsystems**: Dedicated limiters mitigate brute-force attempts on sensitive endpoints such as authentication (`/auth`) and OTP generation (`/otp/send`).
+- **NoSQL Injection Defenses**: Advanced payload sanitation via `express-mongo-sanitize` comprehensively protects against malicious query payloads.
+- **Session Protection & CORS**: Handled precisely with secure headers using `helmet` and closely modeled `Access-Control-Allow-Origin` values restricting requests to valid domain entities only.
 
 ---
 
