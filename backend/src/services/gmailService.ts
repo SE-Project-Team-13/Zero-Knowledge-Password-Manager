@@ -45,7 +45,7 @@ export async function sendGmail(
     const message = messageParts.join("\r\n");
 
     // The body needs to be base64url encoded
-    const encodedMessage = Buffer.from(message, 'utf-8')
+    const encodedMessage = Buffer.from(message, "utf-8")
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_")
@@ -67,10 +67,30 @@ export async function sendGmail(
       );
     }
   } catch (error: any) {
+    const status = error?.response?.status || error?.code;
+    const errorMsg = error?.response?.data?.error_description || error.message;
+
+    // Surface specific, actionable error messages
+    if (
+      status === 401 ||
+      status === 403 ||
+      errorMsg?.includes("invalid_grant") ||
+      errorMsg?.includes("Token has been expired or revoked")
+    ) {
+      console.error(
+        `[VaultSync:${contextInfo || "Gmail"}] ❌ AUTH ERROR: Gmail refresh token is expired or revoked. ` +
+          `Regenerate it at https://developers.google.com/oauthplayground and update GMAIL_REFRESH_TOKEN in .env. ` +
+          `Also ensure your OAuth consent screen is published (not "Testing") to prevent 7-day token expiry.`,
+      );
+      throw new Error(
+        "Gmail OAuth2 refresh token expired or revoked. Regenerate GMAIL_REFRESH_TOKEN.",
+      );
+    }
+
     console.error(
-      `[VaultSync:${contextInfo || "Gmail"}] Gmail API Error:`,
-      error.message,
+      `[VaultSync:${contextInfo || "Gmail"}] ❌ Gmail API Error (status=${status}):`,
+      errorMsg,
     );
-    throw new Error(`Gmail API failed: ${error.message}`);
+    throw new Error(`Gmail API failed: ${errorMsg}`);
   }
 }
