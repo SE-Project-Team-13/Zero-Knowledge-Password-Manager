@@ -57,7 +57,7 @@ export default function LoginPage() {
       } catch (err) {
         setEmailStatus('idle')
       }
-    }, 100)
+    }, 400)
 
     return () => clearTimeout(timer)
   }, [email])
