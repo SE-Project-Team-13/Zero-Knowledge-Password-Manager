@@ -44,9 +44,10 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
     // Use originalUrl to get the full path including router mount points
     const fullPath = req.originalUrl.split("?")[0];
     const isOtpRoute = fullPath.endsWith("/otp/send") || fullPath.endsWith("/otp/verify");
+    const isRecoveryRoute = fullPath.includes("/recovery/generate") || fullPath.includes("/recovery/activate");
 
-    if (!validation.isOtpVerified && !isOtpRoute) {
-       console.warn(`[VaultSync:Auth] Blocked: OTP verification required for user ${validation.userId} at ${req.originalUrl} (isOtpRoute: ${isOtpRoute})`)
+    if (!validation.isOtpVerified && !isOtpRoute && !isRecoveryRoute) {
+       console.warn(`[VaultSync:Auth] Blocked: OTP verification required for user ${validation.userId} at ${req.originalUrl} (isOtpRoute: ${isOtpRoute}, isRecoveryRoute: ${isRecoveryRoute})`)
        return res.status(403).json({
          error: "OTP verification required",
          code: "OTP_REQUIRED",

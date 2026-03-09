@@ -11,9 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ShieldCheck, Clock, RefreshCw, LogOut, Shield, AlertCircle } from "lucide-react";
+import { ShieldCheck, Clock, RefreshCw, LogOut, Shield, AlertCircle, FileKey } from "lucide-react";
 import { toast } from "sonner";
 import { buildApiUrl } from "@/lib/api-base-url";
+import { generateAndDownloadRecoveryKey } from "@/lib/recovery";
 
 export default function OTPPage() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function OTPPage() {
   const [otpVerified, setOtpVerified] = useState(false);
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes
   const [mounted, setMounted] = useState(false);
+  const [isDownloadingKit, setIsDownloadingKit] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -281,6 +283,46 @@ export default function OTPPage() {
             </Button>
           </CardFooter>
         </form>
+
+        <div className="mx-auto w-full max-w-md mt-6 px-4">
+          <div className="bg-primary/5 border border-primary/10 rounded-xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-primary/10 p-2 rounded-lg">
+                <FileKey className="h-5 w-5 text-primary" />
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold text-foreground">Safety First</p>
+                <p className="text-[10px] text-muted-foreground">Download your Emergency Kit now</p>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="text-xs font-semibold h-8"
+              disabled={isDownloadingKit}
+              onClick={async () => {
+                const password = sessionStorage.getItem("session_master_password");
+                const token = localStorage.getItem("auth_token");
+                if (!password || !token) {
+                  toast.error("Session expired. Please log in again.");
+                  return;
+                }
+                setIsDownloadingKit(true);
+                try {
+                  await generateAndDownloadRecoveryKey(session.email!, password, token);
+                  toast.success("Emergency Kit downloaded successfully!");
+                } catch (err) {
+                  console.error("Kit download error:", err);
+                  toast.error("Failed to download kit. Please try later in Settings.");
+                } finally {
+                  setIsDownloadingKit(false);
+                }
+              }}
+            >
+              {isDownloadingKit ? "Downloading..." : "Download Kit"}
+            </Button>
+          </div>
+        </div>
       </Card>
     </div>
   );

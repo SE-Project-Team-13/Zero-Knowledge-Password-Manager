@@ -9,12 +9,15 @@ import { Lock, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { buildApiUrl } from "@/lib/api-base-url";
+import { generateAndDownloadRecoveryKey } from "@/lib/recovery";
+import { Key } from "lucide-react";
 
 export default function SettingsPage() {
     const [session, { logout, refreshProfile }] = useVaultSync();
     const router = useRouter(); 
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isGeneratingKit, setIsGeneratingKit] = useState(false);
 
     // Handle Delete Account
     const handleDeleteAccount = async () => {
@@ -59,6 +62,32 @@ export default function SettingsPage() {
         }
     };
 
+    // Handle Recovery Kit Generation
+    const handleGenerateRecoveryKit = async () => {
+        const password = sessionStorage.getItem("session_master_password");
+        const token = localStorage.getItem("auth_token");
+        const email = session.email || localStorage.getItem("user_email");
+
+        if (!password || !token || !email) {
+            toast.error("Session expired. Please log in again to generate a recovery kit.");
+            return;
+        }
+
+        setIsGeneratingKit(true);
+        toast.info("Generating your Emergency Kit...");
+
+        try {
+            await generateAndDownloadRecoveryKey(email, password, token);
+            toast.success("Emergency Kit downloaded! Keep it safe.");
+        } catch (error) {
+            console.error("Recovery kit generation error:", error);
+            const message = error instanceof Error ? error.message : "Failed to generate kit";
+            toast.error(message);
+        } finally {
+            setIsGeneratingKit(false);
+        }
+    };
+
     return (
         <div className="max-w-4xl mx-auto space-y-8 pt-24 sm:pt-20 p-4">
             <header>
@@ -88,6 +117,24 @@ export default function SettingsPage() {
                         </div>
                         <Button onClick={() => setIsChangePasswordOpen(true)} variant="outline">
                             Change Password
+                        </Button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                        <div className="space-y-1">
+                            <h3 className="font-medium">Emergency Recovery Kit</h3>
+                            <p className="text-sm text-muted-foreground">
+                                Download a new recovery kit if you lost your old one. 
+                                Stored as a secure PDF with your unique recovery key.
+                            </p>
+                        </div>
+                        <Button 
+                            onClick={handleGenerateRecoveryKit} 
+                            disabled={isGeneratingKit}
+                            variant="secondary"
+                            className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20"
+                        >
+                            {isGeneratingKit ? "Generating..." : "Download Kit"}
                         </Button>
                     </div>
                 </CardContent>
