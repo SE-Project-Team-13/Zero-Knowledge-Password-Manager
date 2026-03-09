@@ -102,13 +102,21 @@ export default function RegisterPage() {
         if (token) {
           await generateAndDownloadRecoveryKey(email, password, token)
           toast.success("Emergency Kit downloaded! Keep it safe.")
+        } else {
+          console.warn("[Auth] No auth token found in localStorage for recovery key generation")
+          toast.error("Could not generate Emergency Kit: Session token missing.")
         }
       } catch (recoveryErr) {
         console.error("[Auth] Recovery key generation failed:", recoveryErr)
+        toast.error("Failed to generate your Emergency Kit. You can generate it later in Settings.")
       }
 
       toast.success("Account created successfully!")
-      router.push("/otp")
+      
+      // Delay redirection slightly to ensure the download starts reliably
+      setTimeout(() => {
+        router.push("/otp")
+      }, 2000)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Registration failed"
       toast.error(message)
