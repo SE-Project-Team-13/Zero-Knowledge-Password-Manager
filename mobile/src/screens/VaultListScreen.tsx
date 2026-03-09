@@ -184,6 +184,7 @@ export default function VaultListScreen() {
     const [isManualSyncing, setIsManualSyncing] = useState(false);
     const [isResolvingConflict, setIsResolvingConflict] = useState(false);
     const navigation = useNavigation<any>();
+    const activeCredentialCount = entries.filter((entry) => entry && entry.id && entry.url).length;
 
     useEffect(() => {
         if (masterKey && userId) {
@@ -274,7 +275,7 @@ export default function VaultListScreen() {
             <View style={styles.header}>
                 <View>
                     <Text style={styles.headerTitle}>Vault</Text>
-                    <Text style={styles.headerSub}>{entries.length} credential{entries.length !== 1 ? 's' : ''}</Text>
+                    <Text style={styles.headerSub}>{activeCredentialCount} credential{activeCredentialCount !== 1 ? 's' : ''}</Text>
                 </View>
                 <View style={styles.headerActions}>
                     {(isSyncing || isManualSyncing) && <ActivityIndicator size="small" color={Colors.primary} />}
