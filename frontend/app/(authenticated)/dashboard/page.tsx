@@ -74,6 +74,7 @@ export default function DashboardPage() {
     acceptShare,
     rejectShare,
     sendShare,
+    syncNow,
   } = useVault();
 
   const [mounted, setMounted] = useState(false);
@@ -93,6 +94,7 @@ export default function DashboardPage() {
   const [sharingEntry, setSharingEntry] = useState<DecryptedEntry | null>(null);
   const [shareRecipientEmail, setShareRecipientEmail] = useState("");
   const [isSendingShare, setIsSendingShare] = useState(false);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [incomingOpen, setIncomingOpen] = useState(false);
   const [expandedUrls, setExpandedUrls] = useState<Record<string, boolean>>({});
 
@@ -255,6 +257,24 @@ export default function DashboardPage() {
     }
   };
 
+  const handleManualSync = async () => {
+    setIsManualSyncing(true);
+    try {
+      const updated = await syncNow();
+      if (updated) {
+        toast.success("Manual sync complete. Vault refreshed.");
+      } else if (syncError) {
+        toast.error(syncError);
+      } else {
+        toast.success("Manual sync complete. Already up to date.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Manual sync failed");
+    } finally {
+      setIsManualSyncing(false);
+    }
+  };
+
   // ---  // 5) Filter & Group entries
   const filteredEntries = useMemo(() => {
     const activeEntries = decryptedEntries.filter(e => !e.isDeleted);
@@ -286,6 +306,11 @@ export default function DashboardPage() {
       return a.localeCompare(b);
     });
   }, [groupedEntries]);
+
+  const activeCredentialCount = useMemo(
+    () => decryptedEntries.filter((entry) => !entry.isDeleted).length,
+    [decryptedEntries],
+  );
 
   // --- Render Loading State ---
   if (isLoggingOut || !mounted) {
@@ -500,13 +525,17 @@ export default function DashboardPage() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Credentials</p>
                 <p className="text-2xl font-bold font-mono">
-                  {decryptedEntries.length}
+                  {activeCredentialCount}
                 </p>
               </div>
             </div>
             <Button variant="outline" size="sm" onClick={() => setIncomingOpen(true)}>
               <Inbox className="mr-2 h-4 w-4" />
               Incoming ({incomingShares.length})
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleManualSync} disabled={isSyncing || isManualSyncing}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing || isManualSyncing ? "animate-spin" : ""}`} />
+              {isManualSyncing ? "Syncing..." : "Manual Sync"}
             </Button>
           </CardContent>
         </Card>

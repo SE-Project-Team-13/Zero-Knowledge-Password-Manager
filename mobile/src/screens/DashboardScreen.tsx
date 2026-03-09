@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, StatusBar, Platform
+    View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, StatusBar, Platform, Alert
 } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
@@ -28,10 +28,32 @@ export default function DashboardScreen() {
     const { masterKey, userId, fullName } = useAuthStore() as any;
     const { entries, isLoading, isSyncing, lastSyncTime, loadVault } = useVaultStore();
     const navigation = useNavigation<any>();
+    const [isManualSyncing, setIsManualSyncing] = useState(false);
+
+    const activeCredentialCount = useMemo(
+        () => entries.filter((entry) => entry && entry.id && entry.url).length,
+        [entries],
+    );
 
     useEffect(() => {
         if (masterKey && userId) loadVault(masterKey, userId);
     }, [masterKey, userId]);
+
+    const handleManualSync = async () => {
+        if (!masterKey || !userId) {
+            Alert.alert('Sync unavailable', 'Please sign in again to sync.');
+            return;
+        }
+        setIsManualSyncing(true);
+        try {
+            await loadVault(masterKey, userId);
+            Alert.alert('Sync complete', 'Vault has been refreshed from server.');
+        } catch (e: any) {
+            Alert.alert('Sync failed', e?.message || 'Unable to sync right now.');
+        } finally {
+            setIsManualSyncing(false);
+        }
+    };
 
     return (
         <View style={styles.container}>
@@ -69,16 +91,24 @@ export default function DashboardScreen() {
                             </View>
                             
                             <View style={styles.statsRow}>
-                                <StatCard icon="key" label="Stored Passwords" value={isLoading ? '…' : entries.length} />
+                                <StatCard icon="key" label="Stored Passwords" value={isLoading ? '...' : activeCredentialCount} />
                                 <StatCard icon="sync" label="Last Sync" value={formatTimestampIST(lastSyncTime).split(',')[0]} color={Colors.success} />
                             </View>
                             
-                            {isSyncing && (
+                            {(isSyncing || isManualSyncing) && (
                                 <View style={styles.syncingRow}>
                                     <ActivityIndicator size="small" color={Colors.primary} />
                                     <Text style={styles.syncingText}>Syncing securely...</Text>
                                 </View>
                             )}
+                            <TouchableOpacity
+                                style={styles.manualSyncBtn}
+                                onPress={handleManualSync}
+                                disabled={isSyncing || isManualSyncing}
+                            >
+                                <Ionicons name="sync-outline" size={14} color={Colors.primary} />
+                                <Text style={styles.manualSyncBtnText}>{isManualSyncing ? 'Syncing...' : 'Manual Sync'}</Text>
+                            </TouchableOpacity>
                         </LinearGradient>
                     </View>
 
@@ -201,6 +231,22 @@ const styles = StyleSheet.create({
         borderTopColor: Colors.border,
     },
     syncingText: { fontSize: 11, color: Colors.primary, fontWeight: '600' },
+    manualSyncBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 8,
+        borderRadius: Radius.md,
+        borderWidth: 1,
+        borderColor: Colors.primaryBorder,
+        backgroundColor: Colors.primaryDim,
+    },
+    manualSyncBtnText: {
+        color: Colors.primary,
+        fontSize: 12,
+        fontWeight: '700',
+    },
     sectionContainer: {
         paddingHorizontal: Spacing.lg,
         marginBottom: Spacing.xl,
