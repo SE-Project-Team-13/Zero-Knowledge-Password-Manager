@@ -84,11 +84,19 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
 
             // RE-ENCRYPTION FLOW:
             // Since we are changing password, we MUST re-encrypt the vault data.
+            // CRITICAL: We must use the SAME key derivation path as VaultContext.unlockVault():
+            //   1. Read the user's hex salt from localStorage (NOT the base64 salt in the vault blob)
+            //   2. Parse hex → bytes
+            //   3. Call deriveKey(password, saltBytes, argon2Params) → DerivedKey
+            //   4. Call decrypt(vaultData, derivedKey) directly
+            // Using decryptVault() would fail because it internally calls
+            // base64ToBuffer(encrypted.salt) — but the vault blob's salt field is a
+            // DIFFERENT salt (from AES encryption), not the user's registration salt.
             console.log("[ChangePassword] Fetching current vault for re-encryption...")
             
             // 1. Fetch current vault data
             const pullResponse = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/sync/pull`, 
+                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/sync/blob/pull`, 
                 { 
                     method: "POST",
                     headers: { 
@@ -97,8 +105,7 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
                     },
                     body: JSON.stringify({
                         userId,
-                        deviceId,
-                        lastVersion: 0
+                        lastKnownTimestamp: 0,
                     })
                 }
             )
@@ -106,12 +113,33 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
             let vaultData = null
             if (pullResponse.ok) {
                 const responseData = await pullResponse.json()
-                if (responseData.vaults && responseData.vaults.length > 0) {
-                    vaultData = responseData.vaults[0]
+                if (responseData?.blob?.ciphertext) {
+                    vaultData = responseData.blob
                 }
             }
 
-            // Fallback to SimpleVault if Sync API is empty
+            // Fallback to legacy sync API
+            if (!vaultData && userId) {
+                const syncResponse = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/sync/pull`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ userId, deviceId, lastVersion: 0 })
+                    }
+                )
+                if (syncResponse.ok) {
+                    const syncData = await syncResponse.json()
+                    if (syncData?.vaults?.length > 0 && syncData.vaults[0]?.ciphertext) {
+                        vaultData = syncData.vaults[0]
+                    }
+                }
+            }
+
+            // Fallback to SimpleVault if Sync APIs are empty
             if (!vaultData && userId) {
                 const compatResponse = await fetch(
                     `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/vault/${encodeURIComponent(userId)}`,
@@ -127,71 +155,140 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
             }
 
             if (vaultData && vaultData.ciphertext) {
-                // 2. Decrypt with OLD password
-                const { decryptVault, encryptVault } = await import("@password-manager/crypto-engine")
-                
-                const decryptionResult = await decryptVault(currentPassword, {
-                    ciphertext: vaultData.ciphertext,
-                    iv: vaultData.iv,
-                    salt: vaultData.salt,
-                    tag: vaultData.tag || vaultData.authTag,
-                    algorithm: "AES-256-GCM",
-                    derivationAlgorithm: "Argon2id"
+                const { decrypt, encrypt } = await import("@password-manager/crypto-engine")
+
+                // 2. Decrypt with OLD password using the SAME approach as VaultContext.unlockVault()
+                const userSaltHex = localStorage.getItem("user_salt")
+                if (!userSaltHex) {
+                    throw new Error("User salt not found. Please log out and log back in.")
+                }
+                const saltChunks = userSaltHex.match(/.{1,2}/g)
+                if (!saltChunks) {
+                    throw new Error("Invalid salt format")
+                }
+                const oldSaltBytes = new Uint8Array(saltChunks.map(byte => parseInt(byte, 16)))
+
+                const currentArgon2Memory = Number(localStorage.getItem("argon2_memory")) || 128
+                const currentArgon2Iterations = Number(localStorage.getItem("argon2_iterations")) || 1
+
+                console.log(`[ChangePassword] Deriving OLD key (m=${currentArgon2Memory}, t=${currentArgon2Iterations})...`)
+                const oldKeys = await deriveKey(currentPassword, oldSaltBytes, {
+                    memorySize: currentArgon2Memory,
+                    iterations: currentArgon2Iterations
                 })
-                
-                if (decryptionResult.success && decryptionResult.data) {
-                    // 3. Encrypt with NEW password
-                    const encryptionResult = await encryptVault(newPassword, decryptionResult.data)
-                    
-                    newVaultBlob = {
-                        ciphertext: encryptionResult.ciphertext,
-                        iv: encryptionResult.iv,
-                        salt: encryptionResult.salt,
-                        authTag: encryptionResult.tag || "",
-                        version: (vaultData.version || 0) + 1,
-                        deviceId: deviceId
-                    }
-                } else {
+
+                let decryptedEntry: unknown
+                try {
+                    decryptedEntry = await decrypt(
+                        {
+                            ciphertext: vaultData.ciphertext,
+                            iv: vaultData.iv,
+                            salt: vaultData.salt,
+                            tag: vaultData.tag || vaultData.authTag,
+                            algorithm: "AES-256-GCM" as const,
+                            derivationAlgorithm: "Argon2id" as const
+                        },
+                        oldKeys
+                    )
+                    console.log("[ChangePassword] Decryption with old password succeeded")
+                } catch (decryptErr) {
+                    console.error("[ChangePassword] Decryption failed:", decryptErr)
                     throw new Error("Failed to decrypt your vault with the current password. Please try again.")
                 }
-            }
 
-            // 4. Generate new security parameters
-            const saltBuffer = crypto.getRandomValues(new Uint8Array(16))
-            const salt = Array.from(saltBuffer).map((b) => b.toString(16).padStart(2, "0")).join("")
-            // Explicitly use 128 KB memory and 1 iteration to match mobile registration and fix 401 login errors
-            const argon2Params = { memorySize: 128, iterations: 1 }
-            const { authKey } = await deriveKey(newPassword, saltBuffer, argon2Params)
-            
-            const verifier = await generateVerifier(authKey)
+                // 3. Encrypt with NEW password
+                // CRITICAL: Use the SAME salt for both vault encryption AND auth verifier.
+                // If they differ, unlockVault will derive a key from user_salt (auth salt)
+                // which won't match the vault (encrypted with a different salt).
+                const newArgon2Params = { memorySize: 128, iterations: 1 }
+                const newSaltBytes = crypto.getRandomValues(new Uint8Array(16))
+                const newSaltHex = Array.from(newSaltBytes).map((b) => b.toString(16).padStart(2, "0")).join("")
+                console.log(`[ChangePassword] Deriving NEW key (m=${newArgon2Params.memorySize}, t=${newArgon2Params.iterations})...`)
+                const newKeys = await deriveKey(newPassword, newSaltBytes, newArgon2Params)
 
-            // 5. Update server
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/auth/reset-password`, 
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        salt,
-                        verifier,
-                        argon2Memory: argon2Params.memorySize,
-                        argon2Iterations: argon2Params.iterations,
-                        encryptedVault: newVaultBlob
-                    })
+                const encryptionResult = await encrypt(
+                    typeof decryptedEntry === 'object' && decryptedEntry !== null
+                        ? decryptedEntry as any
+                        : { url: "VAULT_ROOT", username: "SYSTEM", password: JSON.stringify(decryptedEntry) },
+                    newKeys
+                )
+                    
+                newVaultBlob = {
+                    ciphertext: encryptionResult.ciphertext,
+                    iv: encryptionResult.iv,
+                    salt: encryptionResult.salt,
+                    authTag: encryptionResult.tag || "",
+                    version: (vaultData.version || 0) + 1,
+                    deviceId: deviceId
                 }
-            )
 
-            if (!response.ok) {
-                const data = await response.json()
-                throw new Error(data.message || "Failed to update password on server")
+                // 4. Generate new auth verifier using the SAME salt
+                const verifier = await generateVerifier(newKeys.authKey)
+
+                // 5. Update server
+                const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/auth/reset-password`, 
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            salt: newSaltHex,
+                            verifier,
+                            argon2Memory: newArgon2Params.memorySize,
+                            argon2Iterations: newArgon2Params.iterations,
+                            encryptedVault: newVaultBlob
+                        })
+                    }
+                )
+
+                if (!response.ok) {
+                    const data = await response.json()
+                    throw new Error(data.message || "Failed to update password on server")
+                }
+
+                // 6. Success! Update local state
+                localStorage.setItem("user_salt", newSaltHex)
+                localStorage.setItem("argon2_memory", String(newArgon2Params.memorySize))
+                localStorage.setItem("argon2_iterations", String(newArgon2Params.iterations))
+                sessionStorage.setItem("session_master_password", newPassword)
+            } else {
+                // No vault data — just update the auth credentials
+                const saltBuffer = crypto.getRandomValues(new Uint8Array(16))
+                const salt = Array.from(saltBuffer).map((b) => b.toString(16).padStart(2, "0")).join("")
+                const argon2Params = { memorySize: 128, iterations: 1 }
+                const { authKey } = await deriveKey(newPassword, saltBuffer, argon2Params)
+                const verifier = await generateVerifier(authKey)
+
+                const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/auth/reset-password`, 
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            salt,
+                            verifier,
+                            argon2Memory: argon2Params.memorySize,
+                            argon2Iterations: argon2Params.iterations,
+                        })
+                    }
+                )
+
+                if (!response.ok) {
+                    const data = await response.json()
+                    throw new Error(data.message || "Failed to update password on server")
+                }
+
+                localStorage.setItem("user_salt", salt)
+                localStorage.setItem("argon2_memory", String(argon2Params.memorySize))
+                localStorage.setItem("argon2_iterations", String(argon2Params.iterations))
+                sessionStorage.setItem("session_master_password", newPassword)
             }
-
-            // 6. Success! Update local state
-            localStorage.setItem("user_salt", salt)
-            sessionStorage.setItem("session_master_password", newPassword)
             
             setSuccess(true)
             toast.success("Password changed successfully!")

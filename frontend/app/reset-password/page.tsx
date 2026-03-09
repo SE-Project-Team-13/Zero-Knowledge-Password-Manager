@@ -56,9 +56,29 @@ export default function ResetPasswordPage() {
             const oldMasterPassword = sessionStorage.getItem("old_master_password") || sessionStorage.getItem("session_master_password")
             let newVaultBlob = null
 
+            // Generate the NEW salt once — used for both vault encryption AND auth verifier.
+            // CRITICAL: If these differ, unlockVault will derive a key from user_salt (auth salt)
+            // which won't match the vault (encrypted with a different salt).
+            const newArgon2Params = { memorySize: 128, iterations: 1 }
+            const newSaltBytes = crypto.getRandomValues(new Uint8Array(16))
+            const newSaltHex = Array.from(newSaltBytes)
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join("")
+
+            // Derive new key once, reuse for both vault encryption and auth verifier
+            const newKeys = await deriveKey(password, newSaltBytes, newArgon2Params)
+
             if (oldMasterPassword) {
                 // RE-ENCRYPTION FLOW:
                 // We have access to the old password, so we can preserve the vault data.
+                // CRITICAL: We must use the SAME key derivation path as VaultContext.unlockVault():
+                //   1. Read the user's hex salt from localStorage (NOT the base64 salt in the vault blob)
+                //   2. Parse hex → bytes
+                //   3. Call deriveKey(password, saltBytes, argon2Params) → DerivedKey
+                //   4. Call decrypt(vaultData, derivedKey) directly
+                // Using decryptVault() would fail because it internally calls
+                // base64ToBuffer(encrypted.salt) — but the vault blob's salt field is a
+                // DIFFERENT salt (from AES encryption), not the user's registration salt.
                 try {
                     // A. Fetch the current encrypted vault
                     const token = localStorage.getItem("auth_token")
@@ -69,10 +89,10 @@ export default function ResetPasswordPage() {
                     
                     let vaultData = null
                     
-                    // 1. Try Sync API first
-                    console.log("[ResetPassword] Trying Sync API for vault data...")
-                    const pullResponse = await fetch(
-                        buildApiUrl("/sync/pull"), 
+                    // 1. Try Blob Sync API first
+                    console.log("[ResetPassword] Trying Blob Sync API for vault data...")
+                    const blobPullResponse = await fetch(
+                        buildApiUrl("/sync/blob/pull"), 
                         { 
                             method: "POST",
                             headers: { 
@@ -81,23 +101,50 @@ export default function ResetPasswordPage() {
                             },
                             body: JSON.stringify({
                                 userId,
-                                deviceId,
-                                lastVersion: 0
+                                lastKnownTimestamp: 0,
                             })
                         }
                     )
 
-                    if (pullResponse.ok) {
-                        const responseData = await pullResponse.json()
-                        if (responseData.vaults && responseData.vaults.length > 0) {
-                            vaultData = responseData.vaults[0]
-                            console.log("[ResetPassword] Found vault in Sync API")
+                    if (blobPullResponse.ok) {
+                        const responseData = await blobPullResponse.json()
+                        if (responseData?.blob?.ciphertext) {
+                            vaultData = responseData.blob
+                            console.log("[ResetPassword] Found vault in Blob Sync API")
+                        }
+                    }
+
+                    // 2. Fallback to legacy Sync API
+                    if (!vaultData && userId) {
+                        console.log("[ResetPassword] Blob Sync API empty, trying legacy Sync API...")
+                        const pullResponse = await fetch(
+                            buildApiUrl("/sync/pull"), 
+                            { 
+                                method: "POST",
+                                headers: { 
+                                    "Content-Type": "application/json",
+                                    "Authorization": `Bearer ${token}` 
+                                },
+                                body: JSON.stringify({
+                                    userId,
+                                    deviceId,
+                                    lastVersion: 0
+                                })
+                            }
+                        )
+
+                        if (pullResponse.ok) {
+                            const responseData = await pullResponse.json()
+                            if (responseData.vaults && responseData.vaults.length > 0) {
+                                vaultData = responseData.vaults[0]
+                                console.log("[ResetPassword] Found vault in legacy Sync API")
+                            }
                         }
                     }
                     
-                    // 2. Fallback to Compatibility API (SimpleVault) if Sync API is empty
+                    // 3. Fallback to Compatibility API (SimpleVault)
                     if (!vaultData && userId) {
-                        console.log("[ResetPassword] Sync API empty, trying Compatibility API...")
+                        console.log("[ResetPassword] Sync APIs empty, trying Compatibility API...")
                         const compatResponse = await fetch(
                             buildApiUrl(`/api/vault/${encodeURIComponent(userId)}`),
                             {
@@ -110,7 +157,6 @@ export default function ResetPasswordPage() {
                         
                         if (compatResponse.ok) {
                             const compatData = await compatResponse.json()
-                            // SimpleVault stores data inside a 'data' field
                             if (compatData && compatData.ciphertext) {
                                 vaultData = compatData
                                 console.log("[ResetPassword] Found vault in Compatibility API")
@@ -122,37 +168,60 @@ export default function ResetPasswordPage() {
                     }
                     
                     if (vaultData && vaultData.ciphertext) {
-                        // B. Decrypt with OLD password
+                        // B. Decrypt with OLD password using the SAME approach as VaultContext.unlockVault()
                         console.log("[ResetPassword] Decrypting vault with old password...")
-                        const { decryptVault, encryptVault } = await import("@password-manager/crypto-engine")
+                        const { decrypt, encrypt } = await import("@password-manager/crypto-engine")
                         
-                        const decryptionResult = await decryptVault(oldMasterPassword, {
-                            ciphertext: vaultData.ciphertext,
-                            iv: vaultData.iv,
-                            salt: vaultData.salt,
-                            tag: vaultData.tag || vaultData.authTag,
-                            algorithm: "AES-256-GCM",
-                            derivationAlgorithm: "Argon2id"
-                        })
-                        
-                        if (decryptionResult.success && decryptionResult.data) {
-                            // C. Encrypt with NEW password
-                            console.log("[ResetPassword] Re-encrypting vault with new password...")
-                            const encryptionResult = await encryptVault(password, decryptionResult.data)
-                            
-                            // D. Prepare new vault blob for server
-                            newVaultBlob = {
-                                ciphertext: encryptionResult.ciphertext,
-                                iv: encryptionResult.iv,
-                                salt: encryptionResult.salt,
-                                authTag: encryptionResult.tag || "",
-                                version: (vaultData.version || 0) + 1,
-                                deviceId: deviceId
-                            }
-                            console.log("[ResetPassword] Vault re-encrypted successfully!")
-                        } else {
-                            console.warn("[ResetPassword] Decryption failed:", decryptionResult)
+                        const oldSaltHex = localStorage.getItem("user_salt")
+                        if (!oldSaltHex) {
+                            throw new Error("Old user salt not found in localStorage")
                         }
+                        const oldSaltChunks = oldSaltHex.match(/.{1,2}/g)
+                        if (!oldSaltChunks) {
+                            throw new Error("Invalid old salt format")
+                        }
+                        const oldSaltBytes = new Uint8Array(oldSaltChunks.map(byte => parseInt(byte, 16)))
+
+                        const oldArgon2Memory = Number(localStorage.getItem("argon2_memory")) || 128
+                        const oldArgon2Iterations = Number(localStorage.getItem("argon2_iterations")) || 1
+
+                        console.log(`[ResetPassword] Deriving OLD key (m=${oldArgon2Memory}, t=${oldArgon2Iterations})...`)
+                        const oldKeys = await deriveKey(oldMasterPassword, oldSaltBytes, {
+                            memorySize: oldArgon2Memory,
+                            iterations: oldArgon2Iterations,
+                        })
+
+                        const decryptedEntry = await decrypt(
+                            {
+                                ciphertext: vaultData.ciphertext,
+                                iv: vaultData.iv,
+                                salt: vaultData.salt,
+                                tag: vaultData.tag || vaultData.authTag,
+                                algorithm: "AES-256-GCM" as const,
+                                derivationAlgorithm: "Argon2id" as const,
+                            },
+                            oldKeys
+                        )
+                        
+                        // C. Encrypt with NEW password using the unified new key
+                        console.log("[ResetPassword] Re-encrypting vault with new password...")
+                        const encryptionResult = await encrypt(
+                            typeof decryptedEntry === 'object' && decryptedEntry !== null
+                                ? decryptedEntry as any
+                                : { url: "VAULT_ROOT", username: "SYSTEM", password: JSON.stringify(decryptedEntry) },
+                            newKeys
+                        )
+                        
+                        // D. Prepare new vault blob for server
+                        newVaultBlob = {
+                            ciphertext: encryptionResult.ciphertext,
+                            iv: encryptionResult.iv,
+                            salt: encryptionResult.salt,
+                            authTag: encryptionResult.tag || "",
+                            version: (vaultData.version || 0) + 1,
+                            deviceId: deviceId
+                        }
+                        console.log("[ResetPassword] Vault re-encrypted successfully!")
                     } else {
                         console.log("[ResetPassword] No vault data found to re-encrypt")
                     }
@@ -162,23 +231,10 @@ export default function ResetPasswordPage() {
                 }
             }
 
-            // 1. Generate new salt
-            const saltBuffer = crypto.getRandomValues(new Uint8Array(16))
-            const salt = Array.from(saltBuffer)
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join("")
+            // Generate auth verifier using the SAME key derived above
+            const verifier = await generateVerifier(newKeys.authKey)
 
-            // 2. Derive new keys and verifier locally
-            // This is the heavy lifting part
-            const { authKey } = await deriveKey(password, saltBuffer, {
-                memorySize: 128,
-                iterations: 1,
-            })
-
-            // 3. Create proof/verifier using shared utility
-            const verifier = await generateVerifier(authKey)
-
-            // 4. Send to backend (with optional new vault)
+            // Send to backend (with optional new vault)
             console.log("[ResetPassword] Sending to backend:", { 
                 hasNewVaultBlob: !!newVaultBlob,
                 vaultBlobKeys: newVaultBlob ? Object.keys(newVaultBlob) : []
@@ -194,9 +250,12 @@ export default function ResetPasswordPage() {
                         "Authorization": `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        salt,
+                        salt: newSaltHex,
                         verifier,
-                        encryptedVault: newVaultBlob // Pass this if we successfully re-encrypted
+                        argon2Memory: newArgon2Params.memorySize,
+                        argon2Iterations: newArgon2Params.iterations,
+                        encryptedVault: newVaultBlob,
+                        confirmVaultDeletion: !newVaultBlob, // If we couldn't re-encrypt, allow vault deletion
                     })
                 }
             )
@@ -208,7 +267,9 @@ export default function ResetPasswordPage() {
 
             // Success!
             // Update local storage credentials
-            localStorage.setItem("user_salt", salt)
+            localStorage.setItem("user_salt", newSaltHex)
+            localStorage.setItem("argon2_memory", String(newArgon2Params.memorySize))
+            localStorage.setItem("argon2_iterations", String(newArgon2Params.iterations))
             
             // Clear temporary session data to force a clean login
             sessionStorage.removeItem("session_master_password")

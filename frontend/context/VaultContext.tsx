@@ -760,12 +760,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
               );
             }
             localStorage.removeItem(getSyncTsKey(resolvedUserId));
-            console.log(
-              "[VaultContext] Treating as empty vault (cache cleared)",
+            // CRITICAL: Do NOT set isUnlocked=true or empty entries here!
+            // If we unlock with empty entries, downstream code (sharing key
+            // registration, auto-sync) will save that empty vault to the
+            // server, permanently destroying the user's real credentials.
+            console.error(
+              "[VaultContext] Decryption failed — vault remains LOCKED to prevent data loss",
             );
-            setDerivedKeys(keys);
-            setDecryptedEntries([]);
-            setIsUnlocked(true);
+            toast.error("Failed to decrypt vault. Please re-enter your master password.");
             setIsLoadingVault(false);
             return;
           }
