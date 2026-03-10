@@ -21,7 +21,8 @@ if (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') {
     // @ts-ignore
     quickCrypto = require('react-native-quick-crypto').default;
   } catch (e) {
-    console.warn('[CryptoEngine] React Native Quick Crypto lookup failed', e);
+    // Native module not available - using JS fallback (@noble/ciphers)
+    // To enable native: run 'npx expo prebuild' and build a dev client
   }
 }
 const IV_LENGTH = 12 // 96 bits - recommended for GCM

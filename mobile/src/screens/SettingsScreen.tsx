@@ -11,6 +11,7 @@ import axios from 'axios';
 import { API_URL } from '../config';
 import { SecureStorageService } from '../services/secureStorage';
 import { LinearGradient } from 'expo-linear-gradient';
+import { formatTimestampIST } from '../utils/formatIST';
 
 function SettingRow({ icon, title, subtitle, onPress, danger = false }: {
     icon: string;
@@ -44,8 +45,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function SettingsScreen() {
     const { logout, userId, fullName, email } = useAuthStore();
-    const { entries, clearVault } = useVaultStore();
+    const { entries, clearVault, isSyncing, pendingSyncCount, lastSyncTime } = useVaultStore();
     const navigation = useNavigation<any>();
+
+    const activeCount = entries.filter((entry) => entry && entry.id && entry.url && !entry.isDeleted).length;
+    const vaultStatusSubtitle = isSyncing
+        ? 'Sync in progress...'
+        : pendingSyncCount > 0
+            ? `${activeCount} active items (${pendingSyncCount} pending sync)`
+            : `${activeCount} active items • Last synced ${formatTimestampIST(lastSyncTime)}`;
 
     const confirmAction = (title: string, message: string): Promise<boolean> => {
         if (Platform.OS === 'web') {
@@ -132,10 +140,9 @@ export default function SettingsScreen() {
                             onPress={() => navigation.navigate('ChangePassword')}
                         />
                         <SettingRow
-                            icon="shield-checkmark-outline"
+                            icon="information-circle-outline"
                             title="Emergency Kit"
-                            subtitle="Generate a recovery key"
-                            onPress={() => navigation.navigate('EmergencyKit')}
+                            subtitle="Generate recovery key on web/desktop for full features"
                         />
                     </Section>
 
@@ -143,7 +150,7 @@ export default function SettingsScreen() {
                         <SettingRow
                             icon="sync-outline"
                             title="Vault Status"
-                            subtitle={`${entries.length} items synced to cloud`}
+                            subtitle={vaultStatusSubtitle}
                         />
                     </Section>
 

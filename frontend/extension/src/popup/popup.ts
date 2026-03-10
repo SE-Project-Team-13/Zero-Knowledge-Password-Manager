@@ -19,6 +19,7 @@ interface PasswordEntry {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  isDeleted?: boolean;
 }
 
 // ============================================================================
@@ -111,6 +112,18 @@ async function init() {
   setInterval(() => {
     chrome.runtime.sendMessage({ type: "HEARTBEAT" }).catch(() => {});
   }, 10000);
+
+  // Keep popup view fresh while open so dashboard/mobile changes appear quickly.
+  setInterval(async () => {
+    try {
+      const currentStatus = await sendMessage({ type: "GET_STATUS" });
+      if (currentStatus && currentStatus.isLocked === false && !vaultScreen.classList.contains("hidden")) {
+        await loadVault();
+      }
+    } catch {
+      // no-op
+    }
+  }, 15000);
 }
 
 // ============================================================================
@@ -223,14 +236,16 @@ function renderVault(entries: PasswordEntry[]) {
   if (!vaultList) return;
   vaultList.replaceChildren();
 
-  if (entries.length === 0) {
+  const visibleEntries = entries.filter((entry) => !entry.isDeleted);
+
+  if (visibleEntries.length === 0) {
     if (emptyState) emptyState.classList.remove("hidden");
     return;
   }
 
   if (emptyState) emptyState.classList.add("hidden");
 
-  entries.forEach((entry) => {
+  visibleEntries.forEach((entry) => {
     // Hide internal system configuration entries from the vault view
     if (entry.siteName === "SYSTEM_SHARING_KEYS" || entry.siteUrl === "system-sharing-keys") {
       return;

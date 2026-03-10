@@ -16,6 +16,8 @@ export function usePasswordAging() {
       const parsed = new Date(value).getTime();
       if (!Number.isNaN(parsed)) return parsed;
     }
+    // Log warning if both dates are invalid
+    console.warn('[PasswordAging] Invalid dates for entry:', entry.id, entry.updatedAt, entry.createdAt);
     return NaN;
   }, []);
 
@@ -32,7 +34,7 @@ export function usePasswordAging() {
   }, []);
 
   const agingEntries = entries.filter(
-    (entry) => isPasswordOld(entry) && !isSnoozed(entry),
+    (entry) => !entry.isDeleted && isPasswordOld(entry) && !isSnoozed(entry),
   );
 
   const handleSnooze = useCallback((id: string) => {

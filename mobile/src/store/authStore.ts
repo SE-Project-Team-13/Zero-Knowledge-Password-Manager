@@ -261,17 +261,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   checkAuth: async () => {
-    const session = await SecureStorageService.getSessionId();
-    const userId = await SecureStorageService.getItem('user_id');
-    const fullName = await SecureStorageService.getItem('full_name');
-    
-    // If we have a session, we are "logged in" but don't have the Master Key.
-    // For MVP, we force re-login to derive key. 
-    // Ideally we would verify session validation with backend here.
-    if (session && userId) {
-        set({ userId, fullName, isAuthenticated: false, isOtpPending: false, pendingEmail: null });
-        // Optional: validate token with backend?
-        // For now, assume session valid but require password for key.
-    }
+    // Always require fresh login - do not persist authentication
+    // Clear any existing session to force user to login
+    await SecureStorageService.clearSession();
+    await SecureStorageService.deleteItem('user_id');
+    await SecureStorageService.deleteItem('full_name');
+    set({ 
+      isAuthenticated: false, 
+      isOtpPending: false, 
+      pendingEmail: null,
+      userId: null,
+      email: null,
+      fullName: null,
+      masterKey: null
+    });
   }
 }));

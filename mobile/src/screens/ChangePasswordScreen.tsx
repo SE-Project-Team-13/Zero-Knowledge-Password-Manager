@@ -29,6 +29,25 @@ function toHex(bytes: Uint8Array): string {
         .join('');
 }
 
+function hexToBytes(hex: string): Uint8Array {
+    const normalized = hex.trim().toLowerCase();
+    if (!/^[0-9a-f]+$/.test(normalized) || normalized.length % 2 !== 0) {
+        throw new Error('Invalid salt format from server');
+    }
+    const matches = normalized.match(/.{1,2}/g);
+    if (!matches) {
+        throw new Error('Invalid salt format from server');
+    }
+    return new Uint8Array(matches.map((byte) => parseInt(byte, 16)));
+}
+
+function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) return false;
+    let mismatch = 0;
+    for (let i = 0; i < a.length; i++) mismatch |= (a[i] ^ b[i]);
+    return mismatch === 0;
+}
+
 function InputField({
     label, value, onChangeText, placeholder, secureTextEntry = false, icon, rightSlot,
 }: {
@@ -62,15 +81,25 @@ function InputField({
 }
 
 export default function ChangePasswordScreen({ navigation }: any) {
-    const { userId, masterKey, setMasterKey } = useAuthStore();
+    const { userId, email, masterKey, setMasterKey } = useAuthStore();
     const { entries, version, clearVault, getDeviceIdForSync } = useVaultStore();
 
-    const [currentPassword, setCurrentPassword] = useState('');
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [showPasswords, setShowPasswords] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isPasswordValid, setIsPasswordValid] = useState(false);
+    const [currentPassword, setCurrentPassword] = React.useState('');
+    const [newPassword, setNewPassword] = React.useState('');
+    const [confirmPassword, setConfirmPassword] = React.useState('');
+    const [showPasswords, setShowPasswords] = React.useState(false);
+    const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [isPasswordValid, setIsPasswordValid] = React.useState(false);
+    const abortControllerRef = React.useRef<AbortController | null>(null);
+
+    // Cleanup on unmount
+    React.useEffect(() => {
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
+    }, []);
 
     const canSubmit = useMemo(() => {
         return (
@@ -82,7 +111,7 @@ export default function ChangePasswordScreen({ navigation }: any) {
     }, [currentPassword, isPasswordValid, confirmPassword, isSubmitting]);
 
     const handleSubmit = async () => {
-        if (!userId || !masterKey) {
+        if (!userId || !email || !masterKey) {
             Alert.alert('Session Required', 'Please sign in again to change your password.');
             return;
         }
@@ -98,7 +127,25 @@ export default function ChangePasswordScreen({ navigation }: any) {
         }
 
         setIsSubmitting(true);
+        abortControllerRef.current = new AbortController();
         try {
+            // Validate current password against the active session key.
+            const saltResponse = await axios.get(`${API_URL}/auth/salt/${encodeURIComponent(email)}`, {
+                signal: abortControllerRef.current.signal,
+            });
+            const serverSalt = hexToBytes(saltResponse.data.salt);
+            const currentArgon2Memory = Number(saltResponse.data.argon2Memory || 128);
+            const currentArgon2Iterations = Number(saltResponse.data.argon2Iterations || 1);
+            const currentDerivedKey = await deriveKey(currentPassword, serverSalt, {
+                memorySize: currentArgon2Memory,
+                iterations: currentArgon2Iterations,
+            });
+
+            if (!equalBytes(currentDerivedKey.authKey, masterKey.authKey)) {
+                Alert.alert('Invalid Password', 'Current master password is incorrect.');
+                return;
+            }
+
             const newSaltBuffer = crypto.getRandomValues(new Uint8Array(16));
             const newSaltHex = toHex(newSaltBuffer);
             // Explicitly use 128 KB memory and 1 iteration to match mobile registration
@@ -142,6 +189,7 @@ export default function ChangePasswordScreen({ navigation }: any) {
                         Authorization: `Bearer ${token}`,
                         'Content-Type': 'application/json',
                     },
+                    signal: abortControllerRef.current.signal,
                 },
             );
 
@@ -153,10 +201,15 @@ export default function ChangePasswordScreen({ navigation }: any) {
                 },
             ]);
         } catch (error: any) {
+            // Don't show error if request was aborted (component unmounted)
+            if (error?.name === 'AbortError' || error?.name === 'CanceledError') {
+                return;
+            }
             const message = error?.response?.data?.message || error?.message || 'Failed to update password';
             Alert.alert('Update Failed', message);
         } finally {
             setIsSubmitting(false);
+            abortControllerRef.current = null;
         }
     };
 

@@ -77,6 +77,13 @@ export default function RecoveryLoginScreen({ navigation }: any) {
         try {
             const normalizedEmail = email.trim().toLowerCase();
             const cleanRecoveryKey = recoveryKey.replace(/[\s-]/g, '').trim();
+            
+            // Validate base64 format
+            if (!/^[A-Za-z0-9+/]+=*$/.test(cleanRecoveryKey)) {
+                setError('Invalid recovery key format. Please check your Emergency Kit.');
+                setIsLoading(false);
+                return;
+            }
 
             const response = await axios.post(`${API_URL}/recovery/login`, {
                 email: normalizedEmail,

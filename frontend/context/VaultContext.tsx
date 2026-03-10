@@ -18,7 +18,7 @@ import {
 import { toast } from "sonner";
 import { buildApiUrl } from "@/lib/api-base-url";
 
-const WEB_SYNC_INTERVAL_MS = 3 * 60 * 1000;
+const WEB_SYNC_INTERVAL_MS = 1 * 1000;
 const LAST_SYNC_TS_KEY_PREFIX = "vault_last_sync_ts:";
 const WEB_OFFLINE_QUEUE_KEY_PREFIX = "vault_offline_sync_queue:";
 const WEB_LOCAL_BLOB_PREFIX = "vault_local_blob:";
@@ -578,7 +578,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 };
               }
               if (blobData?.hasUpdate === false) {
-                return { ok: true, status: 200, json: async () => null };
+                console.log(
+                  "[VaultContext] Blob API has no update, trying fallback APIs",
+                );
               }
             } else if (blobResponse.status === 401) {
               console.warn(
@@ -990,8 +992,68 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
 
       const payload = await response.json();
+      const syncCheckTime = Date.now();
+      setLastSyncedAt(syncCheckTime);
+
       if (!payload?.hasUpdate || !payload?.blob?.ciphertext) {
-        return false;
+        // Fallback for cases where another client updated compatibility API
+        // but blob sync metadata is stale or not yet updated.
+        try {
+          const compatResponse = await fetch(
+            buildApiUrl(`/api/vault/${encodeURIComponent(userId)}`),
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              cache: "no-store",
+            },
+          );
+
+          if (!compatResponse.ok) {
+            return false;
+          }
+
+          const compatBlob = await compatResponse.json();
+          if (!compatBlob?.ciphertext) {
+            return false;
+          }
+
+          const cryptoEngine = await import("@password-manager/crypto-engine");
+          const argon2Memory = Number(
+            localStorage.getItem("argon2_memory") || "8192",
+          );
+          const argon2Iterations = Number(
+            localStorage.getItem("argon2_iterations") || "1",
+          );
+          const compatDecryptResult = await cryptoEngine.decryptVault(
+            sessionPassword,
+            {
+              ciphertext: compatBlob.ciphertext,
+              iv: compatBlob.iv,
+              salt: compatBlob.salt,
+              tag: compatBlob.authTag || compatBlob.tag,
+              algorithm: "AES-256-GCM" as const,
+              derivationAlgorithm: "Argon2id" as const,
+            },
+            { memorySize: argon2Memory, iterations: argon2Iterations },
+          );
+
+          if (!compatDecryptResult.success || !compatDecryptResult.data) {
+            return false;
+          }
+
+          const compatEntries = parseDecryptedEntries(compatDecryptResult.data);
+          setDecryptedEntries(compatEntries);
+          const compatTs = Date.now();
+          localStorage.setItem(getSyncTsKey(userId), String(compatTs));
+          localStorage.setItem(getLocalBlobKey(userId), JSON.stringify(compatBlob));
+          setLastSyncedAt(compatTs);
+          return true;
+        } catch (fallbackErr) {
+          console.warn("[VaultContext] Compatibility fallback during sync failed", fallbackErr);
+          return false;
+        }
       }
 
       const blob = payload.blob;
@@ -1623,11 +1685,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         void syncNow();
       }
     };
+    const onFocus = () => {
+      void syncNow();
+    };
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
 
     return () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
     };
   }, [isUnlocked, session.isAuthenticated, syncNow]);
 

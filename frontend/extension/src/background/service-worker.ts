@@ -17,6 +17,7 @@
 import {
   deriveKey,
   encrypt,
+  decrypt,
   decryptVault,
   encryptVault,
   generateVerifier,
@@ -58,6 +59,7 @@ interface PasswordEntry {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  isDeleted?: boolean;
 }
 
 interface SessionState {
@@ -231,7 +233,7 @@ async function handleMessage(message: BackgroundMessage): Promise<unknown> {
     case "UNLOCK_VAULT":
       return await handleUnlockVault(message);
     case "GET_VAULT":
-      return handleGetVault();
+      return await handleGetVault();
     case "LOCK_VAULT":
       return handleLockVault();
     case "GET_STATUS":
@@ -248,7 +250,7 @@ async function handleMessage(message: BackgroundMessage): Promise<unknown> {
     case "GET_USER_PROFILE":
       return await handleGetUserProfile();
     case "CHECK_NEW_CREDENTIAL":
-      return handleCheckNewCredential(message);
+      return await handleCheckNewCredential(message);
     case "SAVE_NEW_CREDENTIAL":
       return await handleSaveNewCredential(message);
     default:
@@ -477,11 +479,91 @@ async function handleRegisterUser(
 // Handlers
 // ============================================================================
 
-function handleGetVault() {
+function parseVaultEntriesFromDecryptedPayload(payload: unknown): PasswordEntry[] {
+  if (!payload || typeof payload !== "object") return [];
+  const decrypted = payload as { password?: string };
+  if (typeof decrypted.password !== "string") return [];
+  try {
+    const parsed = JSON.parse(decrypted.password);
+    return Array.isArray(parsed) ? (parsed as PasswordEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function refreshVaultFromServerIfNewer(): Promise<void> {
+  if (
+    sessionState.isLocked ||
+    !sessionState.derivedKey ||
+    !sessionState.userId ||
+    !sessionToken
+  ) {
+    return;
+  }
+
+  try {
+    const pullResponse = await fetch(`${BACKEND_URL}/sync/blob/pull`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        userId: sessionState.userId,
+        lastKnownTimestamp: sessionState.lastServerSyncTimestamp,
+      }),
+    });
+
+    if (!pullResponse.ok) {
+      return;
+    }
+
+    const payload = await pullResponse.json();
+    const serverTimestamp = Number(payload?.serverTimestamp || 0);
+
+    if (serverTimestamp > sessionState.lastServerSyncTimestamp) {
+      sessionState.lastServerSyncTimestamp = serverTimestamp;
+    }
+
+    if (!payload?.hasUpdate || !payload?.blob?.ciphertext) {
+      return;
+    }
+
+    const remoteBlob = payload.blob as {
+      ciphertext: string;
+      iv: string;
+      salt: string;
+      tag?: string;
+      authTag?: string;
+    };
+
+    const decryptedVaultPayload = await decrypt(
+      {
+        ciphertext: remoteBlob.ciphertext,
+        iv: remoteBlob.iv,
+        salt: remoteBlob.salt,
+        tag: remoteBlob.tag || remoteBlob.authTag,
+        algorithm: "AES-256-GCM",
+        derivationAlgorithm: "Argon2id",
+      },
+      sessionState.derivedKey,
+    );
+
+    sessionState.decryptedVault = parseVaultEntriesFromDecryptedPayload(decryptedVaultPayload);
+  } catch (error) {
+    console.warn("[VaultSync:Extension] Non-blocking sync refresh failed:", error);
+  }
+}
+
+async function handleGetVault() {
   if (sessionState.isLocked || !sessionState.decryptedVault)
     return { success: false, error: "Locked" };
+
+  await refreshVaultFromServerIfNewer();
+
   updateLastActivity();
-  return { success: true, vault: sessionState.decryptedVault };
+  const activeEntries = (sessionState.decryptedVault || []).filter((entry) => !entry.isDeleted);
+  return { success: true, vault: activeEntries };
 }
 
 function handleLockVault() {
@@ -520,6 +602,7 @@ function findMatchingEntries(currentUrl: string): PasswordEntry[] {
   if (!current) return [];
 
   return sessionState.decryptedVault.filter((entry) => {
+    if (entry.isDeleted) return false;
     const entryUrl = normalizeEntryUrl(entry.siteUrl);
     return entryUrl === current;
   });
@@ -545,6 +628,7 @@ function handleCheckUrlMatch(message: CheckUrlMatchMessage) {
   if (sessionState.decryptedVault) {
     for (const vaultEntry of sessionState.decryptedVault) {
       if (sampleEntries.length >= 5) break;
+      if (vaultEntry.isDeleted) continue;
       const normalized = normalizeEntryUrl(vaultEntry.siteUrl);
       if (normalized) sampleEntries.push(normalized);
     }
@@ -565,13 +649,17 @@ async function handleGetUserProfile() {
   });
 }
 
-function handleCheckNewCredential(message: CheckNewCredentialMessage) {
+async function handleCheckNewCredential(message: CheckNewCredentialMessage) {
   if (sessionState.isLocked || !sessionState.decryptedVault)
     return { success: false, shouldPrompt: false };
+
+  await refreshVaultFromServerIfNewer();
+
   const current = normalizeUrlForMatch(message.url);
   if (!current) return { success: true, shouldPrompt: false };
 
   const exists = sessionState.decryptedVault.some((entry) => {
+    if (entry.isDeleted) return false;
     const entryUrl = normalizeEntryUrl(entry.siteUrl);
     return entryUrl === current && entry.username === message.username;
   });
@@ -592,6 +680,12 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
   }
 
   try {
+    await refreshVaultFromServerIfNewer();
+
+    if (!sessionState.decryptedVault) {
+      return { success: false, error: "Vault locked or offline" };
+    }
+
     const now = new Date().toISOString();
     const newEntry: PasswordEntry = {
       id: crypto.randomUUID(),

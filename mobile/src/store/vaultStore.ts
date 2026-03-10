@@ -16,6 +16,7 @@ export interface VaultEntryLocal extends VaultEntry {
     createdAt?: string;
     updatedAt?: string;
     reminderSnoozeUntil?: string;
+    isDeleted?: boolean;
 }
 
 interface ServerVaultRecord {
@@ -93,10 +94,11 @@ function normalizeEntry(raw: any): VaultEntryLocal | null {
                 ? String(raw.lastUpdated)
                 : new Date().toISOString(),
         reminderSnoozeUntil: raw?.reminderSnoozeUntil ? String(raw.reminderSnoozeUntil) : '',
+        isDeleted: Boolean(raw?.isDeleted || false),
     };
 }
 
-function toStorageFormat(entry: VaultEntryLocal): Record<string, string> {
+function toStorageFormat(entry: VaultEntryLocal): Record<string, any> {
     return {
         id: entry.id,
         siteName: entry.url,
@@ -107,6 +109,7 @@ function toStorageFormat(entry: VaultEntryLocal): Record<string, string> {
         createdAt: entry.createdAt || new Date().toISOString(),
         updatedAt: entry.updatedAt || new Date().toISOString(),
         reminderSnoozeUntil: entry.reminderSnoozeUntil || '',
+        ...(entry.isDeleted ? { isDeleted: true } : {}),
     };
 }
 
@@ -419,6 +422,49 @@ async function drainQueue(userId: string): Promise<number> {
     return remaining.length;
 }
 
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function putCompatibilityVaultWithRetry(
+    userId: string,
+    encryptedVault: ServerVaultRecord,
+    labels: string[],
+    headers: Record<string, string | undefined>,
+): Promise<void> {
+    const maxAttempts = 3;
+    let attempt = 0;
+
+    while (attempt < maxAttempts) {
+        attempt += 1;
+        try {
+            await axios.put(
+                `${API_URL}/api/vault/${encodeURIComponent(userId)}`,
+                { encryptedVault, labels },
+                { headers },
+            );
+            return;
+        } catch (error: any) {
+            const status = Number(error?.response?.status || 0);
+            const retryAfterHeader = Number(error?.response?.headers?.['retry-after'] || 0);
+
+            if (status === 429 && attempt < maxAttempts) {
+                const waitMs = retryAfterHeader > 0
+                    ? retryAfterHeader * 1000
+                    : 500 * Math.pow(2, attempt - 1);
+                console.warn('[Sync] Compatibility API rate-limited, retrying...', {
+                    attempt,
+                    waitMs,
+                });
+                await delay(waitMs);
+                continue;
+            }
+
+            throw error;
+        }
+    }
+}
+
 export const useVaultStore = create<VaultState>((set, get) => ({
     entries: [],
     isLoading: false,
@@ -451,17 +497,34 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         try {
             const { vaults, currentVersion } = await pullVaults(userId, get().version, get().lastSyncTime);
             let latest: ServerVaultRecord | null = null;
+            const hasLocalState =
+                (cached?.entries?.length || 0) > 0 ||
+                get().entries.length > 0 ||
+                get().version > 0;
 
             if (vaults.length > 0) {
                 latest = vaults[0] as ServerVaultRecord;
             } else {
-                console.log('[Sync] No sync vaults returned, trying compatibility fallback');
+                // IMPORTANT: Empty /sync/pull usually means "already up-to-date".
+                // Falling back to compatibility API in that case can overwrite
+                // fresh local state with stale legacy data and make entries appear to disappear.
+                if (hasLocalState) {
+                    console.log('[Sync] No newer sync vault returned; keeping local state');
+                    const pending = await drainQueue(userId);
+                    const now = Date.now();
+                    set({ isLoading: false, isSyncing: false, pendingSyncCount: pending, lastSyncTime: now });
+                    return;
+                }
+
+                // Bootstrap/migration path: if local state is empty, try legacy API.
+                console.log('[Sync] No sync vaults returned for empty local state, trying compatibility fallback');
                 latest = await pullCompatibilityVault(userId);
             }
 
             if (!latest) {
                 console.log('[Sync] No vault data available from sync or compatibility store');
-                set({ isLoading: false, isSyncing: false });
+                const now = Date.now();
+                set({ isLoading: false, isSyncing: false, lastSyncTime: now });
                 return;
             }
 
@@ -613,7 +676,16 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     },
 
     deleteEntry: async (id, derivedKey, userId) => {
-        const newEntries = get().entries.filter((e) => e.id !== id);
+        const nowIso = new Date().toISOString();
+        const newEntries = get().entries.map((e) =>
+            e.id === id
+                ? {
+                    ...e,
+                    isDeleted: true,
+                    updatedAt: nowIso,
+                }
+                : e,
+        );
         set({ entries: newEntries, isSyncing: true });
         try {
             const encrypted = await encryptEntries(newEntries, derivedKey);
@@ -765,12 +837,14 @@ export const useVaultStore = create<VaultState>((set, get) => ({
                     };
                     const encryptedVault = await encrypt(serialized, derivedKey);
                     const labels = resolvedEntries.map((e) => e.url.toLowerCase());
-                    await axios.put(`${API_URL}/api/vault/${encodeURIComponent(userId)}`, 
-                        { encryptedVault, labels },
-                        { headers }
-                    );
+                    await putCompatibilityVaultWithRetry(userId, encryptedVault as ServerVaultRecord, labels, headers);
                 } catch (compatErr) {
-                    console.warn('[Sync] Post-merge compatibility sync failed', compatErr);
+                    const status = (compatErr as any)?.response?.status;
+                    if (status === 429) {
+                        console.warn('[Sync] Post-merge compatibility sync deferred due to rate limit');
+                    } else {
+                        console.warn('[Sync] Post-merge compatibility sync failed', compatErr);
+                    }
                 }
             }
 
