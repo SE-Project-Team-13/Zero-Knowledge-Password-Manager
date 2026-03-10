@@ -9,6 +9,10 @@ const isDebug = process.env.DEBUG === "true";
 const otpAttempts = new Map<string, { count: number; lastAttempt: number }>();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
+// Prevent unbounded memory growth: evict the oldest entry whenever the map
+// reaches this size.  An attacker requesting OTPs for millions of fake emails
+// can no longer exhaust Node.js heap memory (DoS).
+const MAX_RATE_LIMIT_ENTRIES = 10_000;
 
 // FIX: Prevent memory leak by periodically pruning expired rate-limit entries
 setInterval(() => {
@@ -198,6 +202,11 @@ export async function verifyOTP(
     });
 
     if (!otp) {
+      // Cap the map before inserting to prevent heap exhaustion.
+      if (otpAttempts.size >= MAX_RATE_LIMIT_ENTRIES) {
+        const firstKey = otpAttempts.keys().next().value;
+        if (firstKey !== undefined) otpAttempts.delete(firstKey);
+      }
       const current = attempts || { count: 0, lastAttempt: Date.now() };
       otpAttempts.set(normalizedEmail, {
         count: current.count + 1,

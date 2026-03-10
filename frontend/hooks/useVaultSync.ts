@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react"
 import { apiClient, type VaultEntry, type SyncPayload } from "@/lib/api-client"
 import { v4 as uuidv4 } from "uuid"
-import { deriveKey, generateVerifier, generateClientProof } from "@password-manager/crypto-engine"
+import { deriveKey, generateVerifier, generateClientProof, verifyServerProof } from "@password-manager/crypto-engine"
 
 export interface UseVaultSyncState {
   userId: string | null
@@ -195,6 +195,14 @@ export function useVaultSync(): [UseVaultSyncState, UseVaultSyncActions] {
       console.log(`[useVaultSync:Auth] Verifier used (recomputed):`, verifier);
 
       const response = await apiClient.login(email, challenge, clientProof)
+
+      // 6. SECURITY: Verify the server proof to guard against MITM attacks.
+      if (response.serverProof) {
+        const isServerAuthentic = verifyServerProof(verifier, challenge, response.serverProof)
+        if (!isServerAuthentic) {
+          throw new Error("Server authentication failed. Possible man-in-the-middle attack.")
+        }
+      }
 
       apiClient.setToken(response.sessionToken)
       localStorage.setItem("user_salt", salt)

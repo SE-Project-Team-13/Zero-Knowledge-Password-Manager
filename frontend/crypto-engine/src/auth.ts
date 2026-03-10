@@ -70,3 +70,29 @@ export function sha256Hash(data: string | Uint8Array): string {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+/**
+ * Verify the server's authentication proof.
+ * The server computes sha256(verifier + challenge + "SERVER") to produce a
+ * proof that is mathematically distinct from the client proof.  Verifying
+ * this on the client detects man-in-the-middle servers that simply echo back
+ * the client proof.
+ *
+ * @param verifierHex   - The hex-encoded verifier previously computed from authKey
+ * @param challengeHex  - The challenge issued by the server for this login
+ * @param serverProof   - The server proof returned from /auth/login
+ * @returns true if the proof is authentic
+ */
+export function verifyServerProof(
+  verifierHex: string,
+  challengeHex: string,
+  serverProof: string,
+): boolean {
+  const encoder = new TextEncoder();
+  const combined = encoder.encode(verifierHex + challengeHex + "SERVER");
+  const expectedBuffer = sha256(combined);
+  const expected = Array.from(new Uint8Array(expectedBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return expected === serverProof;
+}

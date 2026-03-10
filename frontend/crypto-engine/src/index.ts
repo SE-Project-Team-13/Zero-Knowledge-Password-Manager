@@ -28,6 +28,7 @@ export {
   generateClientProof,
   generateChallenge,
   sha256Hash,
+  verifyServerProof,
 } from "./auth"
 
 export type {

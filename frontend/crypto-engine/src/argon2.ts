@@ -31,7 +31,9 @@ const DEFAULT_OPTIONS: Required<Argon2idOptions> = {
   iterations: 1, // Reduced for React Native JS compatibility
   parallelism: 1, // Reduced for React Native JS compatibility
   memorySize: 8192, // 8MB - Default for web, mobile overrides to 1MB
-  hashLength: 32, // 256 bits for AES-256
+  // 64 bytes = 512 bits total: first 256 bits → encryptionKey, second 256 bits → authKey.
+  // Keeping them in separate halves ensures cryptographic key separation.
+  hashLength: 64,
   type: "id",
 };
 
@@ -91,12 +93,15 @@ export async function deriveKey(
       t: mergedOptions.iterations,
       m: mergedOptions.memorySize,
       p: mergedOptions.parallelism,
+      dkLen: mergedOptions.hashLength, // Explicitly request full 64-byte output
     });
   }
 
-  // Split the key material
-  const encryptionKey = new Uint8Array(derivedKeyMaterial.slice(0, mergedOptions.hashLength));
-  const authKey = new Uint8Array(derivedKeyMaterial.slice(0, mergedOptions.hashLength));
+  // Split the 64-byte key material into two independent 32-byte keys.
+  // SECURITY: encryptionKey and authKey must never overlap.
+  const half = mergedOptions.hashLength / 2;
+  const encryptionKey = new Uint8Array(derivedKeyMaterial.slice(0, half));
+  const authKey = new Uint8Array(derivedKeyMaterial.slice(half, mergedOptions.hashLength));
 
   return {
     encryptionKey,
