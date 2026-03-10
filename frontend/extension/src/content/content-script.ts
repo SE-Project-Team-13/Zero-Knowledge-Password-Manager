@@ -58,22 +58,27 @@ function detectLoginForms() {
       addAutofillButton(form, usernameInput, passwordInput);
 
       // Add submission detection for offering to save credentials
-      form.addEventListener('submit', () => {
-        handleFormSubmit(usernameInput.value, passwordInput.value);
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        handleFormSubmit(form, usernameInput.value, passwordInput.value);
       });
 
       // Also handle enter key on password input
       passwordInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
-          handleFormSubmit(usernameInput.value, passwordInput.value);
+          e.preventDefault();
+          handleFormSubmit(form, usernameInput.value, passwordInput.value);
         }
       });
     }
   })
 }
 
-function handleFormSubmit(username: string, password: string) {
-  if (!username || !password) return;
+function handleFormSubmit(form: HTMLFormElement, username: string, password: string) {
+  if (!username || !password) {
+    form.submit();
+    return;
+  }
   const currentUrl = window.location.href;
 
   // Ask background worker if we should save this (checks if it already exists)
@@ -82,8 +87,19 @@ function handleFormSubmit(username: string, password: string) {
     url: currentUrl,
     username: username
   }, (response) => {
+    if (chrome.runtime.lastError || !response) {
+      console.error('[VaultSync:Extension] Background worker error or no response', chrome.runtime.lastError);
+      form.submit();
+      return;
+    }
+
     if (response && response.shouldPrompt) {
-      showSavePrompt(currentUrl, username, password);
+      showSavePrompt(currentUrl, username, password, () => {
+        form.submit();
+      });
+    } else {
+      // If we shouldn't prompt, proceed with form submission natively
+      form.submit();
     }
   });
 }
@@ -92,7 +108,7 @@ function handleFormSubmit(username: string, password: string) {
 // Save Prompt UI
 // ============================================================================
 
-function showSavePrompt(url: string, username: string, password: string) {
+function showSavePrompt(url: string, username: string, password: string, continueSubmit: () => void) {
   // Remove existing if any
   const existing = document.getElementById('pm-save-prompt');
   if (existing) existing.remove();
@@ -182,7 +198,10 @@ function showSavePrompt(url: string, username: string, password: string) {
 
   const removePrompt = () => {
     prompt.style.animation = 'fadeOut 0.3s ease-in forwards';
-    setTimeout(() => container.remove(), 300);
+    setTimeout(() => {
+      container.remove();
+      continueSubmit();
+    }, 300);
   };
 
   shadow.getElementById('pm-btn-cancel')?.addEventListener('click', () => {
@@ -206,11 +225,11 @@ function showSavePrompt(url: string, username: string, password: string) {
         saveBtn.textContent = 'Saved!';
         saveBtn.style.background = '#10b981';
         saveBtn.style.color = 'white';
-        setTimeout(removePrompt, 1500);
+        setTimeout(removePrompt, 1000); // Reduced delay before continuing
       } else {
         saveBtn.textContent = 'Failed';
         saveBtn.style.background = '#ef4444';
-        setTimeout(removePrompt, 2000);
+        setTimeout(removePrompt, 1500);
       }
     });
   });

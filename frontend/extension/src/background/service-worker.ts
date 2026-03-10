@@ -66,6 +66,7 @@ interface SessionState {
   decryptedVault: PasswordEntry[] | null;
   isLocked: boolean;
   lastActivity: number;
+  lastServerSyncTimestamp: number;
 }
 
 // This state exists ONLY in memory and is destroyed on extension reload/browser close
@@ -75,6 +76,7 @@ let sessionState: SessionState = {
   decryptedVault: null,
   isLocked: true,
   lastActivity: Date.now(),
+  lastServerSyncTimestamp: 0,
 };
 
 // ============================================================================
@@ -330,24 +332,60 @@ async function handleUnlockVault(
 
     sessionToken = authResponse.sessionToken;
 
-    // Step 4: Pull vault
-    // Using simple vault endpoint for broad compatibility
-    const data = await apiRequest<{
+    // Step 4: Pull vault — prefer sync blob (latest) with fallback to legacy API
+    let vaultBlobData: {
       ciphertext?: string;
       iv?: string;
       salt?: string;
       tag?: string;
       authTag?: string;
-    }>(`/api/vault/${encodeURIComponent(authResponse.userId)}`);
+    } | null = null;
+    let serverSyncTimestamp = 0;
+
+    try {
+      const blobRes = await fetch(`${BACKEND_URL}/sync/blob/pull`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authResponse.sessionToken}`,
+        },
+        body: JSON.stringify({ userId: authResponse.userId, lastKnownTimestamp: 0 }),
+      });
+      if (blobRes.ok) {
+        const blobJson = await blobRes.json();
+        serverSyncTimestamp = blobJson.serverTimestamp || 0;
+        if (blobJson?.blob?.ciphertext) {
+          vaultBlobData = blobJson.blob;
+          console.log('[VaultSync:Extension] Loaded vault from sync blob (ts=', serverSyncTimestamp, ')');
+        }
+      }
+    } catch (blobErr) {
+      console.warn('[VaultSync:Extension] Sync blob pull failed, falling back to legacy API', blobErr);
+    }
+
+    // Fallback: legacy vault endpoint
+    if (!vaultBlobData) {
+      const legacyData = await apiRequest<{
+        ciphertext?: string;
+        iv?: string;
+        salt?: string;
+        tag?: string;
+        authTag?: string;
+      }>(`/api/vault/${encodeURIComponent(authResponse.userId)}`);
+      if (legacyData?.ciphertext) {
+        vaultBlobData = legacyData;
+        console.log('[VaultSync:Extension] Loaded vault from legacy API');
+      }
+    }
 
     let decryptedVault: PasswordEntry[] = [];
 
-    if (data && data.ciphertext) {
+    if (vaultBlobData && vaultBlobData.ciphertext) {
       const encryptedVault: EncryptedVault = {
-        ciphertext: data.ciphertext,
-        iv: data.iv!,
-        salt: data.salt!,
-        tag: (data.tag || data.authTag)!, // Map both possible tag field names
+        ciphertext: vaultBlobData.ciphertext,
+        iv: vaultBlobData.iv!,
+        salt: vaultBlobData.salt!,
+        tag: (vaultBlobData.tag || vaultBlobData.authTag)!,
         algorithm: "AES-256-GCM",
         derivationAlgorithm: "Argon2id",
       };
@@ -384,6 +422,7 @@ async function handleUnlockVault(
     sessionState.derivedKey = derivedKeys;
     sessionState.decryptedVault = decryptedVault;
     sessionState.isLocked = false;
+    sessionState.lastServerSyncTimestamp = serverSyncTimestamp;
 
     updateLastActivity();
     return { success: true };
@@ -547,6 +586,7 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
     sessionState.isLocked ||
     !sessionState.derivedKey ||
     !sessionState.decryptedVault ||
+    !sessionState.userId ||
     !sessionToken
   ) {
     return { success: false, error: "Vault locked or offline" };
@@ -574,22 +614,89 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
       { url: 'extension-sync', username: 'vault', password: vaultString },
       sessionState.derivedKey
     );
+    const labels = sessionState.decryptedVault.map(e => (e.siteName || e.siteUrl || "").toLowerCase());
 
-    // Sync encrypted state back to the node backend
-    const response = await fetch(`${API_URL}/api/vault`, {
+    // 1. Sync legacy format back to the node backend
+    const response1 = await fetch(`${API_URL}/api/vault/${encodeURIComponent(sessionState.userId)}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${sessionToken}`,
       },
       body: JSON.stringify({
-        vaultData: JSON.stringify(encryptedVaultWrapper),
-        // Just send standard key info fallback to please TS types if needed
-        vaultKeyInfo: { salt: "updated", iv: "updated" }
+        encryptedVault: encryptedVaultWrapper,
+        labels,
       }),
     });
 
-    if (!response.ok) {
+    if (!response1.ok) {
+      console.warn('[VaultSync:Extension] Legacy API save failed:', response1.status);
+    }
+
+    // 2. Also push to Modern Sync API for consistency
+    const nowTs = Date.now();
+    const blobPayload = {
+      ciphertext: encryptedVaultWrapper.ciphertext,
+      iv: encryptedVaultWrapper.iv,
+      salt: encryptedVaultWrapper.salt,
+      authTag: encryptedVaultWrapper.tag || "",
+      version: nowTs,
+      timestamp: nowTs,
+      nonce: crypto.randomUUID(),
+    };
+
+    const response2 = await fetch(`${API_URL}/sync/blob/push`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        userId: sessionState.userId,
+        deviceId: "browser-extension",
+        blob: blobPayload,
+        // Use the server's last known timestamp so we don't false-conflict.
+        // If 0, the server skips conflict detection entirely.
+        baseTimestamp: sessionState.lastServerSyncTimestamp,
+      }),
+    });
+
+    if (response2.ok) {
+      // Keep session timestamp in sync for future saves in the same session
+      sessionState.lastServerSyncTimestamp = nowTs;
+    } else if (response2.status === 409) {
+      // Conflict: server has a newer blob — pull the server's timestamp and retry push
+      console.warn('[VaultSync:Extension] Sync blob conflict, retrying with server timestamp...');
+      try {
+        const conflictData = await response2.json();
+        const serverTs: number = conflictData?.conflict?.latestServerTimestamp || nowTs;
+        const retryRes = await fetch(`${API_URL}/sync/blob/push`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${sessionToken}`,
+          },
+          body: JSON.stringify({
+            userId: sessionState.userId,
+            deviceId: "browser-extension",
+            blob: blobPayload,
+            baseTimestamp: serverTs,
+          }),
+        });
+        if (retryRes.ok) {
+          sessionState.lastServerSyncTimestamp = nowTs;
+          console.log('[VaultSync:Extension] Retry sync push succeeded');
+        } else {
+          console.warn('[VaultSync:Extension] Retry sync push also failed:', retryRes.status);
+        }
+      } catch (retryErr) {
+        console.warn('[VaultSync:Extension] Conflict retry failed:', retryErr);
+      }
+    } else {
+      console.warn('[VaultSync:Extension] Sync blob push failed:', response2.status);
+    }
+
+    if (!response1.ok) {
       throw new Error("Failed to sync new credential to Web Dashboard API");
     }
 
@@ -606,6 +713,7 @@ function lockVault(): void {
   sessionState.derivedKey = null;
   sessionState.decryptedVault = null;
   sessionState.isLocked = true;
+  sessionState.lastServerSyncTimestamp = 0;
   sessionToken = null;
   if (autoLockTimer) clearTimeout(autoLockTimer);
   autoLockTimer = null;
