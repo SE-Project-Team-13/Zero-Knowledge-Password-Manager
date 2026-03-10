@@ -93,6 +93,10 @@ export async function verifyRecoveryKey(
             return { success: false, error: "This recovery key has been revoked and can no longer be used." }
         }
 
+        if (existingKey.usedAt) {
+            return { success: false, error: "This recovery key has already been used and cannot be used again." }
+        }
+
         const storedKey = existingKey
 
         // Mark the recovery key as used
@@ -106,6 +110,42 @@ export async function verifyRecoveryKey(
         }
     } catch (error) {
         console.error("[Recovery] Verification error:", error)
+        return { success: false, error: "Verification failed" }
+    }
+}
+
+/**
+ * Check a recovery key for a given email without consuming it (no usedAt mutation).
+ * Use this for non-destructive verification (e.g. the /verify endpoint).
+ */
+export async function checkRecoveryKey(
+    email: string,
+    recoveryKey: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await User.findOne({ email: email.trim().toLowerCase() })
+        if (!user) {
+            return { success: false, error: "User not found" }
+        }
+
+        const keyHash = hashRecoveryKey(recoveryKey)
+        const existingKey = await RecoveryKey.findOne({ userId: user._id, keyHash })
+
+        if (!existingKey) {
+            return { success: false, error: "Invalid recovery key" }
+        }
+
+        if (existingKey.isRevoked) {
+            return { success: false, error: "This recovery key has been revoked and can no longer be used." }
+        }
+
+        if (existingKey.usedAt) {
+            return { success: false, error: "This recovery key has already been used and cannot be used again." }
+        }
+
+        return { success: true }
+    } catch (error) {
+        console.error("[Recovery] Check error:", error)
         return { success: false, error: "Verification failed" }
     }
 }

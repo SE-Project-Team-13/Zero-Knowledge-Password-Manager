@@ -94,4 +94,59 @@ describe('RecoveryService Integration Tests', () => {
         expect(updatedKey?.usedAt).toBeDefined();
         console.log('Result: Success - Valid recovery key accepted.');
     });
+
+    it('verifyRecoveryKey: should reject a revoked key with the expected error', async () => {
+        const email = 'revoked-key-test@example.com';
+        const rawKey = generateRecoveryKey();
+        const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+
+        const user = new User({
+            email,
+            fullName: 'Revoked Key User',
+            salt: 'salt',
+            verifier: 'verifier',
+        });
+        await user.save();
+
+        const recoveryKey = new RecoveryKey({
+            userId: user._id,
+            keyHash,
+            encryptedVaultKey: 'some-encrypted-vault-key',
+            isRevoked: true,
+        });
+        await recoveryKey.save();
+
+        const result = await verifyRecoveryKey(email, rawKey);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('This recovery key has been revoked and can no longer be used.');
+    });
+
+    it('verifyRecoveryKey: should reject an already-used key with the expected error', async () => {
+        const email = 'used-key-test@example.com';
+        const rawKey = generateRecoveryKey();
+        const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+
+        const user = new User({
+            email,
+            fullName: 'Used Key User',
+            salt: 'salt',
+            verifier: 'verifier',
+        });
+        await user.save();
+
+        const recoveryKey = new RecoveryKey({
+            userId: user._id,
+            keyHash,
+            encryptedVaultKey: 'some-encrypted-vault-key',
+            isRevoked: false,
+            usedAt: new Date(),
+        });
+        await recoveryKey.save();
+
+        const result = await verifyRecoveryKey(email, rawKey);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('This recovery key has already been used and cannot be used again.');
+    });
 });
