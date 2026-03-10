@@ -18,7 +18,7 @@ import {
 import { toast } from "sonner";
 import { buildApiUrl } from "@/lib/api-base-url";
 
-const WEB_SYNC_INTERVAL_MS = 3 * 60 * 1000;
+const WEB_SYNC_INTERVAL_MS = 30 * 1000;
 const LAST_SYNC_TS_KEY_PREFIX = "vault_last_sync_ts:";
 const WEB_OFFLINE_QUEUE_KEY_PREFIX = "vault_offline_sync_queue:";
 const WEB_LOCAL_BLOB_PREFIX = "vault_local_blob:";
@@ -1623,11 +1623,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         void syncNow();
       }
     };
+    const onFocus = () => {
+      void syncNow();
+    };
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
 
     return () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
     };
   }, [isUnlocked, session.isAuthenticated, syncNow]);
 

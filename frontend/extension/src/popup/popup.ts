@@ -111,6 +111,18 @@ async function init() {
   setInterval(() => {
     chrome.runtime.sendMessage({ type: "HEARTBEAT" }).catch(() => {});
   }, 10000);
+
+  // Keep popup view fresh while open so dashboard/mobile changes appear quickly.
+  setInterval(async () => {
+    try {
+      const currentStatus = await sendMessage({ type: "GET_STATUS" });
+      if (currentStatus && currentStatus.isLocked === false && !vaultScreen.classList.contains("hidden")) {
+        await loadVault();
+      }
+    } catch {
+      // no-op
+    }
+  }, 15000);
 }
 
 // ============================================================================
