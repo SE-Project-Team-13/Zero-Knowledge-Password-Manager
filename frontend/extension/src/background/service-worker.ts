@@ -547,6 +547,7 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
     sessionState.isLocked ||
     !sessionState.derivedKey ||
     !sessionState.decryptedVault ||
+    !sessionState.userId ||
     !sessionToken
   ) {
     return { success: false, error: "Vault locked or offline" };
@@ -576,7 +577,7 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
     );
 
     // Sync encrypted state back to the node backend
-    const response = await fetch(`${API_URL}/api/vault`, {
+    const response = await fetch(`${API_URL}/api/vault/${encodeURIComponent(sessionState.userId)}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
