@@ -58,4 +58,27 @@ describe('Crypto Engine - Argon2id', () => {
         expect(derived.authKey.byteLength).toBe(32);
         console.log('Result: Success - Keys configured for authenticated encryption (AES-GCM + HMAC).');
     });
+
+    it('should produce independent encryptionKey and authKey (regression: key reuse bug)', async () => {
+        console.log('\n--- Test: Key Independence (no key reuse) ---');
+        // Before the fix, both keys were sliced from [0..32] of a 32-byte output,
+        // making them identical. Now we derive 64 bytes and split at the midpoint.
+        const derived = await deriveKey('regression-test-pw', new Uint8Array(16), testOptions);
+
+        const encKeyHex = Buffer.from(derived.encryptionKey).toString('hex');
+        const authKeyHex = Buffer.from(derived.authKey).toString('hex');
+
+        console.log(`encryptionKey (hex): ${encKeyHex}`);
+        console.log(`authKey      (hex): ${authKeyHex}`);
+
+        expect(encKeyHex).not.toBe(authKeyHex);
+        console.log('Result: Success - encryptionKey and authKey are cryptographically independent.');
+    });
+
+    it('legacy key alias should equal encryptionKey', async () => {
+        console.log('\n--- Test: Legacy key alias ---');
+        const derived = await deriveKey('alias-test', new Uint8Array(16), testOptions);
+        expect(derived.key).toEqual(derived.encryptionKey);
+        console.log('Result: Success - legacy key alias matches encryptionKey.');
+    });
 });
