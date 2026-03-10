@@ -3,8 +3,8 @@
  * These endpoints implement the SRP-style verifier authentication.
  */
 
-import { Router, type Request, type Response } from "express";
-import * as crypto from "crypto";
+import { Router, type Request, type Response } from "express"
+import * as crypto from "crypto"
 import {
   registerUser,
   authenticateUser,
@@ -16,27 +16,21 @@ import {
   deleteUserAccount,
   generateLoginChallenge,
   invalidateSessionToken,
-  markSessionOtpVerified,
-} from "../services/authService.js";
-import { User } from "../database/models.js";
+} from "../services/authService.js"
+import { User } from "../database/models.js"
 import type {
-  RegisterRequest,
   LoginRequest,
-  LoginResponse,
   ErrorResponse,
-} from "../types/index.js";
-import {
-  authMiddleware,
-  type AuthenticatedRequest,
-} from "../middleware/auth.js";
+} from "../types/index.js"
+import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
 
 function extractBearerToken(authHeader?: string): string | null {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return null;
+    return null
   }
 
-  const token = authHeader.substring(7).trim();
-  return token.length > 0 ? token : null;
+  const token = authHeader.substring(7).trim()
+  return token.length > 0 ? token : null
 }
 
 export function createAuthRouter(): Router {
@@ -56,18 +50,18 @@ export function createAuthRouter(): Router {
           error: "Missing required fields",
           code: "INVALID_REQUEST",
           message: "email, fullName, salt, and verifier are required",
-        } as ErrorResponse);
+        } as ErrorResponse)
       }
 
-      email = email.trim().toLowerCase();
-      fullName = fullName.trim();
+      email = email.trim().toLowerCase()
+      fullName = fullName.trim()
 
       if (!email.includes("@")) {
         return res.status(400).json({
           error: "Invalid email",
           code: "INVALID_EMAIL",
           message: "Please provide a valid email address",
-        } as ErrorResponse);
+        } as ErrorResponse)
       }
 
       try {
@@ -78,17 +72,17 @@ export function createAuthRouter(): Router {
           verifier,
           argon2Memory,
           argon2Iterations,
-        );
-        // Newly registered users are implicitly verified for their first session
-        // so they can generate their recovery key immediately.
-        const sessionToken = await generateSessionToken(user.id, 24 * 60, true);
+        )
+        // Newly registered users still require OTP verification before accessing
+        // protected routes. Marking as verified here would bypass 2FA entirely.
+        const sessionToken = await generateSessionToken(user.id, 24 * 60, false)
 
         return res.status(201).json({
           userId: user.id,
           fullName: user.fullName,
           salt: user.salt,
           sessionToken,
-        });
+        })
       } catch (dbError) {
         if (
           typeof dbError === "object" &&
@@ -100,19 +94,19 @@ export function createAuthRouter(): Router {
             error: "User already exists",
             code: "USER_EXISTS",
             message: "An account with this email already exists",
-          } as ErrorResponse);
+          } as ErrorResponse)
         }
-        throw dbError;
+        throw dbError
       }
     } catch (error) {
-      console.error("[VaultSync] Register error:", error);
+      console.error("[VaultSync] Register error:", error)
       return res.status(500).json({
         error: "Registration failed",
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred during registration",
-      } as ErrorResponse);
+      } as ErrorResponse)
     }
-  });
+  })
 
   /**
    * POST /auth/login
@@ -120,34 +114,34 @@ export function createAuthRouter(): Router {
    */
   router.post("/login", async (req: Request, res: Response) => {
     try {
-      let { email, challenge, clientProof } = req.body as LoginRequest;
+      let { email, challenge, clientProof } = req.body as LoginRequest
 
       if (!email || !challenge || !clientProof) {
         return res.status(400).json({
           error: "Missing required fields",
           code: "INVALID_REQUEST",
           message: "email, challenge, and clientProof are required",
-        } as ErrorResponse);
+        } as ErrorResponse)
       }
 
-      email = email.trim().toLowerCase();
+      email = email.trim().toLowerCase()
 
-      const authResult = await authenticateUser(email, challenge, clientProof);
+      const authResult = await authenticateUser(email, challenge, clientProof)
 
       if (!authResult.success) {
         return res.status(401).json({
           error: "Wrong password",
           code: "AUTH_FAILED",
           message: authResult.error || "Invalid email or password",
-        } as ErrorResponse);
+        } as ErrorResponse)
       }
 
-      const user = authResult.user!;
-      const sessionToken = await generateSessionToken(user.id, 24 * 60, false); // Always require OTP
+      const user = authResult.user!
+      const sessionToken = await generateSessionToken(user.id, 24 * 60, false) // Always require OTP
       const serverProof = crypto
         .createHash("sha256")
         .update(user.verifier + challenge)
-        .digest("hex");
+        .digest("hex")
 
       const response = {
         userId: user.id,
@@ -158,18 +152,18 @@ export function createAuthRouter(): Router {
         isBreached: user.isBreached,
         lastBreachCheck: user.lastBreachCheck,
         is2faEnabled: true, // Enforced 2FA globally
-      };
+      }
 
-      return res.status(200).json(response);
+      return res.status(200).json(response)
     } catch (error) {
-      console.error("[VaultSync] Login error:", error);
+      console.error("[VaultSync] Login error:", error)
       return res.status(500).json({
         error: "Login failed",
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred during login",
-      } as ErrorResponse);
+      } as ErrorResponse)
     }
-  });
+  })
 
   /**
    * GET /auth/me
@@ -180,9 +174,9 @@ export function createAuthRouter(): Router {
     authMiddleware,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const user = await User.findById(req.userId);
+        const user = await User.findById(req.userId)
         if (!user) {
-          return res.status(404).json({ error: "User not found" });
+          return res.status(404).json({ error: "User not found" })
         }
 
         return res.status(200).json({
@@ -192,13 +186,13 @@ export function createAuthRouter(): Router {
           isBreached: user.isBreached,
           lastBreachCheck: user.lastBreachCheck,
           is2faEnabled: true,
-        });
+        })
       } catch (error) {
-        console.error("[Auth] Me error:", error);
-        return res.status(500).json({ error: "Internal server error" });
+        console.error("[Auth] Me error:", error)
+        return res.status(500).json({ error: "Internal server error" })
       }
     },
-  );
+  )
 
   /**
    * GET /auth/salt/:email
@@ -206,17 +200,17 @@ export function createAuthRouter(): Router {
    */
   router.get("/salt/:email", async (req: Request, res: Response) => {
     try {
-      let { email } = req.params;
-      if (email) email = email.trim().toLowerCase();
-      const saltData = await getUserSalt(email);
-      const challenge = await generateLoginChallenge(email);
+      let { email } = req.params
+      if (email) email = email.trim().toLowerCase()
+      const saltData = await getUserSalt(email)
+      const challenge = await generateLoginChallenge(email)
 
       if (!saltData) {
         return res.status(404).json({
           error: "User not found",
           code: "USER_NOT_FOUND",
           message: "No account found with this email",
-        } as ErrorResponse);
+        } as ErrorResponse)
       }
 
       return res.status(200).json({
@@ -224,16 +218,16 @@ export function createAuthRouter(): Router {
         challenge,
         argon2Memory: saltData.argon2Memory,
         argon2Iterations: saltData.argon2Iterations,
-      });
+      })
     } catch (error) {
-      console.error("[VaultSync] Salt fetch error:", error);
+      console.error("[VaultSync] Salt fetch error:", error)
       return res.status(500).json({
         error: "Failed to fetch salt",
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred",
-      } as ErrorResponse);
+      } as ErrorResponse)
     }
-  });
+  })
 
   /**
    * GET /auth/check-email/:email
@@ -241,19 +235,19 @@ export function createAuthRouter(): Router {
    */
   router.get("/check-email/:email", async (req: Request, res: Response) => {
     try {
-      let { email } = req.params;
-      if (email) email = email.trim().toLowerCase();
-      const exists = await checkUserExists(email);
-      return res.status(200).json({ exists });
+      let { email } = req.params
+      if (email) email = email.trim().toLowerCase()
+      const exists = await checkUserExists(email)
+      return res.status(200).json({ exists })
     } catch (error) {
-      console.error("[VaultSync] Email check error:", error);
+      console.error("[VaultSync] Email check error:", error)
       return res.status(500).json({
         error: "Failed to check email",
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred",
-      } as ErrorResponse);
+      } as ErrorResponse)
     }
-  });
+  })
 
   /**
    * POST /auth/reset-password
@@ -262,24 +256,24 @@ export function createAuthRouter(): Router {
    */
   router.post("/reset-password", async (req: Request, res: Response) => {
     try {
-      const token = extractBearerToken(req.headers.authorization);
+      const token = extractBearerToken(req.headers.authorization)
       if (!token) {
         const errorResponse: ErrorResponse = {
           error: "Unauthorized",
           code: "UNAUTHORIZED",
           message: "Missing or invalid session token",
-        };
-        return res.status(401).json(errorResponse);
+        }
+        return res.status(401).json(errorResponse)
       }
-      const sessionValidation = await validateSessionToken(token);
+      const sessionValidation = await validateSessionToken(token)
 
       if (!sessionValidation.valid || !sessionValidation.userId) {
         const errorResponse: ErrorResponse = {
           error: "Unauthorized",
           code: "UNAUTHORIZED",
           message: "Invalid or expired session token",
-        };
-        return res.status(401).json(errorResponse);
+        }
+        return res.status(401).json(errorResponse)
       }
 
       const {
@@ -289,15 +283,15 @@ export function createAuthRouter(): Router {
         argon2Iterations,
         encryptedVault,
         confirmVaultDeletion,
-      } = req.body;
+      } = req.body
 
       if (!salt || !verifier) {
         const errorResponse: ErrorResponse = {
           error: "Missing required fields",
           code: "INVALID_REQUEST",
           message: "New salt and verifier are required",
-        };
-        return res.status(400).json(errorResponse);
+        }
+        return res.status(400).json(errorResponse)
       }
 
       await updateUserCredentials(
@@ -308,22 +302,22 @@ export function createAuthRouter(): Router {
         argon2Memory,
         argon2Iterations,
         confirmVaultDeletion,
-      );
+      )
 
       return res.status(200).json({
         success: true,
         message: "Password reset successfully",
-      });
+      })
     } catch (error) {
-      console.error("[VaultSync] Reset password error:", error);
+      console.error("[VaultSync] Reset password error:", error)
       const errorResponse: ErrorResponse = {
         error: "Reset failed",
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred",
-      };
-      return res.status(500).json(errorResponse);
+      }
+      return res.status(500).json(errorResponse)
     }
-  });
+  })
 
   /**
    * POST /auth/resolve-breach
@@ -334,18 +328,18 @@ export function createAuthRouter(): Router {
     authMiddleware,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const userId = req.userId;
-        if (!userId) return res.status(401).json({ error: "Unauthorized" });
+        const userId = req.userId
+        if (!userId) return res.status(401).json({ error: "Unauthorized" })
 
-        await User.findByIdAndUpdate(userId, { isBreached: false });
+        await User.findByIdAndUpdate(userId, { isBreached: false })
 
-        return res.status(200).json({ success: true });
+        return res.status(200).json({ success: true })
       } catch (error) {
-        console.error("Error resolving breach:", error);
-        return res.status(500).json({ error: "Internal error" });
+        console.error("Error resolving breach:", error)
+        return res.status(500).json({ error: "Internal error" })
       }
     },
-  );
+  )
 
   /**
    * DELETE /auth/account
@@ -353,26 +347,26 @@ export function createAuthRouter(): Router {
    */
   router.delete("/account", async (req: Request, res: Response) => {
     try {
-      const token = extractBearerToken(req.headers.authorization);
+      const token = extractBearerToken(req.headers.authorization)
       if (!token) {
-        return res.status(401).json({ error: "Unauthorized" });
+        return res.status(401).json({ error: "Unauthorized" })
       }
-      const session = await validateSessionToken(token);
+      const session = await validateSessionToken(token)
 
       if (!session.valid || !session.userId) {
-        return res.status(401).json({ error: "Invalid or expired session" });
+        return res.status(401).json({ error: "Invalid or expired session" })
       }
 
-      await deleteUserAccount(session.userId);
+      await deleteUserAccount(session.userId)
 
       return res
         .status(200)
-        .json({ success: true, message: "Account deleted successfully" });
+        .json({ success: true, message: "Account deleted successfully" })
     } catch (error) {
-      console.error("Delete account error:", error);
-      return res.status(500).json({ error: "Internal server error" });
+      console.error("Delete account error:", error)
+      return res.status(500).json({ error: "Internal server error" })
     }
-  });
+  })
 
   /**
    * POST /auth/logout
@@ -380,24 +374,24 @@ export function createAuthRouter(): Router {
    */
   router.post("/logout", async (req: Request, res: Response) => {
     try {
-      const token = extractBearerToken(req.headers.authorization);
+      const token = extractBearerToken(req.headers.authorization)
       if (!token) {
-        return res.status(401).json({ error: "Unauthorized" });
+        return res.status(401).json({ error: "Unauthorized" })
       }
 
-      await invalidateSessionToken(token);
+      await invalidateSessionToken(token)
       return res
         .status(200)
-        .json({ success: true, message: "Logged out successfully" });
+        .json({ success: true, message: "Logged out successfully" })
     } catch (error) {
-      console.error("[VaultSync] Logout error:", error);
+      console.error("[VaultSync] Logout error:", error)
       return res.status(500).json({
         error: "Logout failed",
         code: "INTERNAL_ERROR",
         message: "An unexpected error occurred during logout",
-      } as ErrorResponse);
+      } as ErrorResponse)
     }
-  });
+  })
 
-  return router;
+  return router
 }

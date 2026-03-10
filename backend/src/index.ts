@@ -196,7 +196,7 @@ async function start() {
         if (!session.valid || !session.userId) return res.status(401).json({ error: "Invalid session" })
 
         if (!requestedUserId || session.userId !== requestedUserId) {
-          console.warn(`[VaultSync:Compatibility] Access denied for user ${session.userId} requesting vault for ${requestedUserId}`);
+          logger.warn(`[VaultSync:Compatibility] Access denied for user ${session.userId} requesting vault for ${requestedUserId}`)
           return res.status(403).json({ error: "Forbidden: Access denied" })
         }
 
