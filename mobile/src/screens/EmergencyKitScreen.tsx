@@ -8,6 +8,7 @@ import {
     Alert,
     Clipboard,
     ScrollView,
+    TextInput,
 } from 'react-native';
 import { Colors, Spacing, Radius, Typography } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,18 +25,18 @@ export default function EmergencyKitScreen() {
     const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [masterPassword, setMasterPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
     const generateKey = async () => {
+        if (!masterPassword.trim()) {
+            Alert.alert('Password Required', 'Please enter your master password to generate the emergency kit.');
+            return;
+        }
+
         setIsGenerating(true);
         try {
             const token = await SecureStorageService.getSessionId();
-            const masterPassword = await SecureStorageService.getItem('master_password'); // SecureStorageService should have this if we saved it during unlock
-
-            if (!masterPassword) {
-                Alert.alert('Session Error', 'Master password not found in secure session. Please unlock your vault again.');
-                setIsGenerating(false);
-                return;
-            }
 
             // 1. Generate key from server
             const res = await axios.post(
@@ -100,10 +101,29 @@ export default function EmergencyKitScreen() {
                         <Text style={styles.bullet}>• The key will only be shown ONCE</Text>
                         <Text style={styles.bullet}>• Store it in a secure PHYSICAL location</Text>
 
+                        <View style={styles.passwordContainer}>
+                            <Text style={styles.passwordLabel}>Master Password</Text>
+                            <View style={styles.passwordInputRow}>
+                                <TextInput
+                                    style={styles.passwordInput}
+                                    value={masterPassword}
+                                    onChangeText={setMasterPassword}
+                                    placeholder="Enter your master password"
+                                    placeholderTextColor={Colors.textMuted}
+                                    secureTextEntry={!showPassword}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+                                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
+                                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={Colors.textMuted} />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
                         <TouchableOpacity 
                             style={styles.generateBtn} 
                             onPress={generateKey}
-                            disabled={isGenerating}
+                            disabled={isGenerating || !masterPassword.trim()}
                         >
                             {isGenerating ? (
                                 <ActivityIndicator color={Colors.background} />
@@ -165,6 +185,25 @@ const styles = StyleSheet.create({
     infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
     infoText: { color: '#F59E0B', fontWeight: '700', marginLeft: 8 },
     bullet: { ...Typography.body, color: Colors.textMuted, marginBottom: 8, fontSize: 14 },
+    passwordContainer: { marginTop: 20, marginBottom: 4 },
+    passwordLabel: { ...Typography.muted, fontSize: 13, fontWeight: '600', marginBottom: 8 },
+    passwordInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.surfaceElevated,
+        borderRadius: Radius.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        paddingHorizontal: Spacing.md,
+    },
+    passwordInput: {
+        flex: 1,
+        ...Typography.body,
+        color: Colors.text,
+        paddingVertical: 12,
+        fontSize: 15,
+    },
+    eyeBtn: { padding: 4 },
     generateBtn: {
         backgroundColor: Colors.primary,
         height: 52,
