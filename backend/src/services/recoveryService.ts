@@ -62,6 +62,37 @@ export async function storeRecoveryKeyHash(
 }
 
 /**
+ * Internal helper: looks up and validates a recovery key without consuming it.
+ * Returns the key document on success, or an error string on failure.
+ */
+async function findValidRecoveryKey(
+    email: string,
+    recoveryKey: string
+): Promise<{ user: InstanceType<typeof User>; key: IRecoveryKey } | { error: string }> {
+    const user = await User.findOne({ email: email.trim().toLowerCase() })
+    if (!user) {
+        return { error: "User not found" }
+    }
+
+    const keyHash = hashRecoveryKey(recoveryKey)
+    const existingKey = await RecoveryKey.findOne({ userId: user._id, keyHash })
+
+    if (!existingKey) {
+        return { error: "Invalid recovery key" }
+    }
+
+    if (existingKey.isRevoked) {
+        return { error: "This recovery key has been revoked and can no longer be used." }
+    }
+
+    if (existingKey.usedAt) {
+        return { error: "This recovery key has already been used and cannot be used again." }
+    }
+
+    return { user, key: existingKey }
+}
+
+/**
  * Verify a recovery key for a given email.
  * Returns the user if verification succeeds, null otherwise.
  */
@@ -70,43 +101,19 @@ export async function verifyRecoveryKey(
     recoveryKey: string
 ): Promise<{ success: boolean; userId?: string; encryptedVaultKey?: string; error?: string }> {
     try {
-        // Find the user by email
-        const user = await User.findOne({ email: email.trim().toLowerCase() })
-        if (!user) {
-            return { success: false, error: "User not found" }
+        const validated = await findValidRecoveryKey(email, recoveryKey)
+        if ("error" in validated) {
+            return { success: false, error: validated.error }
         }
 
-        // Hash the provided recovery key
-        const keyHash = hashRecoveryKey(recoveryKey)
-
-        // Check if the key exists at all (even if revoked) to give better error messages
-        const existingKey = await RecoveryKey.findOne({
-            userId: user._id,
-            keyHash,
-        })
-
-        if (!existingKey) {
-            return { success: false, error: "Invalid recovery key" }
-        }
-
-        if (existingKey.isRevoked) {
-            return { success: false, error: "This recovery key has been revoked and can no longer be used." }
-        }
-
-        if (existingKey.usedAt) {
-            return { success: false, error: "This recovery key has already been used and cannot be used again." }
-        }
-
-        const storedKey = existingKey
-
-        // Mark the recovery key as used
-        storedKey.usedAt = new Date()
-        await storedKey.save()
+        const { user, key } = validated
+        key.usedAt = new Date()
+        await key.save()
 
         return { 
             success: true, 
             userId: user._id.toString(), 
-            encryptedVaultKey: storedKey.encryptedVaultKey 
+            encryptedVaultKey: key.encryptedVaultKey 
         }
     } catch (error) {
         console.error("[Recovery] Verification error:", error)
@@ -123,26 +130,10 @@ export async function checkRecoveryKey(
     recoveryKey: string
 ): Promise<{ success: boolean; error?: string }> {
     try {
-        const user = await User.findOne({ email: email.trim().toLowerCase() })
-        if (!user) {
-            return { success: false, error: "User not found" }
+        const validated = await findValidRecoveryKey(email, recoveryKey)
+        if ("error" in validated) {
+            return { success: false, error: validated.error }
         }
-
-        const keyHash = hashRecoveryKey(recoveryKey)
-        const existingKey = await RecoveryKey.findOne({ userId: user._id, keyHash })
-
-        if (!existingKey) {
-            return { success: false, error: "Invalid recovery key" }
-        }
-
-        if (existingKey.isRevoked) {
-            return { success: false, error: "This recovery key has been revoked and can no longer be used." }
-        }
-
-        if (existingKey.usedAt) {
-            return { success: false, error: "This recovery key has already been used and cannot be used again." }
-        }
-
         return { success: true }
     } catch (error) {
         console.error("[Recovery] Check error:", error)
