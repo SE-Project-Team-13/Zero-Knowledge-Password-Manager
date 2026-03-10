@@ -59,6 +59,7 @@ interface PasswordEntry {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  isDeleted?: boolean;
 }
 
 interface SessionState {
@@ -561,7 +562,8 @@ async function handleGetVault() {
   await refreshVaultFromServerIfNewer();
 
   updateLastActivity();
-  return { success: true, vault: sessionState.decryptedVault };
+  const activeEntries = (sessionState.decryptedVault || []).filter((entry) => !entry.isDeleted);
+  return { success: true, vault: activeEntries };
 }
 
 function handleLockVault() {
@@ -600,6 +602,7 @@ function findMatchingEntries(currentUrl: string): PasswordEntry[] {
   if (!current) return [];
 
   return sessionState.decryptedVault.filter((entry) => {
+    if (entry.isDeleted) return false;
     const entryUrl = normalizeEntryUrl(entry.siteUrl);
     return entryUrl === current;
   });
@@ -625,6 +628,7 @@ function handleCheckUrlMatch(message: CheckUrlMatchMessage) {
   if (sessionState.decryptedVault) {
     for (const vaultEntry of sessionState.decryptedVault) {
       if (sampleEntries.length >= 5) break;
+      if (vaultEntry.isDeleted) continue;
       const normalized = normalizeEntryUrl(vaultEntry.siteUrl);
       if (normalized) sampleEntries.push(normalized);
     }
@@ -655,6 +659,7 @@ async function handleCheckNewCredential(message: CheckNewCredentialMessage) {
   if (!current) return { success: true, shouldPrompt: false };
 
   const exists = sessionState.decryptedVault.some((entry) => {
+    if (entry.isDeleted) return false;
     const entryUrl = normalizeEntryUrl(entry.siteUrl);
     return entryUrl === current && entry.username === message.username;
   });

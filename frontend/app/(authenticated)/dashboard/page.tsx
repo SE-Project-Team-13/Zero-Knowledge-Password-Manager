@@ -23,7 +23,6 @@ import {
   Eye,
   EyeOff,
   LogOut,
-  RefreshCw,
   Clock,
   ShieldCheck,
   ShieldAlert,
@@ -64,17 +63,13 @@ export default function DashboardPage() {
     isUnlocked: isVaultUnlocked,
     unlockVault: contextUnlockVault,
     addEntry,
-    isSyncing,
     lastSyncedAt,
-    syncError,
-    pendingSyncCount,
     syncConflict,
     resolveSyncConflict,
     incomingShares,
     acceptShare,
     rejectShare,
     sendShare,
-    syncNow,
   } = useVault();
 
   const [mounted, setMounted] = useState(false);
@@ -94,7 +89,6 @@ export default function DashboardPage() {
   const [sharingEntry, setSharingEntry] = useState<DecryptedEntry | null>(null);
   const [shareRecipientEmail, setShareRecipientEmail] = useState("");
   const [isSendingShare, setIsSendingShare] = useState(false);
-  const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [incomingOpen, setIncomingOpen] = useState(false);
   const [expandedUrls, setExpandedUrls] = useState<Record<string, boolean>>({});
 
@@ -254,24 +248,6 @@ export default function DashboardPage() {
       toast.error(error instanceof Error ? error.message : "Share failed");
     } finally {
       setIsSendingShare(false);
-    }
-  };
-
-  const handleManualSync = async () => {
-    setIsManualSyncing(true);
-    try {
-      const updated = await syncNow();
-      if (updated) {
-        toast.success("Manual sync complete. Vault refreshed.");
-      } else if (syncError) {
-        toast.error(syncError);
-      } else {
-        toast.success("Manual sync complete. Already up to date.");
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Manual sync failed");
-    } finally {
-      setIsManualSyncing(false);
     }
   };
 
@@ -508,13 +484,7 @@ export default function DashboardPage() {
               Encrypted & Synced
             </CardDescription>
             <CardDescription className="text-xs mt-1">
-              {isSyncing
-                ? "Sync in progress..."
-                : pendingSyncCount > 0
-                  ? `${pendingSyncCount} change(s) queued offline`
-                : syncError
-                  ? `Sync issue: ${syncError}`
-                  : `Last synced at ${formatLastSynced(lastSyncedAt)}`}
+              {`Last synced at ${formatLastSynced(lastSyncedAt)}`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -532,10 +502,6 @@ export default function DashboardPage() {
             <Button variant="outline" size="sm" onClick={() => setIncomingOpen(true)}>
               <Inbox className="mr-2 h-4 w-4" />
               Incoming ({incomingShares.length})
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleManualSync} disabled={isSyncing || isManualSyncing}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing || isManualSyncing ? "animate-spin" : ""}`} />
-              {isManualSyncing ? "Syncing..." : "Manual Sync"}
             </Button>
           </CardContent>
         </Card>
