@@ -47,6 +47,7 @@ function detectLoginForms() {
   forms.forEach(form => {
     if (form.dataset.pmInjected) return;
     form.dataset.pmInjected = 'true';
+    let isContinuingSubmit = false;
 
     const passwordInputs = form.querySelectorAll('input[type="password"]')
     const usernameInputs = form.querySelectorAll('input[type="text"], input[type="email"]')
@@ -59,24 +60,47 @@ function detectLoginForms() {
 
       // Add submission detection for offering to save credentials
       form.addEventListener('submit', (e) => {
+        if (isContinuingSubmit) {
+          isContinuingSubmit = false;
+          return;
+        }
         e.preventDefault();
-        handleFormSubmit(form, usernameInput.value, passwordInput.value);
+        handleFormSubmit(form, usernameInput.value, passwordInput.value, () => {
+          isContinuingSubmit = true;
+          if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+          } else {
+            form.submit();
+          }
+        });
       });
 
       // Also handle enter key on password input
       passwordInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          handleFormSubmit(form, usernameInput.value, passwordInput.value);
+          handleFormSubmit(form, usernameInput.value, passwordInput.value, () => {
+            isContinuingSubmit = true;
+            if (typeof form.requestSubmit === 'function') {
+              form.requestSubmit();
+            } else {
+              form.submit();
+            }
+          });
         }
       });
     }
   })
 }
 
-function handleFormSubmit(form: HTMLFormElement, username: string, password: string) {
+function handleFormSubmit(
+  form: HTMLFormElement,
+  username: string,
+  password: string,
+  continueSubmit: () => void,
+) {
   if (!username || !password) {
-    form.submit();
+    continueSubmit();
     return;
   }
   const currentUrl = window.location.href;
@@ -89,17 +113,17 @@ function handleFormSubmit(form: HTMLFormElement, username: string, password: str
   }, (response) => {
     if (chrome.runtime.lastError || !response) {
       console.error('[VaultSync:Extension] Background worker error or no response', chrome.runtime.lastError);
-      form.submit();
+      continueSubmit();
       return;
     }
 
     if (response && response.shouldPrompt) {
       showSavePrompt(currentUrl, username, password, () => {
-        form.submit();
+        continueSubmit();
       });
     } else {
       // If we shouldn't prompt, proceed with form submission natively
-      form.submit();
+      continueSubmit();
     }
   });
 }

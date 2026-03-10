@@ -39,7 +39,7 @@ declare global {
 }
 declare const process: { env: NodeJS.ProcessEnv };
 
-const API_URL =
+const BACKEND_URL =
   process.env.NODE_ENV === "production"
     ? "https://zero-knowledge-password-manager.onrender.com"
     : "http://localhost:5000";
@@ -84,7 +84,6 @@ let sessionState: SessionState = {
 // ============================================================================
 
 const AUTO_LOCK_TIMEOUT = 15 * 60 * 1000; // 15 minutes (Deprecated)
-const BACKEND_URL = "https://zero-knowledge-password-manager.onrender.com";
 // ============================================================================
 // Auto-Lock Timer
 // ============================================================================
@@ -617,7 +616,7 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
     const labels = sessionState.decryptedVault.map(e => (e.siteName || e.siteUrl || "").toLowerCase());
 
     // 1. Sync legacy format back to the node backend
-    const response1 = await fetch(`${API_URL}/api/vault/${encodeURIComponent(sessionState.userId)}`, {
+    const response1 = await fetch(`${BACKEND_URL}/api/vault/${encodeURIComponent(sessionState.userId)}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -645,7 +644,8 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
       nonce: crypto.randomUUID(),
     };
 
-    const response2 = await fetch(`${API_URL}/sync/blob/push`, {
+    let modernSyncOk = false;
+    const response2 = await fetch(`${BACKEND_URL}/sync/blob/push`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -664,13 +664,14 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
     if (response2.ok) {
       // Keep session timestamp in sync for future saves in the same session
       sessionState.lastServerSyncTimestamp = nowTs;
+      modernSyncOk = true;
     } else if (response2.status === 409) {
       // Conflict: server has a newer blob — pull the server's timestamp and retry push
       console.warn('[VaultSync:Extension] Sync blob conflict, retrying with server timestamp...');
       try {
         const conflictData = await response2.json();
         const serverTs: number = conflictData?.conflict?.latestServerTimestamp || nowTs;
-        const retryRes = await fetch(`${API_URL}/sync/blob/push`, {
+        const retryRes = await fetch(`${BACKEND_URL}/sync/blob/push`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -685,6 +686,7 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
         });
         if (retryRes.ok) {
           sessionState.lastServerSyncTimestamp = nowTs;
+          modernSyncOk = true;
           console.log('[VaultSync:Extension] Retry sync push succeeded');
         } else {
           console.warn('[VaultSync:Extension] Retry sync push also failed:', retryRes.status);
@@ -696,7 +698,7 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
       console.warn('[VaultSync:Extension] Sync blob push failed:', response2.status);
     }
 
-    if (!response1.ok) {
+    if (!response1.ok && !modernSyncOk) {
       throw new Error("Failed to sync new credential to Web Dashboard API");
     }
 
