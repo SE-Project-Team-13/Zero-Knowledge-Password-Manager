@@ -19,7 +19,8 @@ if (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') {
     // @ts-ignore
     rnArgon2 = require('react-native-argon2').default;
   } catch (e) {
-    console.warn('[CryptoEngine] React Native Argon2 lookup failed', e);
+    // Native module not available - using JS fallback (@noble/hashes)
+    // To enable native: run 'npx expo prebuild' and build a dev client
   }
 }
 

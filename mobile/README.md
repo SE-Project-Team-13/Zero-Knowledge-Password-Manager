@@ -46,13 +46,26 @@ mobile/
     ```bash
     npm install
     ```
-2.  Start the Metro Bundler:
+
+2.  **Choose your runtime:**
+
+    **Option A: Expo Go (Development, uses JS crypto)**
     ```bash
-    npm start -w mobile
-    # OR navigate to mobile directory
     cd mobile
     npx expo start
+    # Scan QR code with Expo Go app
     ```
+    
+    **Option B: Development Build (Recommended for production, uses native crypto)**
+    ```bash
+    cd mobile
+    npx expo prebuild     # Generate android/ios folders
+    npx expo run:android  # or npx expo run:ios
+    # Future runs:
+    npx expo start --dev-client
+    ```
+
+    **Performance Note:** Option B enables native `react-native-quick-crypto` and `react-native-argon2` modules for 10-50x faster cryptography. Option A uses JavaScript fallbacks (`@noble/ciphers`, `@noble/hashes`) which are secure but slower.
 
 ### Type Checking
 
