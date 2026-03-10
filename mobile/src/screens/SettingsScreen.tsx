@@ -140,10 +140,9 @@ export default function SettingsScreen() {
                             onPress={() => navigation.navigate('ChangePassword')}
                         />
                         <SettingRow
-                            icon="shield-checkmark-outline"
+                            icon="information-circle-outline"
                             title="Emergency Kit"
-                            subtitle="Generate a recovery key"
-                            onPress={() => navigation.navigate('EmergencyKit')}
+                            subtitle="Generate recovery key on web/desktop for full features"
                         />
                     </Section>
 

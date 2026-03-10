@@ -103,19 +103,17 @@ export default function LoginScreen({ navigation }: any) {
                   )}
                 </TouchableOpacity>
 
-                {/* Toggle Mode */}
-                <TouchableOpacity
-                  style={styles.switchButton}
-                  onPress={() => navigation.navigate('Register')}
-                >
-                  <Text style={styles.switchText}>
-                    New to Zenith Vault? Create Account
-                  </Text>
+                {/* Recovery Link */}
+                <TouchableOpacity style={styles.switchButton} onPress={() => navigation.navigate('RecoveryLogin')}>
+                  <Text style={[styles.switchText, { color: Colors.textMuted, fontSize: 14 }]}>Forgot Password? Use Recovery Key</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.switchButton} onPress={() => navigation.navigate('RecoveryLogin')}>
-                  <Text style={[styles.switchText, { color: Colors.textMuted, fontSize: 13 }]}>Forgot Password? Use Recovery Key</Text>
-                </TouchableOpacity>
+                <View style={styles.registerNote}>
+                  <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
+                  <Text style={styles.registerNoteText}>
+                    New users must register on web/desktop to create an account and emergency kit.
+                  </Text>
+                </View>
 
                 {/* Footer Badges */}
                 <View style={styles.footerInfo}>
@@ -245,6 +243,20 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontSize: 14,
     fontWeight: '600',
+  },
+  registerNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  registerNoteText: {
+    ...Typography.muted,
+    fontSize: 12,
+    textAlign: 'center',
+    flex: 1,
   },
   errorContainer: {
     flexDirection: 'row',
