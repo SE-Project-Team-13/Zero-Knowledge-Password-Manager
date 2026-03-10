@@ -8,6 +8,7 @@ import {
     formatRecoveryKey,
     hashRecoveryKey,
     storeRecoveryKeyHash,
+    checkRecoveryKey,
     verifyRecoveryKey,
     hasActiveRecoveryKey,
 } from "../services/recoveryService.js"
@@ -124,7 +125,7 @@ export function createRecoveryRouter(): Router {
             // Clean up the recovery key
             const cleanKey = recoveryKey.replace(/[\s-]/g, "")
 
-            const result = await verifyRecoveryKey(email, cleanKey)
+            const result = await checkRecoveryKey(email, cleanKey)
 
             if (!result.success) {
                 return res.status(401).json({

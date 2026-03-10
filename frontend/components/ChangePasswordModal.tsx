@@ -38,7 +38,7 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
     const [success, setSuccess] = useState(false)
     const [isPasswordValid, setIsPasswordValid] = useState(false)
     const [autoGenerateKit, setAutoGenerateKit] = useState(true)
-    const { decryptedEntries, isLoadingVault: isVaultSyncing } = useVault();
+    const { decryptedEntries } = useVault();
 
     const handleClose = () => {
         if (!isLoading) {
@@ -99,7 +99,6 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
             // DIFFERENT salt (from AES encryption), not the user's registration salt.
             console.log("[ChangePassword] Fetching current vault for re-encryption...")
             
-            // 1. Fetch current vault data
             // 1. Fetch current vault data
             const pullResponse = await fetch(
                 buildApiUrl("/sync/blob/pull"), 
@@ -386,7 +385,7 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
                             <Alert className="bg-amber-500/10 border-amber-500/20 py-2">
                                 <Shield className="h-4 w-4 text-amber-500 shrink-0" />
                                 <AlertDescription className="text-[11px] text-amber-600 leading-tight">
-                                    This will revoke your current Emergency Kit. A new one will be generated automatically.
+                                    This will revoke your current Emergency Kit.{autoGenerateKit ? " A new one will be generated automatically." : " You can generate a new one manually from Settings."}
                                 </AlertDescription>
                             </Alert>
                         )}

@@ -65,7 +65,7 @@ export async function generateAndDownloadRecoveryKey(
     const keyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("")
 
     // 4. Activate the key on the server
-    const activateResponse = await fetch(`${apiBaseUrl}/recovery/activate`, {
+    const activateResponse = await fetch(`${cleanBaseUrl}/recovery/activate`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
