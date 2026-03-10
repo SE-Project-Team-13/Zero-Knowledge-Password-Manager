@@ -138,9 +138,11 @@ export function createAuthRouter(): Router {
 
       const user = authResult.user!
       const sessionToken = await generateSessionToken(user.id, 24 * 60, false) // Always require OTP
+      // SECURITY: Server proof uses a "SERVER" domain separator so it is
+      // mathematically distinct from the client proof and cannot be replayed.
       const serverProof = crypto
         .createHash("sha256")
-        .update(user.verifier + challenge)
+        .update(user.verifier + challenge + "SERVER")
         .digest("hex")
 
       const response = {

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { SecureStorageService } from '../services/secureStorage';
-import { deriveKey, DerivedKey, generateVerifier, generateClientProof } from '@password-manager/crypto-engine';
+import { deriveKey, DerivedKey, generateVerifier, generateClientProof, verifyServerProof } from '@password-manager/crypto-engine';
 import axios from 'axios';
 import { API_URL } from '../config';
 
@@ -103,7 +103,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         { timeout: 10000 },
       );
 
-      const { sessionToken, userId, fullName } = response.data;
+      // SECURITY: Verify server proof to guard against MITM attacks.
+      const { sessionToken, userId, fullName, serverProof } = response.data;
+      if (serverProof) {
+        const isServerAuthentic = verifyServerProof(verifierHex, challenge, serverProof);
+        if (!isServerAuthentic) {
+          throw new Error('Server authentication failed. Possible man-in-the-middle attack.');
+        }
+      }
 
       await SecureStorageService.saveSessionId(sessionToken);
       if (userId) {

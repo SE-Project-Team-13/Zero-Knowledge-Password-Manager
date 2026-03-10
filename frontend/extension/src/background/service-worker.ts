@@ -22,6 +22,7 @@ import {
   generateVerifier,
   generateClientProof,
   generateChallenge,
+  verifyServerProof,
 } from "@password-manager/crypto-engine";
 import type {
   DerivedKey,
@@ -309,6 +310,7 @@ async function handleUnlockVault(
     const authResponse = await apiRequest<{
       sessionToken: string;
       userId: string;
+      serverProof?: string;
     }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({
@@ -317,6 +319,14 @@ async function handleUnlockVault(
         clientProof,
       }),
     });
+
+    // SECURITY: Verify server proof to guard against MITM attacks.
+    if (authResponse.serverProof) {
+      const isServerAuthentic = verifyServerProof(verifierHex, challengeHex, authResponse.serverProof);
+      if (!isServerAuthentic) {
+        throw new Error("Server authentication failed. Possible man-in-the-middle attack.");
+      }
+    }
 
     sessionToken = authResponse.sessionToken;
 

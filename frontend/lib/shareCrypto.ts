@@ -20,8 +20,13 @@ const getSignPublicKeyKey = (userId?: string) => userId ? `share_sign_public_key
 
 function toBase64(data: ArrayBuffer | Uint8Array): string {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
+  // Use chunked String.fromCharCode to avoid O(N^2) string concatenation on
+  // large buffers (each += call copies the entire accumulated string in V8).
+  const CHUNK = 0x8000 // 32 KB per chunk
   let binary = ""
-  for (let i = 0; i < bytes.byteLength; i += 1) binary += String.fromCharCode(bytes[i])
+  for (let i = 0; i < bytes.byteLength; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
   return btoa(binary)
 }
 

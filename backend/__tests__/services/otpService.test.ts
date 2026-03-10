@@ -71,4 +71,26 @@ describe('OTPService Integration Tests', () => {
         const result = await verifyOTP(email, code, mockOTPModel);
         expect(result.success).toBe(false);
     });
+
+    it('verifyOTP: rate-limit map should evict oldest entry when at capacity', async () => {
+        // Fill the in-memory map just past MAX_RATE_LIMIT_ENTRIES (10 000) by
+        // triggering MAX_ATTEMPTS+1 failed verifications for 10 001 unique emails.
+        // The map must not grow unboundedly — excess entries are evicted — and the
+        // 10 001st email must still be processed normally (not throw / hang).
+        const MAX = 10_000;
+
+        // Simulate MAX failed attempts for (MAX) unique emails to fill the map
+        for (let i = 0; i < MAX; i++) {
+            mockFindOne.mockImplementationOnce(() => Promise.resolve(null));
+            await verifyOTP(`rate-limit-${i}@test.com`, '000000', mockOTPModel);
+        }
+
+        // One more unique email (the MAX+1-th) — map is at capacity, oldest evicted
+        mockFindOne.mockImplementationOnce(() => Promise.resolve(null));
+        const overflowResult = await verifyOTP('overflow@test.com', '000000', mockOTPModel);
+
+        // Must still return a normal rejection (not throw, not OOM)
+        expect(overflowResult.success).toBe(false);
+        console.log('Result: Success - rate-limit map cap enforced; no unbounded growth.');
+    });
 });

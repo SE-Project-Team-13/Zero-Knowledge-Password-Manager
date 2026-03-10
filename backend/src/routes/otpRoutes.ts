@@ -4,7 +4,8 @@
 
 import { Router, type Request, type Response } from "express"
 import { sendOTP, verifyOTP } from "../services/otpService.js"
-import { validateSessionToken, markSessionOtpVerified } from "../services/authService.js"
+import { markSessionOtpVerified } from "../services/authService.js"
+import { User } from "../database/models.js"
 import type { ErrorResponse } from "../types/index.js"
 
 import { authMiddleware, type AuthenticatedRequest } from "../middleware/auth.js"
@@ -64,8 +65,17 @@ export function createOTPRouter(): Router {
   /**
    * POST /otp/verify
    * Verify OTP code
+   *
+   * SECURITY: authMiddleware is intentionally applied here even though the
+   * session is not yet OTP-verified (the middleware skips the OTP gate for
+   * /otp/* routes).  This guarantees that:
+   *  1. A valid session token is present (the user just logged in).
+   *  2. req.userId is set from that session.
+   * We then look up the session owner's email and assert it matches the email
+   * in the request body, preventing an attacker from cross-verifying a
+   * different user's OTP against a stolen session token.
    */
-  router.post("/verify", async (req: Request, res: Response) => {
+  router.post("/verify", authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       let { email, code } = req.body
       if (email) email = email.trim().toLowerCase()
@@ -75,6 +85,24 @@ export function createOTPRouter(): Router {
           error: "Missing required fields",
           code: "INVALID_REQUEST",
           message: "email and code are required",
+        } as ErrorResponse)
+      }
+
+      // SECURITY: Verify the OTP email matches the authenticated session's owner.
+      const sessionUser = await User.findById(req.userId)
+      if (!sessionUser) {
+        return res.status(401).json({
+          error: "Unauthorized",
+          code: "INVALID_TOKEN",
+          message: "Session user not found",
+        } as ErrorResponse)
+      }
+
+      if (sessionUser.email !== email) {
+        return res.status(403).json({
+          error: "Email mismatch",
+          code: "OTP_EMAIL_MISMATCH",
+          message: "The OTP email must match the authenticated account",
         } as ErrorResponse)
       }
 
@@ -88,29 +116,9 @@ export function createOTPRouter(): Router {
         } as ErrorResponse)
       }
 
-      // Mark session as verified if token is present
-      const authHeader = req.headers.authorization
-      if (authHeader && authHeader.startsWith("Bearer ")) {
-        try {
-          const token = authHeader.substring(7).trim()
-          if (!token) {
-            console.warn("[OTP] Authorization header present but token is empty")
-          } else {
-            const session = await validateSessionToken(token)
-            if (session.valid) {
-              console.log(`[OTP] Marking session as OTP verified for user ${session.userId}`)
-              await markSessionOtpVerified(token)
-              console.log(`[OTP] Session marked as OTP verified successfully`)
-            } else {
-              console.warn(`[OTP] Session validation failed: ${session.error}`)
-            }
-          }
-        } catch (sessionError) {
-          console.error("[OTP] Error marking session as OTP verified:", sessionError)
-        }
-      } else {
-        console.warn("[OTP] No authorization header provided, session OTP verification skipped")
-      }
+      // authMiddleware already validated the token; mark the session verified.
+      const token = req.headers.authorization!.substring(7).trim()
+      await markSessionOtpVerified(token)
 
       return res.status(200).json({
         success: true,
