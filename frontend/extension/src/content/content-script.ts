@@ -41,6 +41,24 @@ function getSiteName(): string {
   }
 }
 
+function continueNativeSubmit(form: HTMLFormElement, submitter?: HTMLElement | null) {
+  if (typeof form.requestSubmit === 'function') {
+    if (submitter) {
+      form.requestSubmit(submitter);
+      return;
+    }
+    form.requestSubmit();
+    return;
+  }
+
+  if (submitter instanceof HTMLElement && typeof submitter.click === 'function') {
+    submitter.click();
+    return;
+  }
+
+  form.submit();
+}
+
 function detectLoginForms() {
   const forms = document.querySelectorAll('form')
 
@@ -64,14 +82,11 @@ function detectLoginForms() {
           isContinuingSubmit = false;
           return;
         }
+        const submitter = (e as SubmitEvent).submitter as HTMLElement | null;
         e.preventDefault();
         handleFormSubmit(form, usernameInput.value, passwordInput.value, () => {
           isContinuingSubmit = true;
-          if (typeof form.requestSubmit === 'function') {
-            form.requestSubmit();
-          } else {
-            form.submit();
-          }
+          continueNativeSubmit(form, submitter);
         });
       });
 
@@ -81,11 +96,7 @@ function detectLoginForms() {
           e.preventDefault();
           handleFormSubmit(form, usernameInput.value, passwordInput.value, () => {
             isContinuingSubmit = true;
-            if (typeof form.requestSubmit === 'function') {
-              form.requestSubmit();
-            } else {
-              form.submit();
-            }
+            continueNativeSubmit(form);
           });
         }
       });

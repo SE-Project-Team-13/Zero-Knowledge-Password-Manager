@@ -699,7 +699,7 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
     }
 
     if (!response1.ok && !modernSyncOk) {
-      throw new Error("Failed to sync new credential to Web Dashboard API");
+      throw new Error("Failed to sync new credential via any sync API (legacy and modern)");
     }
 
     updateLastActivity();
