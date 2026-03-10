@@ -121,8 +121,8 @@ export function createRecoveryRouter(): Router {
             
             email = email.trim().toLowerCase()
 
-            // Clean up the recovery key (remove dashes if formatted)
-            const cleanKey = recoveryKey.replace(/-/g, "")
+            // Clean up the recovery key
+            const cleanKey = recoveryKey.replace(/[\s-]/g, "")
 
             const result = await verifyRecoveryKey(email, cleanKey)
 
@@ -167,8 +167,8 @@ export function createRecoveryRouter(): Router {
             
             email = email.trim().toLowerCase()
 
-            // Clean up the recovery key (remove dashes if formatted)
-            const cleanKey = recoveryKey.replace(/-/g, "")
+            // Clean up the recovery key (remove whitespace and dashes)
+            const cleanKey = recoveryKey.replace(/[\s-]/g, "")
 
             const result = await verifyRecoveryKey(email, cleanKey)
 

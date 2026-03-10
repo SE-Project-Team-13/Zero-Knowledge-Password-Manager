@@ -12,6 +12,7 @@ import { Shield, Key, Loader2, AlertCircle, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { buildApiUrl } from "@/lib/api-base-url";
 
 export default function RecoveryLoginPage() {
     const router = useRouter();
@@ -41,7 +42,7 @@ export default function RecoveryLoginPage() {
         try {
             const normalizedEmail = email.trim().toLowerCase();
             const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/recovery/login`,
+                buildApiUrl("/recovery/login"),
                 {
                     method: "POST",
                     headers: {

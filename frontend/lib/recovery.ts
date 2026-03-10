@@ -11,8 +11,10 @@ export async function generateAndDownloadRecoveryKey(
     token: string, 
     apiBaseUrl: string = getApiBaseUrl()
 ): Promise<string> {
+    const cleanBaseUrl = apiBaseUrl.replace(/\/+$/, "")
+    
     // 1. Get a random key from the server
-    const response = await fetch(`${apiBaseUrl}/recovery/generate`, {
+    const response = await fetch(`${cleanBaseUrl}/recovery/generate`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
