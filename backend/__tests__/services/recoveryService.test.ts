@@ -108,13 +108,12 @@ describe('RecoveryService Integration Tests', () => {
         });
         await user.save();
 
-        const recoveryKey = new RecoveryKey({
+        await RecoveryKey.create({
             userId: user._id,
             keyHash,
             encryptedVaultKey: 'some-encrypted-vault-key',
             isRevoked: true,
         });
-        await recoveryKey.save();
 
         const result = await verifyRecoveryKey(email, rawKey);
 
@@ -135,14 +134,13 @@ describe('RecoveryService Integration Tests', () => {
         });
         await user.save();
 
-        const recoveryKey = new RecoveryKey({
+        await RecoveryKey.create({
             userId: user._id,
             keyHash,
             encryptedVaultKey: 'some-encrypted-vault-key',
             isRevoked: false,
             usedAt: new Date(),
         });
-        await recoveryKey.save();
 
         const result = await verifyRecoveryKey(email, rawKey);
 
