@@ -79,16 +79,21 @@ export async function verifyRecoveryKey(
         // Hash the provided recovery key
         const keyHash = hashRecoveryKey(recoveryKey)
 
-        // Find a valid (non-revoked, unused) recovery key for this user
-        const storedKey = await RecoveryKey.findOne({
+        // Check if the key exists at all (even if revoked) to give better error messages
+        const existingKey = await RecoveryKey.findOne({
             userId: user._id,
             keyHash,
-            isRevoked: false,
         })
 
-        if (!storedKey) {
+        if (!existingKey) {
             return { success: false, error: "Invalid recovery key" }
         }
+
+        if (existingKey.isRevoked) {
+            return { success: false, error: "This recovery key has been revoked and can no longer be used." }
+        }
+
+        const storedKey = existingKey
 
         // Mark the recovery key as used
         storedKey.usedAt = new Date()

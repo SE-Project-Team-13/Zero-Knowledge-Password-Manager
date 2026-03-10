@@ -21,6 +21,7 @@ import {
 import { generateEmergencyKitPDF } from "@/lib/pdfService"
 import { toast } from "sonner"
 import { copyWithAutoClear } from "@/lib/clipboard"
+import { buildApiUrl } from "@/lib/api-base-url"
 
 interface EmergencyKitModalProps {
     isOpen: boolean
@@ -40,7 +41,7 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
         try {
             // 1. Get a random key from the server
             const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/recovery/generate`,
+                buildApiUrl("/recovery/generate"),
                 {
                     method: "POST",
                     headers: {
@@ -100,7 +101,7 @@ export function EmergencyKitModal({ isOpen, onClose, email }: EmergencyKitModalP
 
             // 4. Activate the key on the server
             const activateResponse = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/recovery/activate`,
+                buildApiUrl("/recovery/activate"),
                 {
                     method: "POST",
                     headers: {

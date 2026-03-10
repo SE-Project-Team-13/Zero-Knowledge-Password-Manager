@@ -12,8 +12,9 @@ import { Shield, Key, Loader2, AlertCircle, Eye, EyeOff, Lock, Check } from "luc
 import { toast } from "sonner"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { deriveKey, generateVerifier } from "@password-manager/crypto-engine"
-import { buildApiUrl } from "@/lib/api-base-url"
+import { buildApiUrl, getApiBaseUrl } from "@/lib/api-base-url"
 import { PasswordStrength } from "@/components/PasswordStrength"
+import { generateAndDownloadRecoveryKey } from "@/lib/recovery"
 
 export default function ResetPasswordPage() {
     const router = useRouter()
@@ -26,6 +27,7 @@ export default function ResetPasswordPage() {
     const [error, setError] = useState("")
     const [success, setSuccess] = useState(false)
     const [isPasswordValid, setIsPasswordValid] = useState(false)
+    const [autoGenerateKit, setAutoGenerateKit] = useState(true)
 
     // Verify authentication on mount
     useEffect(() => {
@@ -265,6 +267,21 @@ export default function ResetPasswordPage() {
                 throw new Error(data.message || "Failed to reset password")
             }
 
+            // A. If requested, auto-generate new recovery kit
+            if (autoGenerateKit) {
+                try {
+                    console.log("[ResetPassword] Auto-generating new recovery kit...")
+                    const email = localStorage.getItem("user_email") || ""
+                    if (email && token) {
+                        await generateAndDownloadRecoveryKey(email, password, token, getApiBaseUrl())
+                        toast.success("New Emergency Kit generated and downloaded!")
+                    }
+                } catch (kitErr) {
+                    console.error("[ResetPassword] Kit generation failed:", kitErr)
+                    toast.warning("Password reset, but failed to generate new kit. Please generate it manually later.")
+                }
+            }
+
             // Success!
             // Update local storage credentials
             localStorage.setItem("user_salt", newSaltHex)
@@ -394,6 +411,21 @@ export default function ResetPasswordPage() {
                                 password={password} 
                                 onStrengthChange={setIsPasswordValid} 
                             />
+                        </div>
+
+                        <div className="flex items-center space-x-3 py-3 px-3 bg-primary/5 rounded-xl border border-primary/10">
+                             <input 
+                                type="checkbox" 
+                                id="auto-generate-kit"
+                                checked={autoGenerateKit}
+                                onChange={(e) => setAutoGenerateKit(e.target.checked)}
+                                className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                                disabled={isLoading}
+                             />
+                             <Label htmlFor="auto-generate-kit" className="text-sm font-medium cursor-pointer flex-1 leading-tight">
+                                Auto-generate new Emergency Kit
+                                <p className="text-[10px] text-muted-foreground mt-0.5">Recommended to maintain backup access if your password changes.</p>
+                             </Label>
                         </div>
                     </CardContent>
 

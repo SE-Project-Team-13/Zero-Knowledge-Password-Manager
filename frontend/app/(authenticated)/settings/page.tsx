@@ -114,6 +114,10 @@ export default function SettingsPage() {
                                 Change your master password regularly to keep your vault secure.
                                 This will re-encrypt your entire vault.
                             </p>
+                            <p className="text-xs text-amber-600 font-medium flex items-center gap-1 mt-1">
+                                <ShieldAlert className="w-3 h-3" />
+                                Note: This will invalidate your existing Emergency Recovery Kit.
+                            </p>
                         </div>
                         <Button onClick={() => setIsChangePasswordOpen(true)} variant="outline">
                             Change Password
