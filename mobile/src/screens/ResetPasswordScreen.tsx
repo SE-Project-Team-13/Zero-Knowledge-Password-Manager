@@ -60,11 +60,12 @@ function InputField({
 }
 
 export default function ResetPasswordScreen({ navigation }: any) {
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [showPasswords, setShowPasswords] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isPasswordValid, setIsPasswordValid] = useState(false);
+    const [newPassword, setNewPassword] = React.useState('');
+    const [confirmPassword, setConfirmPassword] = React.useState('');
+    const [showPasswords, setShowPasswords] = React.useState(false);
+    const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [isPasswordValid, setIsPasswordValid] = React.useState(false);
+    const abortControllerRef = React.useRef<AbortController | null>(null);
 
     const {
         userId,
@@ -75,6 +76,15 @@ export default function ResetPasswordScreen({ navigation }: any) {
         logout,
     } = useAuthStore();
     const { getDeviceIdForSync } = useVaultStore();
+
+    // Cleanup on unmount
+    React.useEffect(() => {
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
+    }, []);
 
     const handleReset = async () => {
         if (!newPassword.trim() || !confirmPassword.trim()) {
@@ -100,6 +110,7 @@ export default function ResetPasswordScreen({ navigation }: any) {
         }
 
         setIsSubmitting(true);
+        abortControllerRef.current = new AbortController();
         try {
             const saltBuffer = crypto.getRandomValues(new Uint8Array(16));
             const salt = toHex(saltBuffer);
@@ -115,6 +126,7 @@ export default function ResetPasswordScreen({ navigation }: any) {
                 try {
                     const vaultResponse = await axios.get(`${API_URL}/api/vault/${encodeURIComponent(userId)}`, {
                         headers: { Authorization: `Bearer ${token}` },
+                        signal: abortControllerRef.current.signal,
                     });
 
                     const vaultData = vaultResponse.data;
@@ -153,6 +165,7 @@ export default function ResetPasswordScreen({ navigation }: any) {
                         Authorization: `Bearer ${token}`,
                         'Content-Type': 'application/json',
                     },
+                    signal: abortControllerRef.current.signal,
                 },
             );
 
@@ -164,10 +177,15 @@ export default function ResetPasswordScreen({ navigation }: any) {
                 { text: 'Log In', onPress: () => navigation.replace('Login') },
             ]);
         } catch (e: any) {
+            // Don't show error if request was aborted (component unmounted)
+            if (e?.name === 'AbortError' || e?.name === 'CanceledError') {
+                return;
+            }
             const message = e?.response?.data?.message || e?.message || 'Failed to reset password';
             Alert.alert('Error', message);
         } finally {
             setIsSubmitting(false);
+            abortControllerRef.current = null;
         }
     };
 

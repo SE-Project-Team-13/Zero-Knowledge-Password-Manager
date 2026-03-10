@@ -1,12 +1,24 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert } from 'react-native';
 import { useAuthStore } from '../store/authStore';
+import { useVaultStore } from '../store/vaultStore';
 import { Colors, Spacing, Radius, Typography } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function HomeScreen() {
   const { logout, userId, fullName } = useAuthStore() as any;
+  const { clearVault } = useVaultStore();
+
+  const handleLogout = async () => {
+    try {
+      clearVault();
+      await logout();
+    } catch (error: any) {
+      console.error('[HomeScreen] Logout error:', error);
+      Alert.alert('Logout Error', error?.message || 'Failed to logout. Please try again.');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -39,7 +51,7 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
             <LinearGradient
               colors={[Colors.destructive, '#B91C1C']}
               style={styles.logoutGradient}

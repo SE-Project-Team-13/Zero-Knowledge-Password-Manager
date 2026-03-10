@@ -13,7 +13,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 function generatePassword(length = 20): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';
     const array = new Uint8Array(length);
-    crypto.getRandomValues(array);
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        crypto.getRandomValues(array);
+    } else {
+        // Fallback for environments where crypto is not available (e.g. older React Native versions on Android)
+        // This is not cryptographically secure and should be avoided in production.
+        console.warn('Using insecure fallback for password generation. Please ensure a modern environment with crypto.getRandomValues.');
+        for (let i = 0; i < length; i++) {
+            array[i] = Math.floor(Math.random() * 256);
+        }
+    }
     return Array.from(array).map(x => chars[x % chars.length]).join('');
 }
 

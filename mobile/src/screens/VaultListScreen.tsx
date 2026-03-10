@@ -33,6 +33,7 @@ function generatePassword(length = 20): string {
         crypto.getRandomValues(array);
     } else {
         // Fallback for environments where crypto is not available
+        console.warn('Using insecure fallback for password generation. Please ensure a modern environment with crypto.getRandomValues.');
         for (let i = 0; i < length; i++) {
             array[i] = Math.floor(Math.random() * 256);
         }
@@ -92,7 +93,8 @@ function VaultCard({
         Clipboard.setString(text);
         setCopied(type);
         setTimeout(() => setCopied(null), 2000);
-        setTimeout(() => Clipboard.setString(''), 30000);
+        // Clear clipboard after 10 seconds for security
+        setTimeout(() => Clipboard.setString(''), 10000);
     };
 
     const confirmDelete = () => {
@@ -184,7 +186,7 @@ export default function VaultListScreen() {
     const [isManualSyncing, setIsManualSyncing] = useState(false);
     const [isResolvingConflict, setIsResolvingConflict] = useState(false);
     const navigation = useNavigation<any>();
-    const activeCredentialCount = entries.filter((entry) => entry && entry.id && entry.url).length;
+    const activeCredentialCount = entries.filter((entry) => entry && entry.id && entry.url && !entry.isDeleted).length;
 
     useEffect(() => {
         if (masterKey && userId) {
@@ -194,8 +196,10 @@ export default function VaultListScreen() {
 
 
     const filtered = entries.filter((e) =>
-        e.url?.toLowerCase().includes(search.toLowerCase()) ||
-        e.username?.toLowerCase().includes(search.toLowerCase()),
+        !e.isDeleted && (
+            e.url?.toLowerCase().includes(search.toLowerCase()) ||
+            e.username?.toLowerCase().includes(search.toLowerCase())
+        ),
     );
 
     const handleDelete = async (id: string) => {
@@ -261,6 +265,8 @@ export default function VaultListScreen() {
             const ok = await resolveSyncConflict(choice, masterKey, userId);
             if (ok) {
                 let msg = choice === 'local' ? 'Kept your local version.' : choice === 'server' ? 'Kept server version.' : 'Merged changes from both devices.';
+                // Reload vault to show resolved state
+                await loadVault(masterKey, userId);
                 Alert.alert('Conflict Resolved', msg);
             } else {
                 Alert.alert('Resolve Failed', 'Could not resolve conflict. Try again.');
@@ -358,6 +364,41 @@ export default function VaultListScreen() {
             <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('AddCredential')}>
                 <Ionicons name="add" size={28} color={Colors.background} />
             </TouchableOpacity>
+
+            <Modal visible={!!syncConflict} transparent animationType="fade" onRequestClose={() => {}}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <View style={styles.modalHeader}>
+                            <View>
+                                <View style={styles.modalTitleRow}>
+                                    <Ionicons name="git-compare-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
+                                    <Text style={styles.modalTitle}>Sync Conflict</Text>
+                                </View>
+                                <Text style={styles.modalSubtitle}>Your vault was updated on another device.</Text>
+                            </View>
+                        </View>
+                        <View style={styles.modalBody}>
+                            <Text style={styles.conflictText}>Please choose which version to keep. Merging is recommended.</Text>
+                            {isResolvingConflict ? (
+                                <ActivityIndicator size="large" color={Colors.primary} />
+                            ) : (
+                                <View style={styles.modalActionsVertical}>
+                                    <TouchableOpacity style={styles.modalBtnPrimary} onPress={() => handleResolveConflict('merge')}>
+                                        <Ionicons name="git-merge-outline" size={16} color={Colors.background} style={{ marginRight: 6 }} />
+                                        <Text style={styles.modalBtnPrimaryText}>Merge Changes</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={[styles.modalBtnSecondary, { marginTop: 10 }]} onPress={() => handleResolveConflict('local')}>
+                                        <Text style={styles.modalBtnSecondaryText}>Keep My Local Version</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={[styles.modalBtnSecondary, { marginTop: 10 }]} onPress={() => handleResolveConflict('server')}>
+                                        <Text style={styles.modalBtnSecondaryText}>Use Server Version</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+                </View>
+            </Modal>
             
             <Modal visible={!!editingEntry} transparent animationType="fade" onRequestClose={() => setEditingEntry(null)}>
                 <View style={styles.modalOverlay}>

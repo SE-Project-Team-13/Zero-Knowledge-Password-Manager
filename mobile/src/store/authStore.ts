@@ -119,6 +119,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (fullName) {
         await SecureStorageService.saveItem('full_name', fullName);
       }
+      await SecureStorageService.saveItem('master_password', password);
 
       // Login only establishes a session; user must complete OTP before full auth.
       set({
@@ -180,6 +181,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (fullName) {
           await SecureStorageService.saveItem('full_name', fullName);
       }
+      await SecureStorageService.saveItem('master_password', password);
       
       set({
         isAuthenticated: false,
@@ -247,6 +249,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await SecureStorageService.clearSession();
     await SecureStorageService.deleteItem('user_id');
     await SecureStorageService.deleteItem('full_name');
+    await SecureStorageService.deleteItem('master_password');
     set({
       isAuthenticated: false,
       isOtpPending: false,
@@ -269,7 +272,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // For MVP, we force re-login to derive key. 
     // Ideally we would verify session validation with backend here.
     if (session && userId) {
-        set({ userId, fullName, isAuthenticated: false, isOtpPending: false, pendingEmail: null });
+        set({ userId, fullName, isAuthenticated: true, isOtpPending: false, pendingEmail: null });
         // Optional: validate token with backend?
         // For now, assume session valid but require password for key.
     }

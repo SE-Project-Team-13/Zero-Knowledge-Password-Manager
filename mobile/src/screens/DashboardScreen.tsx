@@ -31,7 +31,7 @@ export default function DashboardScreen() {
     const [isManualSyncing, setIsManualSyncing] = useState(false);
 
     const activeCredentialCount = useMemo(
-        () => entries.filter((entry) => entry && entry.id && entry.url).length,
+        () => entries.filter((entry) => entry && entry.id && entry.url && !entry.isDeleted).length,
         [entries],
     );
 
