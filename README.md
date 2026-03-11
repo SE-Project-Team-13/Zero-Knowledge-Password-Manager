@@ -18,6 +18,7 @@ This repository contains the source code for **Zenith Vault**, a secure password
 - **[Usage Guide](#usage-guide)**
 - **[Architecture](#architecture-deep-dive)**
 - **[DevOps Architecture](./DEVOPS_ARCHITECTURE.md)**
+- **[Testing Report](./TESTING_REPORT.md)**
 
 ---
 
@@ -44,6 +45,7 @@ This repository contains the source code for **Zenith Vault**, a secure password
   - [Breach Detection (k-Anonymity)](#breach-detection-k-anonymity-1)
   - [Blind Sync Protocol](#blind-sync-protocol)
 - [DevOps Architecture](./DEVOPS_ARCHITECTURE.md)
+- [Testing Report](./TESTING_REPORT.md)
 - [Security Best Practices](#security-best-practices)
 - [Support & Documentation](#support--documentation)
 
@@ -477,3 +479,4 @@ For additional help:
 - **Architecture Diagrams**: See the `UML diagrams/` folder for visual documentation
 - **API Documentation**: Backend API endpoints are documented in [backend/API_DOCUMENTATION.md](backend/API_DOCUMENTATION.md)
 - **DevOps Documentation**: See [DEVOPS_ARCHITECTURE.md](DEVOPS_ARCHITECTURE.md)
+- **Testing Report**: See [TESTING_REPORT.md](TESTING_REPORT.md)
