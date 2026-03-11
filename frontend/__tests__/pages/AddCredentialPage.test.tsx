@@ -71,4 +71,45 @@ describe("AddCredentialPage", () => {
     });
     console.log("Result: Success - validation prevented submit and showed error");
   });
+
+  it("trims leading and trailing whitespace from URL before submitting", async () => {
+    console.log("Running: trims leading and trailing whitespace from URL before submitting");
+    render(<AddCredentialPage />);
+
+    fireEvent.change(screen.getByLabelText(/URL/i), { target: { value: "  example.com  " } });
+    fireEvent.change(screen.getByLabelText(/Username\/Email/i), { target: { value: "user@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "Secret123!" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Save Password/i }));
+
+    await waitFor(() => {
+      expect(addEntryMock).toHaveBeenCalledWith({
+        username: "user@example.com",
+        password: "Secret123!",
+        url: "example.com",
+        notes: "",
+      });
+    });
+    console.log("Result: Success - URL was trimmed before calling addEntry");
+  });
+
+  it("rejects whitespace-only URL values", async () => {
+    console.log("Running: rejects whitespace-only URL values");
+    const { toast } = require("sonner");
+    render(<AddCredentialPage />);
+
+    fireEvent.change(screen.getByLabelText(/URL/i), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText(/Username\/Email/i), { target: { value: "user@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "Secret123!" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Save Password/i }));
+
+    await waitFor(() => {
+      expect(addEntryMock).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith(
+        "Please complete all required fields (URL, Username, and Password)"
+      );
+    });
+    console.log("Result: Success - whitespace-only URL rejected, error toast shown");
+  });
 });

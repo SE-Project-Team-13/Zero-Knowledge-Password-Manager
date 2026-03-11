@@ -88,4 +88,54 @@ describe('EditCredentialModal', () => {
 
     expect(screen.queryByText('Edit Credential')).not.toBeInTheDocument();
   });
+
+  it('trims leading and trailing whitespace from URL before saving', async () => {
+    const onSaveMock = jest.fn();
+    render(
+      <EditCredentialModal
+        isOpen={true}
+        onClose={jest.fn()}
+        entry={mockEntry}
+        onSave={onSaveMock}
+      />
+    );
+
+    const urlInput = screen.getByDisplayValue('https://github.com');
+    fireEvent.change(urlInput, { target: { value: '  example.com  ' } });
+
+    const saveButton = screen.getByText('Save Changes');
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(onSaveMock).toHaveBeenCalledWith(expect.objectContaining({
+        url: 'example.com',
+      }));
+    });
+  });
+
+  it('rejects whitespace-only URL values', async () => {
+    const { toast } = require('sonner');
+    const onSaveMock = jest.fn();
+    render(
+      <EditCredentialModal
+        isOpen={true}
+        onClose={jest.fn()}
+        entry={mockEntry}
+        onSave={onSaveMock}
+      />
+    );
+
+    const urlInput = screen.getByDisplayValue('https://github.com');
+    fireEvent.change(urlInput, { target: { value: '   ' } });
+
+    const saveButton = screen.getByText('Save Changes');
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(onSaveMock).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith(
+        'Please complete all required fields (URL, Username, and Password)'
+      );
+    });
+  });
 });
