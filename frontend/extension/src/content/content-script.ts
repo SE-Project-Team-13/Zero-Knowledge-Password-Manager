@@ -316,32 +316,57 @@ function addAutofillButton(form: HTMLFormElement, usernameInput: HTMLInputElemen
   `
   
   button.style.cssText = `
-    position: relative;
-    width: 100%;
-    margin-top: 12px;
-    margin-bottom: 8px;
-    padding: 10px 16px;
-    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    z-index: 10000;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
+    position: relative !important;
+    width: auto !important;
+    margin-top: 12px !important;
+    margin-bottom: 8px !important;
+    padding: 8px 14px !important;
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    z-index: 10000 !important;
+    box-shadow: 0 3px 10px rgba(99, 102, 241, 0.3) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.2s ease !important;
+    font-family: system-ui, -apple-system, sans-serif !important;
+    white-space: nowrap !important;
   `
 
   function fillInputs(entry: any) {
-    if (usernameInput) usernameInput.value = entry.username
-    if (passwordInput) passwordInput.value = entry.password
-
-    if (usernameInput) usernameInput.dispatchEvent(new Event('input', { bubbles: true }))
-    if (passwordInput) passwordInput.dispatchEvent(new Event('input', { bubbles: true }))
+    // Fill both username and password together
+    if (usernameInput) {
+      usernameInput.value = entry.username
+      // Dispatch multiple events for compatibility with various frameworks
+      usernameInput.dispatchEvent(new Event('input', { bubbles: true }))
+      usernameInput.dispatchEvent(new Event('change', { bubbles: true }))
+      usernameInput.dispatchEvent(new Event('blur', { bubbles: true }))
+      // Trigger React's value setter
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(usernameInput, entry.username);
+        usernameInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+    
+    if (passwordInput) {
+      passwordInput.value = entry.password
+      // Dispatch multiple events for compatibility with various frameworks
+      passwordInput.dispatchEvent(new Event('input', { bubbles: true }))
+      passwordInput.dispatchEvent(new Event('change', { bubbles: true }))
+      passwordInput.dispatchEvent(new Event('blur', { bubbles: true }))
+      // Trigger React's value setter
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(passwordInput, entry.password);
+        passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
 
     button.innerHTML = `
       <svg width="16" height="16" viewBox="0 0 24 24" style="margin-right: 6px; vertical-align: middle;">
@@ -372,16 +397,17 @@ function addAutofillButton(form: HTMLFormElement, usernameInput: HTMLInputElemen
 
   // Add hover effects
   button.addEventListener('mouseenter', () => {
-    button.style.transform = 'translateY(-2px)'
-    button.style.boxShadow = '0 6px 16px rgba(99, 102, 241, 0.5)'
+    button.style.transform = 'translateY(-1px)'
+    button.style.boxShadow = '0 4px 14px rgba(99, 102, 241, 0.4)'
   })
   
   button.addEventListener('mouseleave', () => {
     button.style.transform = 'translateY(0)'
-    button.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.4)'
+    button.style.boxShadow = '0 3px 10px rgba(99, 102, 241, 0.3)'
   })
 
   button.addEventListener('click', async (e) => {
+    e.preventDefault()
     e.stopPropagation()
     const currentUrl = window.location.href
 
@@ -429,20 +455,50 @@ function addAutofillButton(form: HTMLFormElement, usernameInput: HTMLInputElemen
     })
   })
 
-  // Insert button after password field in a non-intrusive way
-  const passwordParent = passwordInput.parentElement
-  if (passwordParent) {
-    // Try to insert after the password field's parent container
-    const insertTarget = passwordParent.nextElementSibling
-    if (insertTarget) {
-      passwordParent.parentElement?.insertBefore(button, insertTarget)
-    } else {
-      passwordParent.parentElement?.appendChild(button)
+  // Smart button insertion logic - works with various form structures
+  function insertButton() {
+    // Strategy 1: Insert after password input within its container
+    const passwordParent = passwordInput.parentElement;
+    if (passwordParent) {
+      // Check if there's a submit button we can insert before
+      const submitButton = form.querySelector('button[type="submit"], input[type="submit"]');
+      
+      // Find the best insertion point
+      let insertionPoint = null;
+      let currentElement = passwordInput.nextElementSibling;
+      
+      // Look for the next sibling that's not hidden or has display: none
+      while (currentElement && !insertionPoint) {
+        const style = window.getComputedStyle(currentElement as Element);
+        if (style.display !== 'none' && style.visibility !== 'hidden') {
+          insertionPoint = currentElement;
+          break;
+        }
+        currentElement = currentElement.nextElementSibling;
+      }
+      
+      // Try to insert within the password input's parent first
+      if (insertionPoint) {
+        passwordParent.insertBefore(button, insertionPoint);
+      } else if (submitButton && submitButton.parentElement === passwordParent) {
+        passwordParent.insertBefore(button, submitButton);
+      } else {
+        passwordParent.appendChild(button);
+      }
+      return;
     }
-  } else {
-    // Fallback: append to form
-    form.appendChild(button)
+    
+    // Strategy 2: If password parent doesn't exist, try form-level insertion
+    const submitButton = form.querySelector('button[type="submit"], input[type="submit"]');
+    if (submitButton) {
+      submitButton.parentElement?.insertBefore(button, submitButton);
+    } else {
+      form.appendChild(button);
+    }
   }
+  
+  // Insert the button
+  insertButton();
 }
 
 // ============================================================================
