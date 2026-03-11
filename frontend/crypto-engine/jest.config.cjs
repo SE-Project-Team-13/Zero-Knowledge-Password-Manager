@@ -21,4 +21,12 @@ module.exports = {
     'node_modules/(?!(@noble)/)',
   ],
   extensionsToTreatAsEsm: ['.ts'],
+  // Run tests sequentially for cleaner output
+  maxWorkers: 1,
+  // Enable verbose output for better test visibility
+  verbose: true,
+  // Ensure all tests run even if some fail
+  bail: false,
+  // Limit console output noise
+  silent: false,
 };
