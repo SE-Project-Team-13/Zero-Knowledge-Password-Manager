@@ -131,7 +131,7 @@ export default function AddCredentialScreen() {
                                     label="URL"
                                     value={url}
                                     onChangeText={setUrl}
-                                    placeholder="https://example.com"
+                                    placeholder="example.com or https://example.com"
                                     icon="globe-outline"
                                 />
 

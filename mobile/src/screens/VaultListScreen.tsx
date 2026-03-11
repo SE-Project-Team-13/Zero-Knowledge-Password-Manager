@@ -421,7 +421,7 @@ export default function VaultListScreen() {
                                 label="URL"
                                 value={editUrl}
                                 onChangeText={setEditUrl}
-                                placeholder="https://example.com"
+                                placeholder="example.com or https://example.com"
                                 icon="globe-outline"
                             />
                             
