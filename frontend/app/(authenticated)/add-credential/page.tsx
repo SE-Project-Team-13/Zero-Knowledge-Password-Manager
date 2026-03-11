@@ -125,8 +125,8 @@ export default function AddCredentialPage() {
                             </Label>
                             <Input
                                 id="url"
-                                type="url"
-                                placeholder="https://example.com"
+                                type="text"
+                                placeholder="example.com or https://example.com"
                                 value={newEntry.url || ""}
                                 onChange={(e) =>
                                     setNewEntry({ ...newEntry, url: e.target.value })

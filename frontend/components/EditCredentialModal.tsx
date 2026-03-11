@@ -94,8 +94,8 @@ export function EditCredentialModal({
             <Label htmlFor="edit-url" className="text-foreground/80">URL</Label>
             <Input
               id="edit-url"
-              type="url"
-              placeholder="https://example.com"
+              type="text"
+              placeholder="example.com or https://example.com"
               value={formData.url || ""}
               onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               required
