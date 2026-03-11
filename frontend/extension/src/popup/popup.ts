@@ -28,6 +28,7 @@ interface PasswordEntry {
 
 // Screens
 const unlockScreen = document.getElementById("unlock-screen") as HTMLElement;
+const otpScreen = document.getElementById("otp-screen") as HTMLElement;
 const vaultScreen = document.getElementById("vault-screen") as HTMLElement;
 
 // Unlock form
@@ -39,6 +40,15 @@ const unlockBtn = document.getElementById("unlock-btn") as HTMLButtonElement;
 const unlockLoading = document.getElementById("unlock-loading") as HTMLElement;
 const unlockError = document.getElementById("unlock-error") as HTMLElement;
 const browserAuthStatus = document.getElementById("browser-auth-status") as HTMLElement;
+
+// OTP form
+const otpForm = document.getElementById("otp-form") as HTMLFormElement;
+const otpCodeInput = document.getElementById("otp-code") as HTMLInputElement;
+const verifyBtn = document.getElementById("verify-btn") as HTMLButtonElement;
+const resendBtn = document.getElementById("resend-btn") as HTMLButtonElement;
+const otpLoading = document.getElementById("otp-loading") as HTMLElement;
+const otpError = document.getElementById("otp-error") as HTMLElement;
+const otpCountdown = document.getElementById("otp-countdown") as HTMLElement;
 
 // Vault Elements
 const confirmModal = document.getElementById("confirm-modal") as HTMLElement;
@@ -72,6 +82,8 @@ interface PopupResponse {
   error?: string;
   vault?: PasswordEntry[];
   isLocked?: boolean;
+  isOtpVerified?: boolean;
+  otpRequired?: boolean;
 }
 
 // ============================================================================
@@ -102,8 +114,14 @@ async function init() {
   const status = await sendMessage({ type: "GET_STATUS" });
 
   if (status && !status.isLocked) {
-    await loadVault();
-    showScreen("vault");
+    if (status.isOtpVerified) {
+      await loadVault();
+      showScreen("vault");
+    } else {
+      // Unlocked but OTP not verified
+      startOtpCountdown(600); // 10 minutes
+      showScreen("otp");
+    }
   } else {
     showScreen("unlock");
   }
@@ -113,17 +131,38 @@ async function init() {
     chrome.runtime.sendMessage({ type: "HEARTBEAT" }).catch(() => {});
   }, 10000);
 
-  // Keep popup view fresh while open so dashboard/mobile changes appear quickly.
+  // Keep popup view fresh while open - sync every 1 second for instant updates
   setInterval(async () => {
     try {
       const currentStatus = await sendMessage({ type: "GET_STATUS" });
-      if (currentStatus && currentStatus.isLocked === false && !vaultScreen.classList.contains("hidden")) {
-        await loadVault();
+      
+      if (currentStatus) {
+        // Handle state transitions
+        if (currentStatus.isLocked) {
+          // Vault got locked - show unlock screen
+          if (!unlockScreen.classList.contains("hidden") === false) {
+            showScreen("unlock");
+          }
+        } else if (!currentStatus.isOtpVerified) {
+          // Unlocked but OTP not verified - show OTP screen
+          if (otpScreen.classList.contains("hidden")) {
+            startOtpCountdown(600);
+            showScreen("otp");
+          }
+        } else {
+          // Unlocked and OTP verified - show vault
+          if (!vaultScreen.classList.contains("hidden")) {
+            await loadVault();
+          } else if (vaultScreen.classList.contains("hidden")) {
+            await loadVault();
+            showScreen("vault");
+          }
+        }
       }
     } catch {
       // no-op
     }
-  }, 15000);
+  }, 1000); // Changed from 15000 to 1000 for instant updates
 }
 
 // ============================================================================
@@ -132,12 +171,17 @@ async function init() {
 
 function showScreen(screenName: string) {
   if (unlockScreen) unlockScreen.classList.add("hidden");
+  if (otpScreen) otpScreen.classList.add("hidden");
   if (vaultScreen) vaultScreen.classList.add("hidden");
 
   switch (screenName) {
     case "unlock":
       if (unlockScreen) unlockScreen.classList.remove("hidden");
       if (masterPasswordInput && !masterPasswordInput.disabled) masterPasswordInput.focus();
+      break;
+    case "otp":
+      if (otpScreen) otpScreen.classList.remove("hidden");
+      if (otpCodeInput) otpCodeInput.focus();
       break;
     case "vault":
       if (vaultScreen) vaultScreen.classList.remove("hidden");
@@ -185,9 +229,15 @@ if (unlockForm) {
         // SECURITY: Clear master password immediately
         if (masterPasswordInput) masterPasswordInput.value = "";
 
-        // Load and display vault
-        await loadVault();
-        showScreen("vault");
+        // Check if OTP verification is required
+        if (response.otpRequired) {
+          startOtpCountdown(600); // 10 minutes
+          showScreen("otp");
+        } else {
+          // Load and display vault (legacy path, should not happen)
+          await loadVault();
+          showScreen("vault");
+        }
       } else {
         showError(
           unlockError,
@@ -204,7 +254,122 @@ if (unlockForm) {
   });
 }
 
+// ============================================================================
+// OTP Verification
+// ============================================================================
 
+let otpCountdownInterval: number | null = null;
+
+function startOtpCountdown(seconds: number) {
+  if (otpCountdownInterval) clearInterval(otpCountdownInterval);
+  
+  let timeLeft = seconds;
+  
+  const updateCountdown = () => {
+    const minutes = Math.floor(timeLeft / 60);
+    const secs = timeLeft % 60;
+    if (otpCountdown) {
+      otpCountdown.textContent = `${minutes}:${secs.toString().padStart(2, '0')}`;
+    }
+    
+    if (timeLeft <= 0) {
+      if (otpCountdownInterval) clearInterval(otpCountdownInterval);
+      showError(otpError, "Verification code expired. Please unlock again.");
+      if (verifyBtn) verifyBtn.disabled = true;
+    }
+    
+    timeLeft--;
+  };
+  
+  updateCountdown();
+  otpCountdownInterval = window.setInterval(updateCountdown, 1000);
+}
+
+if (otpForm) {
+  otpForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const code = otpCodeInput.value.trim();
+
+    if (!code || code.length !== 6) {
+      showError(otpError, "Please enter a valid 6-digit code");
+      return;
+    }
+
+    // Show loading state
+    if (verifyBtn) verifyBtn.disabled = true;
+    if (otpLoading) otpLoading.classList.remove("hidden");
+    if (otpError) otpError.classList.add("hidden");
+
+    try {
+      const response = await sendMessage({
+        type: "VERIFY_OTP",
+        code,
+      });
+
+      if (response && response.success) {
+        // Clear OTP input
+        if (otpCodeInput) otpCodeInput.value = "";
+        
+        // Stop countdown
+        if (otpCountdownInterval) clearInterval(otpCountdownInterval);
+
+        // Load and display vault
+        await loadVault();
+        showScreen("vault");
+      } else {
+        showError(
+          otpError,
+          (response && response.error) || "Invalid verification code",
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Verification failed";
+      showError(otpError, message);
+    } finally {
+      if (verifyBtn) verifyBtn.disabled = false;
+      if (otpLoading) otpLoading.classList.add("hidden");
+    }
+  });
+}
+
+if (resendBtn) {
+  resendBtn.addEventListener("click", async () => {
+    if (resendBtn) resendBtn.disabled = true;
+    if (otpError) otpError.classList.add("hidden");
+
+    try {
+      const response = await sendMessage({ type: "SEND_OTP" });
+
+      if (response && response.success) {
+        // Restart countdown
+        startOtpCountdown(600);
+        
+        // Show success message temporarily
+        if (otpError) {
+          otpError.textContent = "New code sent!";
+          otpError.style.color = "#10b981";
+          otpError.classList.remove("hidden");
+          setTimeout(() => {
+            if (otpError) {
+              otpError.classList.add("hidden");
+              otpError.style.color = "";
+            }
+          }, 3000);
+        }
+      } else {
+        showError(
+          otpError,
+          (response && response.error) || "Failed to resend code",
+        );
+      }
+    } catch (error) {
+      showError(otpError, "Failed to resend code");
+    } finally {
+      if (resendBtn) resendBtn.disabled = false;
+    }
+  });
+}
 
 // ============================================================================
 // Load Vault
@@ -216,6 +381,10 @@ async function loadVault() {
 
     if (response && response.success) {
       currentVault = response.vault || [];
+      console.log('[Popup] Loaded vault:', {
+        count: currentVault.length,
+        entries: currentVault.map(e => ({ id: e.id, siteName: e.siteName, isDeleted: e.isDeleted }))
+      });
       renderVault(currentVault);
     } else {
       showError(

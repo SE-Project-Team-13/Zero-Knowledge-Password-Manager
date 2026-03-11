@@ -69,6 +69,8 @@ interface SessionState {
   isLocked: boolean;
   lastActivity: number;
   lastServerSyncTimestamp: number;
+  isOtpVerified: boolean;
+  userEmail: string | null;
 }
 
 // This state exists ONLY in memory and is destroyed on extension reload/browser close
@@ -79,7 +81,91 @@ let sessionState: SessionState = {
   isLocked: true,
   lastActivity: Date.now(),
   lastServerSyncTimestamp: 0,
+  isOtpVerified: false,
+  userEmail: null,
 };
+
+// Session token stored separately for API calls
+let sessionToken: string | null = null;
+
+// ============================================================================
+// Session Persistence (survives service worker restarts, cleared on browser close)
+// ============================================================================
+
+async function saveSessionState(): Promise<void> {
+  try {
+    // chrome.storage.session persists across service worker restarts
+    // but is cleared when the browser closes - perfect for our needs
+    await chrome.storage.session.set({
+      sessionState: {
+        userId: sessionState.userId,
+        // Store derived key as serializable data
+        derivedKey: sessionState.derivedKey ? {
+          encryptionKey: Array.from(sessionState.derivedKey.encryptionKey),
+          authKey: Array.from(sessionState.derivedKey.authKey),
+          salt: Array.from(sessionState.derivedKey.salt),
+          key: Array.from(sessionState.derivedKey.key),
+        } : null,
+        decryptedVault: sessionState.decryptedVault,
+        isLocked: sessionState.isLocked,
+        lastActivity: sessionState.lastActivity,
+        lastServerSyncTimestamp: sessionState.lastServerSyncTimestamp,
+        isOtpVerified: sessionState.isOtpVerified,
+        userEmail: sessionState.userEmail,
+      },
+      sessionToken: sessionToken,
+    });
+  } catch (error) {
+    console.error('[VaultSync:Extension] Failed to save session state:', error);
+  }
+}
+
+async function restoreSessionState(): Promise<void> {
+  try {
+    const data = await chrome.storage.session.get(['sessionState', 'sessionToken']);
+    
+    if (data.sessionState) {
+      const saved = data.sessionState;
+      sessionState.userId = saved.userId;
+      sessionState.isLocked = saved.isLocked ?? true;
+      sessionState.lastActivity = saved.lastActivity ?? Date.now();
+      sessionState.lastServerSyncTimestamp = saved.lastServerSyncTimestamp ?? 0;
+      sessionState.decryptedVault = saved.decryptedVault;
+      sessionState.isOtpVerified = saved.isOtpVerified ?? false;
+      sessionState.userEmail = saved.userEmail ?? null;
+      
+      // Restore derived key from serialized format
+      if (saved.derivedKey) {
+        sessionState.derivedKey = {
+          encryptionKey: new Uint8Array(saved.derivedKey.encryptionKey),
+          authKey: new Uint8Array(saved.derivedKey.authKey),
+          salt: new Uint8Array(saved.derivedKey.salt),
+          key: new Uint8Array(saved.derivedKey.key),
+        };
+      }
+    }
+    
+    if (data.sessionToken) {
+      sessionToken = data.sessionToken;
+    }
+    
+    console.log('[VaultSync:Extension] Session state restored:', {
+      isLocked: sessionState.isLocked,
+      hasVault: !!sessionState.decryptedVault,
+      isOtpVerified: sessionState.isOtpVerified
+    });
+  } catch (error) {
+    console.error('[VaultSync:Extension] Failed to restore session state:', error);
+  }
+}
+
+async function clearSessionState(): Promise<void> {
+  try {
+    await chrome.storage.session.clear();
+  } catch (error) {
+    console.error('[VaultSync:Extension] Failed to clear session state:', error);
+  }
+}
 
 // ============================================================================
 // Configuration
@@ -100,12 +186,6 @@ function resetAutoLockTimer(): void {
     autoLockTimer = null;
   }
 }
-
-// ============================================================================
-// Session Management
-// ============================================================================
-
-let sessionToken: string | null = null;
 
 // ============================================================================
 // API Client Helpers
@@ -200,6 +280,15 @@ interface SaveNewCredentialMessage {
   password?: string;
 }
 
+interface SendOtpMessage {
+  type: "SEND_OTP";
+}
+
+interface VerifyOtpMessage {
+  type: "VERIFY_OTP";
+  code: string;
+}
+
 type BackgroundMessage =
   | UnlockVaultMessage
   | GetVaultMessage
@@ -211,7 +300,9 @@ type BackgroundMessage =
   | CheckUrlMatchMessage
   | GetUserProfileMessage
   | CheckNewCredentialMessage
-  | SaveNewCredentialMessage;
+  | SaveNewCredentialMessage
+  | SendOtpMessage
+  | VerifyOtpMessage;
 
 chrome.runtime.onMessage.addListener(
   (message: BackgroundMessage, _sender, sendResponse) => {
@@ -253,6 +344,10 @@ async function handleMessage(message: BackgroundMessage): Promise<unknown> {
       return await handleCheckNewCredential(message);
     case "SAVE_NEW_CREDENTIAL":
       return await handleSaveNewCredential(message);
+    case "SEND_OTP":
+      return await handleSendOtp();
+    case "VERIFY_OTP":
+      return await handleVerifyOtp(message);
     default:
       return { success: false, error: "Unknown message type" };
   }
@@ -269,7 +364,7 @@ function updateLastActivity() {
 
 async function handleUnlockVault(
   message: UnlockVaultMessage,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; otpRequired?: boolean }> {
   try {
     console.log(
       "[VaultSync:Extension] Unlocking vault for user:",
@@ -424,9 +519,26 @@ async function handleUnlockVault(
     sessionState.decryptedVault = decryptedVault;
     sessionState.isLocked = false;
     sessionState.lastServerSyncTimestamp = serverSyncTimestamp;
+    sessionState.userEmail = email;
+    sessionState.isOtpVerified = false; // Require OTP verification after unlock
 
     updateLastActivity();
-    return { success: true };
+    
+    // Persist session state so it survives service worker restarts
+    await saveSessionState();
+    
+    // Start periodic sync for instant updates
+    startPeriodicSync();
+    
+    // Automatically send OTP after successful unlock
+    try {
+      await sendOtpToUser(email);
+      console.log('[VaultSync:Extension] OTP sent automatically after unlock');
+    } catch (otpError) {
+      console.warn('[VaultSync:Extension] Failed to auto-send OTP:', otpError);
+    }
+    
+    return { success: true, otpRequired: true };
   } catch (error) {
     console.error("[VaultSync:Extension] Failed to unlock vault:", error);
     lockVault();
@@ -496,7 +608,8 @@ async function refreshVaultFromServerIfNewer(): Promise<void> {
     sessionState.isLocked ||
     !sessionState.derivedKey ||
     !sessionState.userId ||
-    !sessionToken
+    !sessionToken ||
+    !sessionState.isOtpVerified // SECURITY: Only sync after OTP verification
   ) {
     return;
   }
@@ -522,12 +635,18 @@ async function refreshVaultFromServerIfNewer(): Promise<void> {
     const serverTimestamp = Number(payload?.serverTimestamp || 0);
 
     if (serverTimestamp > sessionState.lastServerSyncTimestamp) {
+      console.log('[VaultSync:Extension] Server has newer data, updating local timestamp:', {
+        oldTimestamp: sessionState.lastServerSyncTimestamp,
+        newTimestamp: serverTimestamp
+      });
       sessionState.lastServerSyncTimestamp = serverTimestamp;
     }
 
     if (!payload?.hasUpdate || !payload?.blob?.ciphertext) {
       return;
     }
+
+    console.log('[VaultSync:Extension] Syncing newer vault data from server');
 
     const remoteBlob = payload.blob as {
       ciphertext: string;
@@ -549,7 +668,17 @@ async function refreshVaultFromServerIfNewer(): Promise<void> {
       sessionState.derivedKey,
     );
 
-    sessionState.decryptedVault = parseVaultEntriesFromDecryptedPayload(decryptedVaultPayload);
+    const newVault = parseVaultEntriesFromDecryptedPayload(decryptedVaultPayload);
+    const activeCount = newVault.filter(e => !e.isDeleted).length;
+    const deletedCount = newVault.filter(e => e.isDeleted).length;
+    
+    console.log('[VaultSync:Extension] Vault updated:', {
+      totalEntries: newVault.length,
+      active: activeCount,
+      deleted: deletedCount
+    });
+    
+    sessionState.decryptedVault = newVault;
   } catch (error) {
     console.warn("[VaultSync:Extension] Non-blocking sync refresh failed:", error);
   }
@@ -559,10 +688,21 @@ async function handleGetVault() {
   if (sessionState.isLocked || !sessionState.decryptedVault)
     return { success: false, error: "Locked" };
 
+  // Refresh vault from server to get latest data (including deletions)
   await refreshVaultFromServerIfNewer();
 
   updateLastActivity();
+  
+  const totalEntries = sessionState.decryptedVault?.length || 0;
   const activeEntries = (sessionState.decryptedVault || []).filter((entry) => !entry.isDeleted);
+  const deletedCount = totalEntries - activeEntries.length;
+  
+  console.log('[VaultSync:Extension] GET_VAULT response:', {
+    total: totalEntries,
+    active: activeEntries.length,
+    deleted: deletedCount
+  });
+  
   return { success: true, vault: activeEntries };
 }
 
@@ -572,7 +712,10 @@ function handleLockVault() {
 }
 
 function handleGetStatus() {
-  return { isLocked: sessionState.isLocked };
+  return { 
+    isLocked: sessionState.isLocked,
+    isOtpVerified: sessionState.isOtpVerified 
+  };
 }
 
 function normalizeUrlForMatch(rawUrl: string): string | null {
@@ -677,6 +820,10 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
     !sessionToken
   ) {
     return { success: false, error: "Vault locked or offline" };
+  }
+
+  if (!sessionState.isOtpVerified) {
+    return { success: false, error: "Please complete 2FA verification first" };
   }
 
   try {
@@ -796,7 +943,28 @@ async function handleSaveNewCredential(message: SaveNewCredentialMessage) {
       throw new Error("Failed to sync new credential via any sync API (legacy and modern)");
     }
 
+    console.log('[VaultSync:Extension] Credential saved successfully:', {
+      legacyApi: response1.ok,
+      modernApi: modernSyncOk,
+      timestamp: nowTs
+    });
+
     updateLastActivity();
+    
+    // Persist updated vault state
+    await saveSessionState();
+    
+    // Trigger immediate sync on other devices/tabs by updating a sync trigger flag
+    try {
+      // Use chrome.storage.local to trigger cross-tab sync
+      await chrome.storage.local.set({ 
+        'vault_sync_trigger': Date.now(),
+        'vault_sync_source': 'extension'
+      });
+    } catch (err) {
+      console.warn('[VaultSync:Extension] Failed to set sync trigger:', err);
+    }
+    
     return { success: true };
   } catch (err) {
     console.error("[VaultSync] Save New Credential Error:", err);
@@ -810,9 +978,18 @@ function lockVault(): void {
   sessionState.decryptedVault = null;
   sessionState.isLocked = true;
   sessionState.lastServerSyncTimestamp = 0;
+  sessionState.isOtpVerified = false;
+  sessionState.userEmail = null;
   sessionToken = null;
   if (autoLockTimer) clearTimeout(autoLockTimer);
   autoLockTimer = null;
+  
+  // Stop periodic sync when locked
+  stopPeriodicSync();
+  
+  // Clear persisted session state
+  clearSessionState().catch(console.error);
+  
   chrome.runtime.sendMessage({ type: "VAULT_LOCKED" }).catch(() => {});
 }
 
@@ -833,6 +1010,143 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(() => {
   console.log("[VaultSync:Extension] Browser started");
+});
+
+// Restore session state when service worker starts/restarts
+restoreSessionState().then(() => {
+  console.log("[VaultSync:Extension] Service worker initialized and session restored");
+  startPeriodicSync();
+}).catch((error) => {
+  console.error("[VaultSync:Extension] Failed to restore session:", error);
+});
+
+// ============================================================================
+// Periodic Sync (1 second interval for instant updates)
+// ============================================================================
+
+let syncIntervalId: ReturnType<typeof setInterval> | null = null;
+
+function startPeriodicSync(): void {
+  // Clear any existing interval
+  if (syncIntervalId !== null) {
+    clearInterval(syncIntervalId);
+  }
+
+  // Sync every 1 second when unlocked
+  syncIntervalId = setInterval(async () => {
+    if (!sessionState.isLocked && sessionState.userId && sessionToken) {
+      try {
+        await refreshVaultFromServerIfNewer();
+        await saveSessionState(); // Persist any updates
+      } catch (error) {
+        // Silently fail - don't spam logs for network issues
+        console.debug('[VaultSync:Extension] Background sync skipped:', error);
+      }
+    }
+  }, 1000); // 1 second interval for instant updates
+  
+  console.log('[VaultSync:Extension] Periodic sync started (1 second interval)');
+}
+
+function stopPeriodicSync(): void {
+  if (syncIntervalId !== null) {
+    clearInterval(syncIntervalId);
+    syncIntervalId = null;
+    console.log('[VaultSync:Extension] Periodic sync stopped');
+  }
+}
+
+// ============================================================================
+// OTP Handlers
+// ============================================================================
+
+async function sendOtpToUser(email: string): Promise<void> {
+  if (!sessionToken) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(`${BACKEND_URL}/otp/send`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Failed to send OTP');
+  }
+}
+
+async function handleSendOtp(): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!sessionState.userEmail) {
+      return { success: false, error: 'Email not found' };
+    }
+
+    await sendOtpToUser(sessionState.userEmail);
+    console.log('[VaultSync:Extension] OTP sent to:', sessionState.userEmail);
+    return { success: true };
+  } catch (error) {
+    console.error('[VaultSync:Extension] Failed to send OTP:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to send OTP',
+    };
+  }
+}
+
+async function handleVerifyOtp(message: VerifyOtpMessage): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!sessionState.userEmail || !sessionToken) {
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    const response = await fetch(`${BACKEND_URL}/otp/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        email: sessionState.userEmail,
+        code: message.code,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.message || 'Invalid verification code' };
+    }
+
+    // Mark OTP as verified in session state
+    sessionState.isOtpVerified = true;
+    await saveSessionState();
+    
+    console.log('[VaultSync:Extension] OTP verified successfully');
+    return { success: true };
+  } catch (error) {
+    console.error('[VaultSync:Extension] Failed to verify OTP:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Verification failed',
+    };
+  }
+}
+
+// ============================================================================
+// Keepalive
+// ============================================================================
+
+// Keep service worker alive by listening to alarms
+chrome.alarms.create('keep-alive', { periodInMinutes: 1 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'keep-alive') {
+    // Periodic keepalive - do nothing, just prevents worker termination
+    console.log('[VaultSync:Extension] Keepalive ping');
+  }
 });
 
 // SECURITY: When service worker is terminated, all state is lost

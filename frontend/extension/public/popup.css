@@ -739,6 +739,36 @@ h3 {
   line-height: 1.4;
 }
 
+/* OTP Screen Styles */
+.info-box {
+  background: oklch(0.12 0.02 210 / 0.5);
+  border: 1px solid oklch(0.4 0.1 210);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.info-box p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.info-box p:last-child {
+  margin-bottom: 0;
+}
+
+.countdown {
+  color: var(--primary) !important;
+  font-weight: 700 !important;
+  font-size: 24px !important;
+  font-family: var(--font-heading) !important;
+  margin-top: 8px !important;
+  letter-spacing: 0.05em;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

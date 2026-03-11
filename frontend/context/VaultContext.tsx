@@ -18,7 +18,7 @@ import {
 import { toast } from "sonner";
 import { buildApiUrl } from "@/lib/api-base-url";
 
-const WEB_SYNC_INTERVAL_MS = 1 * 1000;
+const WEB_SYNC_INTERVAL_MS = 1 * 1000; // Check for updates every 1 second (instant sync with extension)
 const LAST_SYNC_TS_KEY_PREFIX = "vault_last_sync_ts:";
 const WEB_OFFLINE_QUEUE_KEY_PREFIX = "vault_offline_sync_queue:";
 const WEB_LOCAL_BLOB_PREFIX = "vault_local_blob:";
@@ -977,6 +977,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const lastKnownTimestamp = Number(
         localStorage.getItem(getSyncTsKey(userId)) || "0",
       );
+      
+      console.log('[VaultContext] Polling for updates:', {
+        userId,
+        lastKnownTimestamp,
+        timestamp: new Date().toISOString()
+      });
+      
       const response = await fetch(buildApiUrl("/sync/blob/pull"), {
         method: "POST",
         headers: {
@@ -1082,6 +1089,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
 
       const nextEntries = parseDecryptedEntries(decryptResult.data);
+      
+      console.log('[VaultContext] Sync update received:', {
+        entriesCount: nextEntries.length,
+        serverTimestamp: payload.serverTimestamp || blob.timestamp,
+        previousTimestamp: lastKnownTimestamp
+      });
+      
       setDecryptedEntries(nextEntries);
       const ts = Number(
         payload.serverTimestamp || blob.timestamp || Date.now(),
