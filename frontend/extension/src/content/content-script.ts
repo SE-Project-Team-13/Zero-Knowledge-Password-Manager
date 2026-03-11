@@ -220,11 +220,11 @@ function showSavePrompt(url: string, username: string, password: string, continu
       <h3 style="margin: 0; font-size: 16px; font-weight: 700;">Save Password?</h3>
     </div>
     <p style="margin: 0 0 16px 0; font-size: 13px; color: oklch(0.6 0.02 90); line-height: 1.5;">
-      Would you like Zenith Vault to securely save this login for <strong>${new URL(url).hostname}</strong>?
+      Save this login to Zenith Vault for <strong>${new URL(url).hostname}</strong>? It will sync across all your devices.
     </p>
     <div style="display: flex; gap: 10px; justify-content: flex-end;">
-      <button class="btn btn-cancel" id="pm-btn-cancel">Never</button>
-      <button class="btn btn-save" id="pm-btn-save">Save to Vault</button>
+      <button class="btn btn-cancel" id="pm-btn-cancel">Not now</button>
+      <button class="btn btn-save" id="pm-btn-save">Save & Sync</button>
     </div>
   `;
 
@@ -246,8 +246,16 @@ function showSavePrompt(url: string, username: string, password: string, continu
 
   shadow.getElementById('pm-btn-save')?.addEventListener('click', () => {
     const saveBtn = shadow.getElementById('pm-btn-save') as HTMLButtonElement;
+    const cancelBtn = shadow.getElementById('pm-btn-cancel') as HTMLButtonElement;
     saveBtn.textContent = 'Saving...';
     saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+
+    console.log('[VaultSync:Extension] Saving new credential...', {
+      url,
+      username,
+      siteName: new URL(url).hostname
+    });
 
     chrome.runtime.sendMessage({
       type: 'SAVE_NEW_CREDENTIAL',
@@ -256,14 +264,18 @@ function showSavePrompt(url: string, username: string, password: string, continu
       username: username,
       password: password
     }, (response) => {
+      console.log('[VaultSync:Extension] Save response:', response);
+      
       if (response && response.success) {
-        saveBtn.textContent = 'Saved!';
+        saveBtn.textContent = '✓ Saved & Synced!';
         saveBtn.style.background = '#10b981';
         saveBtn.style.color = 'white';
-        setTimeout(removePrompt, 1000); // Reduced delay before continuing
+        console.log('[VaultSync:Extension] Credential saved successfully and synced to cloud');
+        setTimeout(removePrompt, 1200); // Slightly longer to show success message
       } else {
-        saveBtn.textContent = 'Failed';
+        saveBtn.textContent = 'Failed to save';
         saveBtn.style.background = '#ef4444';
+        console.error('[VaultSync:Extension] Failed to save credential:', response?.error);
         setTimeout(removePrompt, 1500);
       }
     });
@@ -283,47 +295,46 @@ function addAutofillButton(form: HTMLFormElement, usernameInput: HTMLInputElemen
   const button = document.createElement('button')
   button.type = 'button'
   button.className = 'pm-autofill-btn'
-  button.textContent = 'Autofill'
+  
+  // Create button with logo
+  button.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 128 128" style="margin-right: 6px; vertical-align: middle;">
+      <defs>
+        <linearGradient id="btn-grad-${Date.now()}" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#e0e7ff;stop-opacity:1" />
+        </linearGradient>
+      </defs>
+      <circle cx="64" cy="64" r="60" fill="url(#btn-grad-${Date.now()})"/>
+      <rect x="44" y="60" width="40" height="36" rx="4" fill="#6366f1"/>
+      <path d="M 50 60 L 50 48 Q 50 36 64 36 Q 78 36 78 48 L 78 60" 
+            stroke="#6366f1" stroke-width="8" fill="none" stroke-linecap="round"/>
+      <circle cx="64" cy="72" r="4" fill="white"/>
+      <rect x="62" y="72" width="4" height="8" fill="white"/>
+    </svg>
+    <span>Autofill with Zenith</span>
+  `
+  
   button.style.cssText = `
-    position: absolute;
-    top: -30px;
-    right: 0;
-    padding: 6px 12px;
-    background: #6366f1;
+    position: relative;
+    width: 100%;
+    margin-top: 12px;
+    margin-bottom: 8px;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
     color: white;
     border: none;
-    border-radius: 6px;
-    font-size: 12px;
+    border-radius: 8px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     z-index: 10000;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
   `
-
-  const indicator = document.createElement('span')
-  indicator.className = 'pm-safe-indicator'
-  indicator.textContent = '●'
-  indicator.style.cssText = `
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 10px;
-    height: 10px;
-    color: #10b981;
-    font-size: 14px;
-    line-height: 10px;
-    display: none;
-    pointer-events: none;
-    z-index: 10001;
-  `
-
-  const pwdParent = passwordInput.parentElement || form
-  const parentStyle = window.getComputedStyle(pwdParent)
-  if (parentStyle.position === 'static') {
-    ;(pwdParent as HTMLElement).style.position = 'relative'
-  }
-  pwdParent.appendChild(indicator)
 
   function fillInputs(entry: any) {
     if (usernameInput) usernameInput.value = entry.username
@@ -332,11 +343,43 @@ function addAutofillButton(form: HTMLFormElement, usernameInput: HTMLInputElemen
     if (usernameInput) usernameInput.dispatchEvent(new Event('input', { bubbles: true }))
     if (passwordInput) passwordInput.dispatchEvent(new Event('input', { bubbles: true }))
 
-    button.textContent = 'Filled'
+    button.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" style="margin-right: 6px; vertical-align: middle;">
+        <path d="M5 13l4 4L19 7" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Filled!</span>
+    `
     setTimeout(() => {
-      button.textContent = 'Autofill'
+      button.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 128 128" style="margin-right: 6px; vertical-align: middle;">
+          <defs>
+            <linearGradient id="btn-grad-${Date.now()}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#e0e7ff;stop-opacity:1" />
+            </linearGradient>
+          </defs>
+          <circle cx="64" cy="64" r="60" fill="url(#btn-grad-${Date.now()})"/>
+          <rect x="44" y="60" width="40" height="36" rx="4" fill="#6366f1"/>
+          <path d="M 50 60 L 50 48 Q 50 36 64 36 Q 78 36 78 48 L 78 60" 
+                stroke="#6366f1" stroke-width="8" fill="none" stroke-linecap="round"/>
+          <circle cx="64" cy="72" r="4" fill="white"/>
+          <rect x="62" y="72" width="4" height="8" fill="white"/>
+        </svg>
+        <span>Autofill with Zenith</span>
+      `
     }, 2000)
   }
+
+  // Add hover effects
+  button.addEventListener('mouseenter', () => {
+    button.style.transform = 'translateY(-2px)'
+    button.style.boxShadow = '0 6px 16px rgba(99, 102, 241, 0.5)'
+  })
+  
+  button.addEventListener('mouseleave', () => {
+    button.style.transform = 'translateY(0)'
+    button.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.4)'
+  })
 
   button.addEventListener('click', async (e) => {
     e.stopPropagation()
@@ -356,37 +399,50 @@ function addAutofillButton(form: HTMLFormElement, usernameInput: HTMLInputElemen
           });
         }
       } else {
-        button.textContent = 'Not found'
+        button.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" style="margin-right: 6px; vertical-align: middle;">
+            <circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" fill="none"/>
+            <path d="M12 8v4M12 16h.01" stroke="white" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>No credentials saved</span>
+        `
         setTimeout(() => {
-          button.textContent = 'Autofill'
+          button.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 128 128" style="margin-right: 6px; vertical-align: middle;">
+              <defs>
+                <linearGradient id="btn-grad-${Date.now()}" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+                  <stop offset="100%" style="stop-color:#e0e7ff;stop-opacity:1" />
+                </linearGradient>
+              </defs>
+              <circle cx="64" cy="64" r="60" fill="url(#btn-grad-${Date.now()})"/>
+              <rect x="44" y="60" width="40" height="36" rx="4" fill="#6366f1"/>
+              <path d="M 50 60 L 50 48 Q 50 36 64 36 Q 78 36 78 48 L 78 60" 
+                    stroke="#6366f1" stroke-width="8" fill="none" stroke-linecap="round"/>
+              <circle cx="64" cy="72" r="4" fill="white"/>
+              <rect x="62" y="72" width="4" height="8" fill="white"/>
+            </svg>
+            <span>Autofill with Zenith</span>
+          `
         }, 2000)
       }
     })
   })
 
-  // Position button relative to form
-  const formRect = form.getBoundingClientRect()
-  if (formRect.top > 40) {
-    form.style.position = 'relative'
+  // Insert button after password field in a non-intrusive way
+  const passwordParent = passwordInput.parentElement
+  if (passwordParent) {
+    // Try to insert after the password field's parent container
+    const insertTarget = passwordParent.nextElementSibling
+    if (insertTarget) {
+      passwordParent.parentElement?.insertBefore(button, insertTarget)
+    } else {
+      passwordParent.parentElement?.appendChild(button)
+    }
+  } else {
+    // Fallback: append to form
     form.appendChild(button)
   }
-
-  // Check URL safety and update indicator/button state
-  const currentUrl = window.location.href
-  chrome.runtime.sendMessage({ type: 'CHECK_URL_MATCH', url: currentUrl }, (response) => {
-    const isSafe = Boolean(response && response.success && response.match)
-    console.log('[VaultSync:Extension] URL match check:', {
-      currentUrl,
-      currentNormalized: response?.currentNormalized,
-      sampleEntries: response?.sampleEntries,
-      match: response?.match
-    })
-    indicator.style.display = isSafe ? 'block' : 'none'
-    button.disabled = !isSafe
-    button.style.background = isSafe ? '#10b981' : '#9ca3af'
-    button.style.cursor = isSafe ? 'pointer' : 'not-allowed'
-    button.textContent = isSafe ? 'Autofill' : 'URL unavailable'
-  })
 }
 
 // ============================================================================
@@ -406,48 +462,150 @@ function showCredentialsDropdown(entries: any[], button: HTMLElement, onSelect: 
   `;
   
   const rect = button.getBoundingClientRect();
-  container.style.top = `${rect.bottom + window.scrollY + 5}px`;
+  container.style.top = `${rect.bottom + window.scrollY + 8}px`;
   container.style.left = `${rect.left + window.scrollX}px`;
 
   const shadow = container.attachShadow({ mode: 'closed' });
 
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideDown {
+      from { 
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to { 
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .dropdown-item:hover {
+      background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%) !important;
+    }
+  `;
+  shadow.appendChild(style);
+
   const dropdown = document.createElement('div');
   dropdown.style.cssText = `
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    padding: 8px 0;
-    font-family: system-ui, sans-serif;
-    min-width: 200px;
-    border: 1px solid #e5e7eb;
+    background: oklch(0.98 0.01 90);
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(99, 102, 241, 0.1);
+    padding: 8px;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    min-width: 280px;
+    max-width: 350px;
+    animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   `;
 
-  entries.forEach(entry => {
+  // Header with logo
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 12px 12px 8px;
+    border-bottom: 1px solid oklch(0.9 0.01 90);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  `;
+  header.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 128 128">
+      <defs>
+        <linearGradient id="dropdown-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#4f46e5;stop-opacity:1" />
+        </linearGradient>
+      </defs>
+      <circle cx="64" cy="64" r="60" fill="url(#dropdown-grad)"/>
+      <rect x="44" y="60" width="40" height="36" rx="4" fill="white"/>
+      <path d="M 50 60 L 50 48 Q 50 36 64 36 Q 78 36 78 48 L 78 60" 
+            stroke="white" stroke-width="8" fill="none" stroke-linecap="round"/>
+      <circle cx="64" cy="72" r="4" fill="#6366f1"/>
+      <rect x="62" y="72" width="4" height="8" fill="#6366f1"/>
+    </svg>
+    <div style="flex: 1;">
+      <div style="font-size: 13px; font-weight: 700; color: oklch(0.2 0.02 90);">Zenith Vault</div>
+      <div style="font-size: 11px; color: oklch(0.5 0.02 90);">Select credential to autofill</div>
+    </div>
+  `;
+  dropdown.appendChild(header);
+
+  // Credentials list
+  entries.forEach((entry, index) => {
     const item = document.createElement('div');
+    item.className = 'dropdown-item';
     item.style.cssText = `
-      padding: 8px 16px;
+      padding: 12px;
       cursor: pointer;
       font-size: 14px;
-      color: #374151;
+      border-radius: 8px;
+      margin: 4px 0;
       display: flex;
-      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      transition: all 0.15s ease;
+      background: transparent;
     `;
+    
     item.innerHTML = `
-      <span style="font-weight: 500">${entry.username}</span>
-      <span style="font-size: 12px; color: #6b7280; margin-top: 2px;">Stored Password</span>
+      <div style="
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+      ">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      </div>
+      <div style="flex: 1; min-width: 0;">
+        <div style="
+          font-weight: 600;
+          color: oklch(0.2 0.02 90);
+          font-size: 14px;
+          margin-bottom: 2px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        ">${entry.username}</div>
+        <div style="
+          font-size: 12px;
+          color: oklch(0.5 0.02 90);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        ">${entry.siteName || new URL(entry.siteUrl).hostname}</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="oklch(0.5 0.02 90)" stroke-width="2">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
     `;
-    item.addEventListener('mouseover', () => {
-      item.style.backgroundColor = '#f3f4f6';
-    });
-    item.addEventListener('mouseout', () => {
-      item.style.backgroundColor = 'transparent';
-    });
+    
     item.addEventListener('click', () => {
       onSelect(entry);
       container.remove();
     });
+    
     dropdown.appendChild(item);
   });
+
+  // Footer
+  const footer = document.createElement('div');
+  footer.style.cssText = `
+    padding: 8px 12px 4px;
+    border-top: 1px solid oklch(0.9 0.01 90);
+    margin-top: 4px;
+    font-size: 11px;
+    color: oklch(0.5 0.02 90);
+    text-align: center;
+  `;
+  footer.textContent = `${entries.length} credential${entries.length > 1 ? 's' : ''} found`;
+  dropdown.appendChild(footer);
 
   shadow.appendChild(dropdown);
   document.body.appendChild(container);
