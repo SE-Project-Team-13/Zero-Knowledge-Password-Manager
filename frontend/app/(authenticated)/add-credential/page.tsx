@@ -65,8 +65,11 @@ export default function AddCredentialPage() {
 
     const handleAddEntry = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // Trim and validate URL
+        const trimmedUrl = newEntry.url?.trim() || "";
         if (
-            !newEntry.url ||
+            !trimmedUrl ||
             !newEntry.username ||
             !newEntry.password
         ) {
@@ -81,7 +84,7 @@ export default function AddCredentialPage() {
             await addEntry({
                 username: newEntry.username,
                 password: newEntry.password,
-                url: newEntry.url,
+                url: trimmedUrl,
                 notes: newEntry.notes,
             });
             
@@ -126,6 +129,9 @@ export default function AddCredentialPage() {
                             <Input
                                 id="url"
                                 type="text"
+                                inputMode="url"
+                                autoComplete="url"
+                                spellCheck={false}
                                 placeholder="example.com or https://example.com"
                                 value={newEntry.url || ""}
                                 onChange={(e) =>

@@ -47,14 +47,16 @@ export function EditCredentialModal({
   const handleSave = async () => {
     if (!formData) return;
     
-    if (!formData.url || !formData.username || !formData.password) {
+    // Trim and validate URL
+    const trimmedUrl = formData.url?.trim() || "";
+    if (!trimmedUrl || !formData.username || !formData.password) {
       toast.error("Please complete all required fields (URL, Username, and Password)");
       return;
     }
 
     setIsSaving(true);
     try {
-      await onSave(formData);
+      await onSave({ ...formData, url: trimmedUrl });
       onClose();
     } catch (err) {
       console.error("Failed to save entry:", err);
@@ -95,6 +97,9 @@ export function EditCredentialModal({
             <Input
               id="edit-url"
               type="text"
+              inputMode="url"
+              autoComplete="url"
+              spellCheck={false}
               placeholder="example.com or https://example.com"
               value={formData.url || ""}
               onChange={(e) => setFormData({ ...formData, url: e.target.value })}
